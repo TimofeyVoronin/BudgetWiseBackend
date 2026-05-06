@@ -1,20 +1,21 @@
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
+import environ
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-load_dotenv(BASE_DIR / ".env")
+env = environ.Env()
+environ.Env.read_env(BASE_DIR / ".env")
 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-budgetwise-dev-secret-key")
+SECRET_KEY = env("SECRET_KEY", default="django-insecure-budgetwise-dev-secret-key")
 
-ALLOWED_HOSTS = os.getenv(
+ALLOWED_HOSTS = env.list(
     "ALLOWED_HOSTS",
-    "localhost,127.0.0.1",
-).split(",")
+    default=["localhost", "127.0.0.1"],
+)
 
 
 DJANGO_APPS = [
@@ -80,8 +81,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": env("POSTGRES_DB", default="finance_db"),
+        "USER": env("POSTGRES_USER", default="finance_user"),
+        "PASSWORD": env("POSTGRES_PASSWORD", default="finance_password"),
+        "HOST": env("POSTGRES_HOST", default="localhost"),
+        "PORT": env("POSTGRES_PORT", default="5432"),
     }
 }
 
