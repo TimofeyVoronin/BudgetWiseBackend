@@ -1,3 +1,5 @@
+from corsheaders.defaults import default_headers
+
 from .base import *
 
 
@@ -11,7 +13,6 @@ ALLOWED_HOSTS = env.list(
 
 AUTH_PASSWORD_VALIDATORS = []
 
-
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=[
@@ -19,6 +20,15 @@ CORS_ALLOWED_ORIGINS = env.list(
         "http://127.0.0.1:5173",
     ],
 )
+
+CORS_ALLOW_CREDENTIALS = env.bool(
+    "CORS_ALLOW_CREDENTIALS",
+    default=False,
+)
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "authorization",
+]
 
 
 LOGGING = {
