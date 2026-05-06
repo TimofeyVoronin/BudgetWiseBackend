@@ -63,16 +63,46 @@ JSON
 
 Для ошибок без привязки к конкретному полю поле `detail` может содержать строку или объект.
 
+Пример ошибки авторизации:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "detail": {
+      "detail": "Authentication credentials were not provided."
+    }
+  }
+}
+```
+
+Пример ошибки валидации:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 400,
+    "detail": {
+      "amount": [
+        "Ensure this value is greater than 0."
+      ]
+    }
+  }
+}
+```
+
 ## Пагинация
 
 Для списков используется пагинация.
 
 Параметры:
 
-| Параметр | Тип | Описание |
-|---|---|---|
-| `page` | integer | Номер страницы |
-| `page_size` | integer | Размер страницы, максимум 100 |
+| Параметр | Тип | Обязательный | Описание |
+|---|---|---|---|
+| `page` | integer | Нет | Номер страницы |
+| `page_size` | integer | Нет | Размер страницы, максимум 100 |
 
 Базовый размер страницы:
 
@@ -115,6 +145,24 @@ JSON
 | `version` | string | Версия API или приложения |
 | `timestamp` | string | Время ответа сервера в ISO-формате |
 
+Пример запроса:
+
+```http
+GET /health/ HTTP/1.1
+Host: 127.0.0.1:8000
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "status": "ok",
+  "service": "BudgetWiseBackend",
+  "version": "1.0.0",
+  "timestamp": "2026-05-06T22:44:44.084816+00:00"
+}
+```
+
 Возможные коды ответа:
 
 | Код | Описание |
@@ -144,6 +192,29 @@ JSON
 | `version` | string | Текущая версия API |
 | `endpoints` | object | Список основных маршрутов |
 
+Пример запроса:
+
+```http
+GET /api/v1/ HTTP/1.1
+Host: 127.0.0.1:8000
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "service": "BudgetWiseBackend API",
+  "version": "v1",
+  "endpoints": {
+    "users": "/api/v1/users/",
+    "finance": "/api/v1/finance/",
+    "schema": "/api/schema/",
+    "docs": "/api/docs/",
+    "health": "/health/"
+  }
+}
+```
+
 Возможные коды ответа:
 
 | Код | Описание |
@@ -163,6 +234,13 @@ JSON
 
 Назначение: получение OpenAPI-схемы.
 
+Пример запроса:
+
+```http
+GET /api/schema/ HTTP/1.1
+Host: 127.0.0.1:8000
+```
+
 Возможные коды ответа:
 
 | Код | Описание |
@@ -181,6 +259,13 @@ JSON
 | Статус | Реализовано |
 
 Назначение: просмотр Swagger-документации API.
+
+Пример запроса:
+
+```http
+GET /api/docs/ HTTP/1.1
+Host: 127.0.0.1:8000
+```
 
 Возможные коды ответа:
 
@@ -212,13 +297,51 @@ Endpoints аутентификации будут использовать JWT.
 | `password` | string | Да | Пароль |
 | `password_confirm` | string | Да | Подтверждение пароля |
 
-Основные поля ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID пользователя |
-| `username` | string | Имя пользователя |
-| `email` | string | Email пользователя |
+```http
+POST /api/v1/auth/register/ HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Type: application/json
+```
+
+```json
+{
+  "username": "timofey",
+  "email": "timofey@example.com",
+  "password": "StrongPassword123",
+  "password_confirm": "StrongPassword123"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 1,
+  "username": "timofey",
+  "email": "timofey@example.com"
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 400,
+    "detail": {
+      "email": [
+        "User with this email already exists."
+      ],
+      "password_confirm": [
+        "Passwords do not match."
+      ]
+    }
+  }
+}
+```
 
 Возможные коды ответа:
 
@@ -247,12 +370,43 @@ Endpoints аутентификации будут использовать JWT.
 | `username` | string | Да | Имя пользователя |
 | `password` | string | Да | Пароль |
 
-Основные поля ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `access` | string | Access token |
-| `refresh` | string | Refresh token |
+```http
+POST /api/v1/auth/token/ HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Type: application/json
+```
+
+```json
+{
+  "username": "timofey",
+  "password": "StrongPassword123"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access",
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh"
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "detail": {
+      "detail": "No active account found with the given credentials"
+    }
+  }
+}
+```
 
 Возможные коды ответа:
 
@@ -280,12 +434,43 @@ Endpoints аутентификации будут использовать JWT.
 |---|---|---|---|
 | `refresh` | string | Да | Refresh token |
 
-Основные поля ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `access` | string | Новый access token |
-| `refresh` | string | Новый refresh token, если включена ротация refresh token |
+```http
+POST /api/v1/auth/token/refresh/ HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Type: application/json
+```
+
+```json
+{
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_access",
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_refresh"
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "detail": {
+      "detail": "Token is invalid or expired",
+      "code": "token_not_valid"
+    }
+  }
+}
+```
 
 Возможные коды ответа:
 
@@ -309,15 +494,39 @@ Endpoints аутентификации будут использовать JWT.
 
 Параметры запроса отсутствуют.
 
-Основные поля ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID пользователя |
-| `username` | string | Имя пользователя |
-| `email` | string | Email пользователя |
-| `first_name` | string | Имя |
-| `last_name` | string | Фамилия |
+```http
+GET /api/v1/users/me/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 1,
+  "username": "timofey",
+  "email": "timofey@example.com",
+  "first_name": "Timofey",
+  "last_name": ""
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "detail": {
+      "detail": "Authentication credentials were not provided."
+    }
+  }
+}
+```
 
 Возможные коды ответа:
 
@@ -347,16 +556,41 @@ Query-параметры:
 | `page_size` | integer | Нет | Размер страницы |
 | `is_active` | boolean | Нет | Фильтр по активности счёта |
 
-Основные поля элемента ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID счёта |
-| `name` | string | Название счёта |
-| `balance` | decimal | Текущий баланс |
-| `currency` | string | Валюта |
-| `is_active` | boolean | Активен ли счёт |
-| `created_at` | string | Дата создания |
+```http
+GET /api/v1/finance/accounts/?page=1&page_size=20&is_active=true HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "name": "Основная карта",
+      "balance": "25000.00",
+      "currency": "RUB",
+      "is_active": true,
+      "created_at": "2026-05-07T10:00:00+00:00"
+    },
+    {
+      "id": 2,
+      "name": "Наличные",
+      "balance": "5000.00",
+      "currency": "RUB",
+      "is_active": true,
+      "created_at": "2026-05-07T10:05:00+00:00"
+    }
+  ]
+}
+```
 
 Возможные коды ответа:
 
@@ -386,15 +620,54 @@ Query-параметры:
 | `balance` | decimal | Нет | Начальный баланс |
 | `currency` | string | Да | Валюта счёта |
 
-Основные поля ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID счёта |
-| `name` | string | Название счёта |
-| `balance` | decimal | Баланс |
-| `currency` | string | Валюта |
-| `is_active` | boolean | Активен ли счёт |
+```http
+POST /api/v1/finance/accounts/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "name": "Основная карта",
+  "balance": "25000.00",
+  "currency": "RUB"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 1,
+  "name": "Основная карта",
+  "balance": "25000.00",
+  "currency": "RUB",
+  "is_active": true,
+  "created_at": "2026-05-07T10:00:00+00:00"
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 400,
+    "detail": {
+      "name": [
+        "This field is required."
+      ],
+      "currency": [
+        "This field is required."
+      ]
+    }
+  }
+}
+```
 
 Возможные коды ответа:
 
@@ -419,9 +692,72 @@ Query-параметры:
 
 Path-параметры:
 
-| Параметр | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID счёта |
+| Параметр | Тип | Обязательный | Описание |
+|---|---|---|---|
+| `id` | integer | Да | ID счёта |
+
+Пример запроса на получение:
+
+```http
+GET /api/v1/finance/accounts/1/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 1,
+  "name": "Основная карта",
+  "balance": "25000.00",
+  "currency": "RUB",
+  "is_active": true,
+  "created_at": "2026-05-07T10:00:00+00:00"
+}
+```
+
+Пример запроса на частичное обновление:
+
+```http
+PATCH /api/v1/finance/accounts/1/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "name": "Зарплатная карта"
+}
+```
+
+Пример успешного ответа после обновления:
+
+```json
+{
+  "id": 1,
+  "name": "Зарплатная карта",
+  "balance": "25000.00",
+  "currency": "RUB",
+  "is_active": true,
+  "created_at": "2026-05-07T10:00:00+00:00"
+}
+```
+
+Пример ошибки доступа:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 403,
+    "detail": {
+      "detail": "You do not have permission to perform this action."
+    }
+  }
+}
+```
 
 Возможные коды ответа:
 
@@ -456,15 +792,39 @@ Query-параметры:
 | `type` | string | Нет | Тип категории: `income` или `expense` |
 | `is_active` | boolean | Нет | Фильтр по активности категории |
 
-Основные поля элемента ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID категории |
-| `name` | string | Название категории |
-| `type` | string | Тип категории |
-| `is_active` | boolean | Активна ли категория |
-| `created_at` | string | Дата создания |
+```http
+GET /api/v1/finance/categories/?type=expense&is_active=true HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "name": "Продукты",
+      "type": "expense",
+      "is_active": true,
+      "created_at": "2026-05-07T10:10:00+00:00"
+    },
+    {
+      "id": 2,
+      "name": "Транспорт",
+      "type": "expense",
+      "is_active": true,
+      "created_at": "2026-05-07T10:15:00+00:00"
+    }
+  ]
+}
+```
 
 Возможные коды ответа:
 
@@ -493,14 +853,49 @@ Query-параметры:
 | `name` | string | Да | Название категории |
 | `type` | string | Да | Тип категории: `income` или `expense` |
 
-Основные поля ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID категории |
-| `name` | string | Название категории |
-| `type` | string | Тип категории |
-| `is_active` | boolean | Активна ли категория |
+```http
+POST /api/v1/finance/categories/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "name": "Продукты",
+  "type": "expense"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 1,
+  "name": "Продукты",
+  "type": "expense",
+  "is_active": true,
+  "created_at": "2026-05-07T10:10:00+00:00"
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 400,
+    "detail": {
+      "type": [
+        "Value must be one of: income, expense."
+      ]
+    }
+  }
+}
+```
 
 Возможные коды ответа:
 
@@ -525,9 +920,29 @@ Query-параметры:
 
 Path-параметры:
 
-| Параметр | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID категории |
+| Параметр | Тип | Обязательный | Описание |
+|---|---|---|---|
+| `id` | integer | Да | ID категории |
+
+Пример запроса:
+
+```http
+GET /api/v1/finance/categories/1/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 1,
+  "name": "Продукты",
+  "type": "expense",
+  "is_active": true,
+  "created_at": "2026-05-07T10:10:00+00:00"
+}
+```
 
 Возможные коды ответа:
 
@@ -566,24 +981,42 @@ Query-параметры:
 | `date_to` | string | Нет | Конец периода |
 | `ordering` | string | Нет | Сортировка, например `operation_date` или `-operation_date` |
 
-Основные поля элемента ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID операции |
-| `account` | integer | ID счёта |
-| `category` | integer | ID категории |
-| `type` | string | Тип операции |
-| `amount` | decimal | Сумма операции |
-| `description` | string | Описание |
-| `operation_date` | string | Дата операции |
-| `created_at` | string | Дата создания |
+```http
+GET /api/v1/finance/transactions/?account=1&type=expense&date_from=2026-05-01&date_to=2026-05-31&ordering=-operation_date HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "account": 1,
+      "category": 1,
+      "type": "expense",
+      "amount": "1200.00",
+      "description": "Покупка продуктов",
+      "operation_date": "2026-05-07",
+      "created_at": "2026-05-07T10:30:00+00:00"
+    }
+  ]
+}
+```
 
 Возможные коды ответа:
 
 | Код | Описание |
 |---|---|
 | `200` | Список операций получен |
+| `400` | Некорректные параметры фильтрации |
 | `401` | Пользователь не авторизован |
 
 ---
@@ -610,17 +1043,73 @@ Query-параметры:
 | `description` | string | Нет | Описание операции |
 | `operation_date` | string | Да | Дата операции |
 
-Основные поля ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID операции |
-| `account` | integer | ID счёта |
-| `category` | integer | ID категории |
-| `type` | string | Тип операции |
-| `amount` | decimal | Сумма |
-| `description` | string | Описание |
-| `operation_date` | string | Дата операции |
+```http
+POST /api/v1/finance/transactions/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "account": 1,
+  "category": 1,
+  "type": "expense",
+  "amount": "1200.00",
+  "description": "Покупка продуктов",
+  "operation_date": "2026-05-07"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 1,
+  "account": 1,
+  "category": 1,
+  "type": "expense",
+  "amount": "1200.00",
+  "description": "Покупка продуктов",
+  "operation_date": "2026-05-07",
+  "created_at": "2026-05-07T10:30:00+00:00"
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 400,
+    "detail": {
+      "amount": [
+        "Ensure this value is greater than 0."
+      ],
+      "operation_date": [
+        "Date has wrong format. Use YYYY-MM-DD."
+      ]
+    }
+  }
+}
+```
+
+Пример ошибки доступа:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 403,
+    "detail": {
+      "detail": "You do not have permission to use this account."
+    }
+  }
+}
+```
 
 Возможные коды ответа:
 
@@ -646,9 +1135,62 @@ Query-параметры:
 
 Path-параметры:
 
-| Параметр | Тип | Описание |
-|---|---|---|
-| `id` | integer | ID операции |
+| Параметр | Тип | Обязательный | Описание |
+|---|---|---|---|
+| `id` | integer | Да | ID операции |
+
+Пример запроса на получение:
+
+```http
+GET /api/v1/finance/transactions/1/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 1,
+  "account": 1,
+  "category": 1,
+  "type": "expense",
+  "amount": "1200.00",
+  "description": "Покупка продуктов",
+  "operation_date": "2026-05-07",
+  "created_at": "2026-05-07T10:30:00+00:00"
+}
+```
+
+Пример запроса на частичное обновление:
+
+```http
+PATCH /api/v1/finance/transactions/1/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "description": "Покупка продуктов и бытовых товаров"
+}
+```
+
+Пример успешного ответа после обновления:
+
+```json
+{
+  "id": 1,
+  "account": 1,
+  "category": 1,
+  "type": "expense",
+  "amount": "1200.00",
+  "description": "Покупка продуктов и бытовых товаров",
+  "operation_date": "2026-05-07",
+  "created_at": "2026-05-07T10:30:00+00:00"
+}
+```
 
 Возможные коды ответа:
 
@@ -682,14 +1224,43 @@ Query-параметры:
 | `date_to` | string | Нет | Конец периода |
 | `account` | integer | Нет | Фильтр по счёту |
 
-Основные поля ответа:
+Пример запроса:
 
-| Поле | Тип | Описание |
-|---|---|---|
-| `income_total` | decimal | Общая сумма доходов |
-| `expense_total` | decimal | Общая сумма расходов |
-| `balance_delta` | decimal | Разница между доходами и расходами |
-| `period` | object | Период отчёта |
+```http
+GET /api/v1/finance/reports/summary/?date_from=2026-05-01&date_to=2026-05-31&account=1 HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "income_total": "80000.00",
+  "expense_total": "32500.00",
+  "balance_delta": "47500.00",
+  "period": {
+    "date_from": "2026-05-01",
+    "date_to": "2026-05-31"
+  }
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 400,
+    "detail": {
+      "date_to": [
+        "date_to must be greater than or equal to date_from."
+      ]
+    }
+  }
+}
+```
 
 Возможные коды ответа:
 
