@@ -106,6 +106,13 @@ BudgetWiseBackend/
 │   ├── urls.py
 │   ├── asgi.py
 │   └── wsgi.py
+├── docs/
+│   ├── adr/
+│   │   ├── 0001-technology-stack.md
+│   │   ├── 0002-static-and-media-files.md
+│   │   ├── 0003-authentication.md
+│   │   └── 0004-api-structure-and-versioning.md
+│   └── api-contract.md
 ├── logs/
 ├── manage.py
 ├── requirements.txt
@@ -392,6 +399,50 @@ Backend использует версионирование API через URL-�
 Текущая версия API: `v1`.
 
 Версионирование выполнено через URL-префикс. Это позволяет в будущем добавить новую версию API, например `/api/v2/`, без нарушения совместимости с существующими клиентами.
+
+## Документация проекта
+
+В проекте используется несколько видов документации:
+
+| Документ | Назначение |
+|---|---|
+| [`README.md`](README.md) | Основное описание проекта, быстрый старт и базовые инструкции |
+| [`.env.example`](.env.example) | Пример переменных окружения для локального запуска |
+| [`docs/api-contract.md`](docs/api-contract.md) | Предварительный контракт API: endpoints, методы, параметры, ответы и ошибки |
+| [`docs/adr/0001-technology-stack.md`](docs/adr/0001-technology-stack.md) | ADR по выбору технологического стека backend-части |
+| [`docs/adr/0002-static-and-media-files.md`](docs/adr/0002-static-and-media-files.md) | ADR по хранению static и media файлов |
+| [`docs/adr/0003-authentication.md`](docs/adr/0003-authentication.md) | ADR по JWT-аутентификации и авторизации |
+| [`docs/adr/0004-api-structure-and-versioning.md`](docs/adr/0004-api-structure-and-versioning.md) | ADR по структуре API и версионированию |
+
+ADR, Architecture Decision Record, фиксируют ключевые архитектурные решения проекта. Они нужны, чтобы новый разработчик понимал не только текущее состояние кода, но и причины выбранных технических решений.
+
+## Onboarding нового разработчика
+
+Минимальный порядок знакомства с проектом:
+
+1. Прочитать `README.md`, чтобы понять цель проекта, MVP, стек и текущую структуру backend-части.
+2. Открыть `.env.example` и подготовить локальный `.env`.
+3. Поднять PostgreSQL для разработки.
+4. Установить зависимости из `requirements.txt`.
+5. Выполнить миграции через `python manage.py migrate`.
+6. Запустить backend через `python manage.py runserver`.
+7. Проверить служебные endpoints:
+   - `/health/`;
+   - `/api/v1/`;
+   - `/api/docs/`.
+8. Изучить `docs/api-contract.md`, чтобы понять планируемые endpoints и формат API.
+9. Изучить ADR-документы в `docs/adr/`, чтобы понять основные архитектурные решения.
+10. Перед началом новой задачи проверить актуальную ветку, статус Git и связанную задачу в Jira.
+
+Минимальные команды для проверки локального окружения:
+
+```bash
+python manage.py check
+python manage.py showmigrations
+python manage.py test
+```
+
+Если все команды выполняются без ошибок, окружение можно считать готовым для разработки.
 
 ## Текущий статус
 
