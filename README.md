@@ -113,6 +113,120 @@ BudgetWiseBackend/
 └── README.md
 ```
 
+## Окружения проекта
+
+Настройки проекта разделены на несколько файлов:
+
+```text
+config/settings/
+├── base.py
+├── dev.py
+└── prod.py
+```
+
+Назначение файлов:
+
+| Файл | Назначение |
+|---|---|
+| `base.py` | Общие настройки проекта: приложения, middleware, DRF, JWT, база данных, static/media, OpenAPI |
+| `dev.py` | Настройки локальной разработки: `DEBUG=True`, упрощенная валидация паролей, CORS для локального frontend, dev-логирование |
+| `prod.py` | Настройки production-окружения: `DEBUG=False`, security-настройки, защищенные cookie, HSTS, production-логирование |
+
+По умолчанию локальный запуск использует настройки:
+
+```text
+config.settings.dev
+```
+
+Для production-запуска нужно использовать:
+
+```text
+config.settings.prod
+```
+
+Например:
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings.prod gunicorn config.wsgi:application
+```
+
+## Переменные окружения
+
+Проект использует переменные окружения для хранения секретов и настроек, которые не должны быть жестко записаны в коде.
+
+Пример файла находится в репозитории:
+
+```text
+.env.example
+```
+
+Для локального запуска нужно создать файл `.env`:
+
+```bash
+cp .env.example .env
+```
+
+Файл `.env` не должен попадать в Git.
+
+### Основные переменные
+
+| Переменная | Пример | Назначение |
+|---|---|---|
+| `SECRET_KEY` | `django-insecure-budgetwise-dev-secret-key` | Секретный ключ Django |
+| `DEBUG` | `True` | Режим отладки |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Разрешенные хосты для Django |
+| `POSTGRES_DB` | `finance_db` | Название базы данных PostgreSQL |
+| `POSTGRES_USER` | `finance_user` | Пользователь PostgreSQL |
+| `POSTGRES_PASSWORD` | `finance_password` | Пароль пользователя PostgreSQL |
+| `POSTGRES_HOST` | `localhost` | Хост PostgreSQL |
+| `POSTGRES_PORT` | `5432` | Порт PostgreSQL |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Разрешенные источники запросов от frontend |
+| `CORS_ALLOW_CREDENTIALS` | `False` | Разрешение передачи credentials в CORS-запросах |
+| `DJANGO_LOG_LEVEL` | `INFO` | Уровень логирования Django |
+| `DJANGO_SQL_LOG_LEVEL` | `WARNING` | Уровень логирования SQL-запросов |
+| `APP_LOG_LEVEL` | `DEBUG` | Уровень логирования приложений проекта |
+
+### Пример `.env`
+
+```env
+SECRET_KEY=django-insecure-budgetwise-dev-secret-key
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+POSTGRES_DB=finance_db
+POSTGRES_USER=finance_user
+POSTGRES_PASSWORD=finance_password
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+CORS_ALLOW_CREDENTIALS=False
+
+DJANGO_LOG_LEVEL=INFO
+DJANGO_SQL_LOG_LEVEL=WARNING
+APP_LOG_LEVEL=DEBUG
+```
+
+### PostgreSQL host в разных режимах запуска
+
+При локальном запуске Django из WSL и PostgreSQL через проброшенный Docker-порт используется:
+
+```env
+POSTGRES_HOST=localhost
+```
+
+При запуске backend и PostgreSQL внутри одного `docker-compose` обычно используется имя сервиса базы данных:
+
+```env
+POSTGRES_HOST=db
+```
+
+Docker Compose будет настроен отдельной задачей.
+
+### Email-сервисы
+
+На текущем этапе email-сервисы не подключены. Переменные для SMTP или внешних email-провайдеров будут добавлены позже, если в проекте появятся функции подтверждения почты, восстановления пароля или отправки уведомлений.
+
 ## Быстрый старт
 
 Раздел описывает запуск backend-части проекта в локальном dev-окружении через WSL.
@@ -146,28 +260,15 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Пример основных переменных:
+Проверить и при необходимости изменить параметры подключения к PostgreSQL:
 
 ```env
-SECRET_KEY=django-insecure-budgetwise-dev-secret-key
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
-
 POSTGRES_DB=finance_db
 POSTGRES_USER=finance_user
 POSTGRES_PASSWORD=finance_password
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
-
-CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-CORS_ALLOW_CREDENTIALS=False
-
-DJANGO_LOG_LEVEL=INFO
-DJANGO_SQL_LOG_LEVEL=WARNING
-APP_LOG_LEVEL=DEBUG
 ```
-
-Файл `.env` не должен попадать в Git.
 
 ### 5. Запуск PostgreSQL для разработки
 
