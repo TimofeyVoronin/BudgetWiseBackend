@@ -34,24 +34,32 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "formatters": LOGGING_FORMATTERS,
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "formatter": "simple",
         },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
     },
     "loggers": {
         "django": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": env("DJANGO_LOG_LEVEL", default="INFO"),
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": env("DJANGO_SQL_LOG_LEVEL", default="WARNING"),
             "propagate": False,
         },
         "apps": {
             "handlers": ["console"],
-            "level": "DEBUG",
+            "level": env("APP_LOG_LEVEL", default="DEBUG"),
             "propagate": False,
         },
     },

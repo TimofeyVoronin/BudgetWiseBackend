@@ -14,3 +14,6 @@ staticfiles/
 media/
 
 .DS_Store
+
+logs/
+!logs/.gitkeep
