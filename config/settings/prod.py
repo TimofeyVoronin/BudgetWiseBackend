@@ -22,3 +22,44 @@ CORS_ALLOW_CREDENTIALS = env.bool(
     "CORS_ALLOW_CREDENTIALS",
     default=False,
 )
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": LOGGING_FORMATTERS,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "budgetwise.log"),
+            "maxBytes": 1024 * 1024 * 5,
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "file"],
+            "level": env("DJANGO_LOG_LEVEL", default="INFO"),
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console", "file"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "django.db.backends": {
+            "handlers": ["console", "file"],
+            "level": env("DJANGO_SQL_LOG_LEVEL", default="WARNING"),
+            "propagate": False,
+        },
+        "apps": {
+            "handlers": ["console", "file"],
+            "level": env("APP_LOG_LEVEL", default="INFO"),
+            "propagate": False,
+        },
+    },
+}

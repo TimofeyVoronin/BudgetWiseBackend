@@ -126,6 +126,9 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+LOG_DIR = BASE_DIR / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -166,4 +169,17 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+
+LOGGING_FORMATTERS = {
+    "simple": {
+        "format": "%(levelname)s %(asctime)s %(name)s: %(message)s",
+    },
+    "verbose": {
+        "format": (
+            "%(levelname)s %(asctime)s %(name)s "
+            "%(module)s:%(lineno)d %(message)s"
+        ),
+    },
 }
