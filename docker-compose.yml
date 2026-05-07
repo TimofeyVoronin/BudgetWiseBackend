@@ -3,8 +3,6 @@ services:
     image: postgres:16
     container_name: budgetwise-db
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-finance_db}
       POSTGRES_USER: ${POSTGRES_USER:-finance_user}
@@ -21,3 +19,5 @@ services:
 
 volumes:
   postgres_data:
+  static_volume:
+  media_volume:
