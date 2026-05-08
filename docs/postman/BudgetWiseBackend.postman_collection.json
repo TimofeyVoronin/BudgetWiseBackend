@@ -1,9 +1,10 @@
 {
   "info": {
-    "_postman_id": "c59c6a76-1f5b-4d61-8ed3-budgetwise-api",
+    "_postman_id": "af7832d4-2741-4e8f-a0c0-9893da8af12b",
     "name": "BudgetWiseBackend",
     "description": "Postman collection for manual testing of BudgetWiseBackend API.",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "46101842"
   },
   "item": [
     {
@@ -11,21 +12,6 @@
       "item": [
         {
           "name": "Health check",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/health/",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "health",
-                ""
-              ]
-            },
-            "description": "Checks backend service status."
-          },
           "event": [
             {
               "listen": "test",
@@ -43,26 +29,26 @@
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "API root",
+          ],
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/",
+              "raw": "{{base_url}}/health/",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
-                "api",
-                "v1",
+                "health",
                 ""
               ]
             },
-            "description": "Returns API root information and main endpoint links."
+            "description": "Checks backend service status."
           },
+          "response": []
+        },
+        {
+          "name": "API root",
           "event": [
             {
               "listen": "test",
@@ -80,16 +66,55 @@
                 ]
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                ""
+              ]
+            },
+            "description": "Returns API root information and main endpoint links."
+          },
+          "response": []
         }
       ]
     },
     {
       "name": "01 Auth",
-      "description": "Auth endpoints are planned for the next user/auth task. Until they are implemented, generate access_token through Django shell and paste it into the environment.",
       "item": [
         {
           "name": "Get token - planned",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.access) {",
+                  "        pm.environment.set('access_token', json.access);",
+                  "    }",
+                  "    if (json.refresh) {",
+                  "        pm.environment.set('refresh_token', json.refresh);",
+                  "    }",
+                  "}",
+                  "",
+                  "pm.test('Status is 200 after auth endpoint implementation', function () {",
+                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -117,6 +142,10 @@
             },
             "description": "Planned endpoint for getting JWT tokens. Will be enabled after auth endpoints are implemented."
           },
+          "response": []
+        },
+        {
+          "name": "Refresh token - planned",
           "event": [
             {
               "listen": "test",
@@ -134,15 +163,12 @@
                   "}",
                   "",
                   "pm.test('Status is 200 after auth endpoint implementation', function () {",
-                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "    pm.expect([200, 401, 404]).to.include(pm.response.code);",
                   "});"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Refresh token - planned",
+          ],
           "request": {
             "method": "POST",
             "header": [
@@ -171,37 +197,35 @@
             },
             "description": "Planned endpoint for refreshing JWT access token."
           },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    const json = pm.response.json();",
-                  "    if (json.access) {",
-                  "        pm.environment.set('access_token', json.access);",
-                  "    }",
-                  "    if (json.refresh) {",
-                  "        pm.environment.set('refresh_token', json.refresh);",
-                  "    }",
-                  "}",
-                  "",
-                  "pm.test('Status is 200 after auth endpoint implementation', function () {",
-                  "    pm.expect([200, 401, 404]).to.include(pm.response.code);",
-                  "});"
-                ]
-              }
-            }
-          ]
+          "response": []
         }
-      ]
+      ],
+      "description": "Auth endpoints are planned for the next user/auth task. Until they are implemented, generate access_token through Django shell and paste it into the environment."
     },
     {
       "name": "02 Finance - Categories",
       "item": [
         {
           "name": "List categories",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is paginated', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('count');",
+                  "    pm.expect(json).to.have.property('results');",
+                  "});"
+                ]
+              }
+            }
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -230,6 +254,10 @@
             },
             "description": "Returns paginated list of current user's categories."
           },
+          "response": []
+        },
+        {
+          "name": "List expense categories",
           "event": [
             {
               "listen": "test",
@@ -238,20 +266,11 @@
                 "exec": [
                   "pm.test('Status code is 200', function () {",
                   "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "pm.test('Response is paginated', function () {",
-                  "    const json = pm.response.json();",
-                  "    pm.expect(json).to.have.property('count');",
-                  "    pm.expect(json).to.have.property('results');",
                   "});"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "List expense categories",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -290,6 +309,10 @@
             },
             "description": "Returns active expense categories."
           },
+          "response": []
+        },
+        {
+          "name": "Categories tree",
           "event": [
             {
               "listen": "test",
@@ -298,14 +321,16 @@
                 "exec": [
                   "pm.test('Status code is 200', function () {",
                   "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is array', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
                   "});"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Categories tree",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -335,27 +360,28 @@
             },
             "description": "Returns categories as a hierarchy tree."
           },
+          "response": []
+        },
+        {
+          "name": "Create category",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
                   "});",
                   "",
-                  "pm.test('Response is array', function () {",
-                  "    const json = pm.response.json();",
-                  "    pm.expect(json).to.be.an('array');",
-                  "});"
+                  "const json = pm.response.json();",
+                  "if (json.id) {",
+                  "    pm.environment.set('category_id', json.id);",
+                  "}"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Create category",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -393,6 +419,10 @@
             },
             "description": "Creates a root expense category and saves its id to category_id."
           },
+          "response": []
+        },
+        {
+          "name": "Create child category",
           "event": [
             {
               "listen": "test",
@@ -405,15 +435,12 @@
                   "",
                   "const json = pm.response.json();",
                   "if (json.id) {",
-                  "    pm.environment.set('category_id', json.id);",
+                  "    pm.environment.set('child_category_id', json.id);",
                   "}"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Create child category",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -451,27 +478,23 @@
             },
             "description": "Creates a child category for category_id and saves id to child_category_id."
           },
+          "response": []
+        },
+        {
+          "name": "Get category",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 201', function () {",
-                  "    pm.response.to.have.status(201);",
-                  "});",
-                  "",
-                  "const json = pm.response.json();",
-                  "if (json.id) {",
-                  "    pm.environment.set('child_category_id', json.id);",
-                  "}"
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Get category",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -501,6 +524,10 @@
             },
             "description": "Returns one category by category_id."
           },
+          "response": []
+        },
+        {
+          "name": "Update category",
           "event": [
             {
               "listen": "test",
@@ -513,10 +540,7 @@
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Update category",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -555,22 +579,23 @@
             },
             "description": "Partially updates category name."
           },
+          "response": []
+        },
+        {
+          "name": "Delete child category",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
+                  "pm.test('Status code is 204', function () {",
+                  "    pm.response.to.have.status(204);",
                   "});"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Delete child category",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -600,19 +625,7 @@
             },
             "description": "Deletes or deactivates child category."
           },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 204', function () {",
-                  "    pm.response.to.have.status(204);",
-                  "});"
-                ]
-              }
-            }
-          ]
+          "response": []
         }
       ]
     },
@@ -621,6 +634,25 @@
       "item": [
         {
           "name": "List transactions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is paginated', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('count');",
+                  "    pm.expect(json).to.have.property('results');",
+                  "});"
+                ]
+              }
+            }
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -649,6 +681,10 @@
             },
             "description": "Returns paginated list of current user's transactions."
           },
+          "response": []
+        },
+        {
+          "name": "List expense transactions",
           "event": [
             {
               "listen": "test",
@@ -657,20 +693,11 @@
                 "exec": [
                   "pm.test('Status code is 200', function () {",
                   "    pm.response.to.have.status(200);",
-                  "});",
-                  "",
-                  "pm.test('Response is paginated', function () {",
-                  "    const json = pm.response.json();",
-                  "    pm.expect(json).to.have.property('count');",
-                  "    pm.expect(json).to.have.property('results');",
                   "});"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "List expense transactions",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -709,22 +736,28 @@
             },
             "description": "Returns expense transactions ordered by operation_date descending."
           },
+          "response": []
+        },
+        {
+          "name": "Create transaction",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});"
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.id) {",
+                  "    pm.environment.set('transaction_id', json.id);",
+                  "}"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Create transaction",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -762,27 +795,23 @@
             },
             "description": "Creates a transaction and saves its id to transaction_id."
           },
+          "response": []
+        },
+        {
+          "name": "Get transaction",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 201', function () {",
-                  "    pm.response.to.have.status(201);",
-                  "});",
-                  "",
-                  "const json = pm.response.json();",
-                  "if (json.id) {",
-                  "    pm.environment.set('transaction_id', json.id);",
-                  "}"
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Get transaction",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -812,6 +841,10 @@
             },
             "description": "Returns one transaction by transaction_id."
           },
+          "response": []
+        },
+        {
+          "name": "Update transaction",
           "event": [
             {
               "listen": "test",
@@ -824,10 +857,7 @@
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Update transaction",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -866,22 +896,23 @@
             },
             "description": "Partially updates transaction description."
           },
+          "response": []
+        },
+        {
+          "name": "Delete transaction",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
+                  "pm.test('Status code is 204', function () {",
+                  "    pm.response.to.have.status(204);",
                   "});"
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Delete transaction",
+          ],
           "request": {
             "auth": {
               "type": "bearer",
@@ -911,19 +942,293 @@
             },
             "description": "Deletes one transaction by transaction_id."
           },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 Users",
+      "item": [
+        {
+          "name": "Get current user",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update current user",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"first_name\": \"Timofey\",\r\n  \"last_name\": \"Demo\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/me/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List users as admin",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create user as admin",
           "event": [
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 204', function () {",
-                  "    pm.response.to.have.status(204);",
-                  "});"
-                ]
+                  "pm.test(\"Status code is 201\", function () {\r",
+                  "    pm.response.to.have.status(201);\r",
+                  "});\r",
+                  "\r",
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "if (json.id) {\r",
+                  "    pm.environment.set(\"created_user_id\", json.id);\r",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
-          ]
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"username\": \"postman_user_{{$timestamp}}\",\r\n  \"email\": \"postman_user_{{$timestamp}}@example.com\",\r\n  \"password\": \"strong-password-123\",\r\n  \"first_name\": \"Postman\",\r\n  \"last_name\": \"User\",\r\n  \"is_active\": true,\r\n  \"is_staff\": false,\r\n  \"is_superuser\": false\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get user as admin",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{created_user_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{created_user_id}}",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update user as admin",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"first_name\": \"Updated\",\r\n  \"is_staff\": true\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{created_user_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{created_user_id}}",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate user as admin",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{created_user_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{created_user_id}}",
+                ""
+              ]
+            }
+          },
+          "response": []
         }
       ]
     },
@@ -932,6 +1237,19 @@
       "item": [
         {
           "name": "OpenAPI schema",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [],
@@ -948,6 +1266,10 @@
             },
             "description": "Returns OpenAPI schema generated by drf-spectacular."
           },
+          "response": []
+        },
+        {
+          "name": "Swagger UI",
           "event": [
             {
               "listen": "test",
@@ -960,10 +1282,7 @@
                 ]
               }
             }
-          ]
-        },
-        {
-          "name": "Swagger UI",
+          ],
           "request": {
             "method": "GET",
             "header": [],
@@ -980,19 +1299,7 @@
             },
             "description": "Opens Swagger UI page."
           },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});"
-                ]
-              }
-            }
-          ]
+          "response": []
         }
       ]
     }
