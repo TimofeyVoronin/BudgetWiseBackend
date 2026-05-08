@@ -83,6 +83,14 @@ class Category(TimeStampedModel):
         related_name="categories",
         verbose_name="Пользователь",
     )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="children",
+        verbose_name="Родительская категория",
+    )
     name = models.CharField(
         max_length=100,
         verbose_name="Название категории",
@@ -110,17 +118,59 @@ class Category(TimeStampedModel):
                 condition=models.Q(type__in=TransactionType.values),
                 name="category_type_valid",
             ),
+            models.CheckConstraint(
+                condition=models.Q(parent__isnull=True) | ~models.Q(parent=models.F("id")),
+                name="category_parent_not_self",
+            ),
         ]
         indexes = [
             models.Index(fields=["user"], name="idx_category_user"),
             models.Index(fields=["user", "type"], name="idx_category_user_type"),
+            models.Index(fields=["user", "parent"], name="idx_category_user_parent"),
             models.Index(fields=["user", "is_active"], name="idx_category_user_active"),
             models.Index(fields=["user", "name", "type"], name="idx_category_user_name_type"),
         ]
 
+    def clean(self) -> None:
+        errors = {}
+
+        if self.parent_id:
+            if self.parent_id == self.id:
+                errors["parent"] = "Категория не может быть родителем самой себя."
+
+            if self.parent.user_id != self.user_id:
+                errors["parent"] = "Родительская категория должна принадлежать тому же пользователю."
+
+            if self.parent.type != self.type:
+                errors["parent"] = "Родительская категория должна иметь тот же тип."
+
+            if self._has_parent_cycle():
+                errors["parent"] = "В иерархии категорий обнаружена циклическая связь."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def _has_parent_cycle(self) -> bool:
+        if not self.pk:
+            return False
+
+        parent = self.parent
+        visited_ids = set()
+
+        while parent is not None:
+            if parent.pk == self.pk:
+                return True
+
+            if parent.pk in visited_ids:
+                return True
+
+            visited_ids.add(parent.pk)
+            parent = parent.parent
+
+        return False
+
     def __str__(self) -> str:
         return f"{self.name} ({self.type})"
-
 
 class Transaction(TimeStampedModel):
     user = models.ForeignKey(
