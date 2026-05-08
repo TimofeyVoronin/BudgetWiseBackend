@@ -1,10 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.exceptions import ValidationError
+from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from apps.users.serializers import CurrentUserSerializer, UserSerializer
 
@@ -12,15 +13,29 @@ from apps.users.serializers import CurrentUserSerializer, UserSerializer
 User = get_user_model()
 
 
-class CurrentUserView(APIView):
+class CurrentUserView(GenericAPIView):
+    serializer_class = CurrentUserSerializer
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["users"],
+        operation_id="users_me_retrieve",
+        summary="Получить данные текущего пользователя",
+        responses={200: CurrentUserSerializer},
+    )
     def get(self, request):
-        serializer = CurrentUserSerializer(request.user)
+        serializer = self.get_serializer(request.user)
         return Response(serializer.data)
 
+    @extend_schema(
+        tags=["users"],
+        operation_id="users_me_partial_update",
+        summary="Частично обновить данные текущего пользователя",
+        request=CurrentUserSerializer,
+        responses={200: CurrentUserSerializer},
+    )
     def patch(self, request):
-        serializer = CurrentUserSerializer(
+        serializer = self.get_serializer(
             request.user,
             data=request.data,
             partial=True,
@@ -30,6 +45,23 @@ class CurrentUserView(APIView):
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["users"],
+        summary="Получить список пользователей",
+        parameters=[
+            OpenApiParameter("is_active", OpenApiTypes.BOOL),
+            OpenApiParameter("is_staff", OpenApiTypes.BOOL),
+            OpenApiParameter("is_superuser", OpenApiTypes.BOOL),
+            OpenApiParameter("search", OpenApiTypes.STR),
+            OpenApiParameter("ordering", OpenApiTypes.STR),
+        ],
+    ),
+    create=extend_schema(tags=["users"], summary="Создать пользователя"),
+    retrieve=extend_schema(tags=["users"], summary="Получить пользователя"),
+    partial_update=extend_schema(tags=["users"], summary="Частично обновить пользователя"),
+    destroy=extend_schema(tags=["users"], summary="Деактивировать пользователя"),
+)
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [IsAdminUser]

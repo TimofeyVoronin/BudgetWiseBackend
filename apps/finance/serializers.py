@@ -1,10 +1,10 @@
+from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
 from apps.finance.models import (
     Account,
     Category,
     Transaction,
-    TransactionType,
 )
 
 
@@ -30,7 +30,8 @@ class CategorySerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-    def get_children_count(self, obj):
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_children_count(self, obj) -> int:
         return obj.children.count()
 
     def validate(self, attrs):
@@ -44,7 +45,10 @@ class CategorySerializer(serializers.ModelSerializer):
         if user and parent and parent.user_id != user.id:
             raise serializers.ValidationError(
                 {
-                    "parent": "Родительская категория должна принадлежать текущему пользователю."
+                    "parent": (
+                        "Родительская категория должна принадлежать "
+                        "текущему пользователю."
+                    )
                 }
             )
 
@@ -73,21 +77,30 @@ class CategorySerializer(serializers.ModelSerializer):
             if self.instance.children.exists():
                 raise serializers.ValidationError(
                     {
-                        "type": "Нельзя изменить тип категории, у которой есть дочерние категории."
+                        "type": (
+                            "Нельзя изменить тип категории, у которой есть "
+                            "дочерние категории."
+                        )
                     }
                 )
 
             if self.instance.transactions.exists():
                 raise serializers.ValidationError(
                     {
-                        "type": "Нельзя изменить тип категории, которая используется в операциях."
+                        "type": (
+                            "Нельзя изменить тип категории, которая используется "
+                            "в операциях."
+                        )
                     }
                 )
 
             if self.instance.budgets.exists():
                 raise serializers.ValidationError(
                     {
-                        "type": "Нельзя изменить тип категории, которая используется в бюджетах."
+                        "type": (
+                            "Нельзя изменить тип категории, которая используется "
+                            "в бюджетах."
+                        )
                     }
                 )
 
@@ -148,6 +161,7 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_children(self, obj):
         request = self.context.get("request")
         queryset = obj.children.all().order_by("type", "name")
@@ -221,7 +235,9 @@ class TransactionSerializer(serializers.ModelSerializer):
                 }
             )
 
-        if (not self.instance or "category" in attrs) and category and not category.is_active:
+        if (
+            not self.instance or "category" in attrs
+        ) and category and not category.is_active:
             raise serializers.ValidationError(
                 {
                     "category": "Нельзя использовать неактивную категорию."

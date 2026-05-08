@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
 
@@ -29,7 +30,8 @@ class CurrentUserSerializer(serializers.ModelSerializer):
             "date_joined",
         ]
 
-    def get_role(self, obj):
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_role(self, obj) -> str:
         if obj.is_superuser:
             return "admin"
 
@@ -71,7 +73,8 @@ class UserSerializer(serializers.ModelSerializer):
             "last_login",
         ]
 
-    def get_role(self, obj):
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_role(self, obj) -> str:
         if obj.is_superuser:
             return "admin"
 

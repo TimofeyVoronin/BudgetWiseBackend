@@ -150,15 +150,33 @@ REST_FRAMEWORK = {
 
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "BudgetWise API",
-    "DESCRIPTION": "API серверной части приложения для управления личными финансами",
+    "TITLE": "BudgetWiseBackend API",
+    "DESCRIPTION": (
+        "OpenAPI-документация backend-части прогрессивного веб-приложения "
+        "для управления личными финансами."
+    ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
-    "SECURITY": [
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": True,
+        "filter": True,
+    },
+    "TAGS": [
         {
-            "bearerAuth": [],
-        }
+            "name": "health",
+            "description": "Служебные endpoints состояния backend-сервиса.",
+        },
+        {
+            "name": "users",
+            "description": "Endpoints профиля пользователя и администрирования пользователей.",
+        },
+        {
+            "name": "finance",
+            "description": "Endpoints финансового модуля: категории и операции.",
+        },
     ],
 }
 

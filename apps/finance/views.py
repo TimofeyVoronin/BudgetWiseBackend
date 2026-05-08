@@ -1,4 +1,10 @@
 from django.utils.dateparse import parse_date
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiTypes,
+    extend_schema,
+    extend_schema_view,
+)
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -15,12 +21,43 @@ from apps.finance.serializers import (
 )
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["finance"],
+        summary="Получить список категорий",
+        parameters=[
+            OpenApiParameter("type", OpenApiTypes.STR),
+            OpenApiParameter("parent", OpenApiTypes.INT),
+            OpenApiParameter("is_active", OpenApiTypes.BOOL),
+            OpenApiParameter("ordering", OpenApiTypes.STR),
+        ],
+    ),
+    create=extend_schema(
+        tags=["finance"],
+        summary="Создать категорию",
+    ),
+    retrieve=extend_schema(
+        tags=["finance"],
+        summary="Получить категорию",
+    ),
+    partial_update=extend_schema(
+        tags=["finance"],
+        summary="Частично обновить категорию",
+    ),
+    destroy=extend_schema(
+        tags=["finance"],
+        summary="Удалить категорию",
+    ),
+)
 class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticated, IsObjectOwner]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return Category.objects.none()
+
         queryset = Category.objects.filter(user=self.request.user).order_by("type", "name")
 
         category_type = self.request.query_params.get("type")
@@ -65,6 +102,15 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    @extend_schema(
+        tags=["finance"],
+        summary="Получить дерево категорий",
+        parameters=[
+            OpenApiParameter("type", OpenApiTypes.STR),
+            OpenApiParameter("is_active", OpenApiTypes.BOOL),
+        ],
+        responses={200: CategoryTreeSerializer(many=True)},
+    )
     @action(detail=False, methods=["get"], url_path="tree")
     def tree(self, request):
         queryset = (
@@ -138,12 +184,45 @@ class CategoryViewSet(viewsets.ModelViewSet):
         )
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["finance"],
+        summary="Получить список операций",
+        parameters=[
+            OpenApiParameter("account", OpenApiTypes.INT),
+            OpenApiParameter("category", OpenApiTypes.INT),
+            OpenApiParameter("type", OpenApiTypes.STR),
+            OpenApiParameter("date_from", OpenApiTypes.DATE),
+            OpenApiParameter("date_to", OpenApiTypes.DATE),
+            OpenApiParameter("ordering", OpenApiTypes.STR),
+        ],
+    ),
+    create=extend_schema(
+        tags=["finance"],
+        summary="Создать операцию",
+    ),
+    retrieve=extend_schema(
+        tags=["finance"],
+        summary="Получить операцию",
+    ),
+    partial_update=extend_schema(
+        tags=["finance"],
+        summary="Частично обновить операцию",
+    ),
+    destroy=extend_schema(
+        tags=["finance"],
+        summary="Удалить операцию",
+    ),
+)
 class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated, IsObjectOwner]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return Transaction.objects.none()
+
         queryset = (
             Transaction.objects.filter(user=self.request.user)
             .select_related("account", "category")
