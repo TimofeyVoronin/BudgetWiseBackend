@@ -88,11 +88,13 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.get_object()
 
         if user.id == request.user.id:
-            return Response(
+            raise ValidationError(
                 {
-                    "detail": "Нельзя деактивировать собственную учетную запись через этот endpoint."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+                    "detail": (
+                        "Нельзя деактивировать собственную учетную запись "
+                        "через этот endpoint."
+                    )
+                }
             )
 
         user.is_active = False

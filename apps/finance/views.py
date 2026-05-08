@@ -1,10 +1,11 @@
 from django.utils.dateparse import parse_date
-from rest_framework import status, viewsets
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.common.exceptions import ConflictError
 from apps.finance.models import Category, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
 from apps.finance.serializers import (
@@ -66,7 +67,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="tree")
     def tree(self, request):
-        queryset = self.get_queryset().filter(parent__isnull=True).order_by("type", "name")
+        queryset = (
+            self.get_queryset()
+            .filter(parent__isnull=True)
+            .order_by("type", "name")
+        )
         serializer = CategoryTreeSerializer(
             queryset,
             many=True,
@@ -77,16 +82,29 @@ class CategoryViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
 
-        has_related_data = (
-            instance.children.exists()
-            or instance.transactions.exists()
-            or instance.budgets.exists()
-        )
+        if instance.children.exists():
+            raise ConflictError(
+                {
+                    "detail": "Категорию нельзя удалить, так как у неё есть дочерние категории.",
+                    "code": "category_has_children",
+                }
+            )
 
-        if has_related_data:
-            instance.is_active = False
-            instance.save(update_fields=["is_active", "updated_at"])
-            return Response(status=status.HTTP_204_NO_CONTENT)
+        if instance.transactions.exists():
+            raise ConflictError(
+                {
+                    "detail": "Категорию нельзя удалить, так как она используется в операциях.",
+                    "code": "category_has_transactions",
+                }
+            )
+
+        if instance.budgets.exists():
+            raise ConflictError(
+                {
+                    "detail": "Категорию нельзя удалить, так как она используется в бюджетах.",
+                    "code": "category_has_budgets",
+                }
+            )
 
         return super().destroy(request, *args, **kwargs)
 
