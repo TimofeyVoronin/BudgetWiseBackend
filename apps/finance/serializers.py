@@ -9,10 +9,7 @@ from apps.finance.models import (
 
 
 class CategorySerializer(serializers.ModelSerializer):
-    children_count = serializers.IntegerField(
-        source="children.count",
-        read_only=True,
-    )
+    children_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Category
@@ -32,6 +29,9 @@ class CategorySerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_children_count(self, obj):
+        return obj.children.count()
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -214,21 +214,31 @@ class TransactionSerializer(serializers.ModelSerializer):
         category = attrs.get("category", getattr(self.instance, "category", None))
         transaction_type = attrs.get("type", getattr(self.instance, "type", None))
 
+        if (not self.instance or "account" in attrs) and account and not account.is_active:
+            raise serializers.ValidationError(
+                {
+                    "account": "Нельзя использовать неактивный счёт."
+                }
+            )
+
+        if (not self.instance or "category" in attrs) and category and not category.is_active:
+            raise serializers.ValidationError(
+                {
+                    "category": "Нельзя использовать неактивную категорию."
+                }
+            )
+
         if category and transaction_type and category.type != transaction_type:
             raise serializers.ValidationError(
                 {
-                    "category": (
-                        "Тип категории должен совпадать с типом операции."
-                    )
+                    "category": "Тип категории должен совпадать с типом операции."
                 }
             )
 
         if account and category and account.user_id != category.user_id:
             raise serializers.ValidationError(
                 {
-                    "category": (
-                        "Счёт и категория должны принадлежать одному пользователю."
-                    )
+                    "category": "Счёт и категория должны принадлежать одному пользователю."
                 }
             )
 

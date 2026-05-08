@@ -118,6 +118,10 @@ class Category(TimeStampedModel):
                 condition=models.Q(type__in=TransactionType.values),
                 name="category_type_valid",
             ),
+            models.CheckConstraint(
+                condition=models.Q(parent__isnull=True) | ~models.Q(parent=models.F("id")),
+                name="category_parent_not_self",
+            ),
         ]
         indexes = [
             models.Index(fields=["user"], name="idx_category_user"),

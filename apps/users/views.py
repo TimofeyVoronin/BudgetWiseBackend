@@ -1,5 +1,7 @@
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from rest_framework import status, viewsets
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -52,8 +54,8 @@ class UserViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_superuser=is_superuser)
 
         if search:
-            queryset = queryset.filter(username__icontains=search) | queryset.filter(
-                email__icontains=search
+            queryset = queryset.filter(
+                Q(username__icontains=search) | Q(email__icontains=search)
             )
 
         if ordering:
@@ -68,8 +70,17 @@ class UserViewSet(viewsets.ModelViewSet):
                 "-date_joined",
             }
 
-            if ordering in allowed_ordering:
-                queryset = queryset.order_by(ordering)
+            if ordering not in allowed_ordering:
+                raise ValidationError(
+                    {
+                        "ordering": (
+                            "Допустимые значения: id, -id, username, -username, "
+                            "email, -email, date_joined, -date_joined."
+                        )
+                    }
+                )
+
+            queryset = queryset.order_by(ordering)
 
         return queryset
 
@@ -101,4 +112,8 @@ class UserViewSet(viewsets.ModelViewSet):
         if value in ("false", "False", "0"):
             return False
 
-        return None
+        raise ValidationError(
+            {
+                name: "Параметр должен быть boolean: true или false."
+            }
+        )
