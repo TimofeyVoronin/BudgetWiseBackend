@@ -190,4 +190,4 @@ class UsersAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
-        self.assertIn("email", response.data["error"]["detail"])
+        self.assertIn("email", response.data["error"]["field_errors"])
