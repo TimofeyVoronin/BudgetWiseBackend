@@ -93,11 +93,19 @@ def custom_exception_handler(exc, context):
     trace_id = _generate_trace_id()
 
     logger.exception(
-        "Unhandled API exception. trace_id=%s method=%s path=%s user_id=%s",
+        (
+            "Unhandled API exception. "
+            "status_code=%s code=%s trace_id=%s method=%s path=%s "
+            "query_params=%s user_id=%s client_ip=%s"
+        ),
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "server_error",
         trace_id,
         _get_request_method(request),
         _get_request_path(request),
+        _get_request_query_params(request),
         _get_user_id(request),
+        _get_client_ip(request),
         exc_info=exc,
     )
 
@@ -219,32 +227,45 @@ def _log_error(exc, request, error_payload: dict[str, Any]) -> None:
     status_code = error_payload.get("status_code")
     trace_id = error_payload.get("trace_id")
     code = error_payload.get("code")
+    message = error_payload.get("message")
 
     if status_code is None:
         return
 
+    log_context = {
+        "status_code": status_code,
+        "code": code,
+        "message": message,
+        "trace_id": trace_id,
+        "method": _get_request_method(request),
+        "path": _get_request_path(request),
+        "query_params": _get_request_query_params(request),
+        "user_id": _get_user_id(request),
+        "client_ip": _get_client_ip(request),
+    }
+
     if status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
         logger.exception(
-            "API server error. status_code=%s code=%s trace_id=%s method=%s path=%s user_id=%s",
-            status_code,
-            code,
-            trace_id,
-            _get_request_method(request),
-            _get_request_path(request),
-            _get_user_id(request),
+            (
+                "API server error. "
+                "status_code=%(status_code)s code=%(code)s message=%(message)s "
+                "trace_id=%(trace_id)s method=%(method)s path=%(path)s "
+                "query_params=%(query_params)s user_id=%(user_id)s client_ip=%(client_ip)s"
+            ),
+            log_context,
             exc_info=exc,
         )
         return
 
     if status_code >= status.HTTP_400_BAD_REQUEST:
         logger.warning(
-            "API client error. status_code=%s code=%s trace_id=%s method=%s path=%s user_id=%s",
-            status_code,
-            code,
-            trace_id,
-            _get_request_method(request),
-            _get_request_path(request),
-            _get_user_id(request),
+            (
+                "API client error. "
+                "status_code=%(status_code)s code=%(code)s message=%(message)s "
+                "trace_id=%(trace_id)s method=%(method)s path=%(path)s "
+                "query_params=%(query_params)s user_id=%(user_id)s client_ip=%(client_ip)s"
+            ),
+            log_context,
         )
 
 
@@ -262,6 +283,31 @@ def _get_request_path(request) -> str | None:
     return request.path
 
 
+def _get_request_query_params(request) -> dict[str, Any] | None:
+    if request is None:
+        return None
+
+    query_params = getattr(request, "query_params", None)
+
+    if query_params is None:
+        query_params = getattr(request, "GET", None)
+
+    if query_params is None:
+        return None
+
+    result = {}
+
+    for key in query_params:
+        values = query_params.getlist(key)
+
+        if len(values) == 1:
+            result[key] = values[0]
+        else:
+            result[key] = values
+
+    return result
+
+
 def _get_user_id(request) -> int | None:
     if request is None:
         return None
@@ -272,6 +318,18 @@ def _get_user_id(request) -> int | None:
         return None
 
     return user.id
+
+
+def _get_client_ip(request) -> str | None:
+    if request is None:
+        return None
+
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+
+    return request.META.get("REMOTE_ADDR")
 
 
 def _get_default_code_by_status(status_code: int) -> str:
