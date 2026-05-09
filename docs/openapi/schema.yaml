@@ -11,8 +11,6 @@ paths:
       summary: Корневой endpoint API версии v1
       tags:
       - health
-      security:
-      - jwtAuth: []
       responses:
         '200':
           content:
@@ -551,8 +549,6 @@ paths:
       summary: Проверка состояния backend-сервиса
       tags:
       - health
-      security:
-      - jwtAuth: []
       responses:
         '200':
           content:

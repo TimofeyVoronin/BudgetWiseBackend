@@ -1,4 +1,3 @@
-from django.utils.dateparse import parse_date
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiTypes,
@@ -7,11 +6,17 @@ from drf_spectacular.utils import (
 )
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common.exceptions import ConflictError
+from apps.common.validation import (
+    get_bool_query_param,
+    get_date_query_param,
+    get_int_query_param,
+    validate_choice_query_param,
+    validate_ordering,
+)
 from apps.finance.models import Category, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
 from apps.finance.serializers import (
@@ -60,16 +65,26 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
         queryset = Category.objects.filter(user=self.request.user).order_by("type", "name")
 
-        category_type = self.request.query_params.get("type")
-        parent_id = self._get_int_query_param("parent")
-        is_active = self._get_bool_query_param("is_active")
-        ordering = self.request.query_params.get("ordering")
+        category_type = validate_choice_query_param(
+            self.request.query_params,
+            "type",
+            TransactionType.values,
+        )
+        parent_id = get_int_query_param(self.request.query_params, "parent")
+        is_active = get_bool_query_param(self.request.query_params, "is_active")
+        ordering = validate_ordering(
+            self.request.query_params.get("ordering"),
+            {
+                "name",
+                "-name",
+                "type",
+                "-type",
+                "created_at",
+                "-created_at",
+            },
+        )
 
         if category_type:
-            if category_type not in TransactionType.values:
-                raise ValidationError(
-                    {"type": "Допустимые значения: income, expense."}
-                )
             queryset = queryset.filter(type=category_type)
 
         if parent_id is not None:
@@ -79,25 +94,6 @@ class CategoryViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_active=is_active)
 
         if ordering:
-            allowed_ordering = {
-                "name",
-                "-name",
-                "type",
-                "-type",
-                "created_at",
-                "-created_at",
-            }
-
-            if ordering not in allowed_ordering:
-                raise ValidationError(
-                    {
-                        "ordering": (
-                            "Допустимые значения: name, -name, type, -type, "
-                            "created_at, -created_at."
-                        )
-                    }
-                )
-
             queryset = queryset.order_by(ordering)
 
         return queryset
@@ -154,35 +150,6 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
         return super().destroy(request, *args, **kwargs)
 
-    def _get_int_query_param(self, name: str):
-        value = self.request.query_params.get(name)
-
-        if value in (None, ""):
-            return None
-
-        try:
-            return int(value)
-        except ValueError as exc:
-            raise ValidationError(
-                {name: "Параметр должен быть целым числом."}
-            ) from exc
-
-    def _get_bool_query_param(self, name: str):
-        value = self.request.query_params.get(name)
-
-        if value in (None, ""):
-            return None
-
-        if value in ("true", "True", "1"):
-            return True
-
-        if value in ("false", "False", "0"):
-            return False
-
-        raise ValidationError(
-            {name: "Параметр должен быть boolean: true или false."}
-        )
-
 
 @extend_schema_view(
     list=extend_schema(
@@ -229,12 +196,26 @@ class TransactionViewSet(viewsets.ModelViewSet):
             .order_by("-operation_date", "-created_at")
         )
 
-        account_id = self._get_int_query_param("account")
-        category_id = self._get_int_query_param("category")
-        transaction_type = self.request.query_params.get("type")
-        date_from = self.request.query_params.get("date_from")
-        date_to = self.request.query_params.get("date_to")
-        ordering = self.request.query_params.get("ordering")
+        account_id = get_int_query_param(self.request.query_params, "account")
+        category_id = get_int_query_param(self.request.query_params, "category")
+        transaction_type = validate_choice_query_param(
+            self.request.query_params,
+            "type",
+            TransactionType.values,
+        )
+        date_from = get_date_query_param(self.request.query_params, "date_from")
+        date_to = get_date_query_param(self.request.query_params, "date_to")
+        ordering = validate_ordering(
+            self.request.query_params.get("ordering"),
+            {
+                "operation_date",
+                "-operation_date",
+                "amount",
+                "-amount",
+                "created_at",
+                "-created_at",
+            },
+        )
 
         if account_id is not None:
             queryset = queryset.filter(account_id=account_id)
@@ -243,62 +224,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(category_id=category_id)
 
         if transaction_type:
-            if transaction_type not in TransactionType.values:
-                raise ValidationError(
-                    {"type": "Допустимые значения: income, expense."}
-                )
             queryset = queryset.filter(type=transaction_type)
 
         if date_from:
-            parsed_date_from = parse_date(date_from)
-            if parsed_date_from is None:
-                raise ValidationError(
-                    {"date_from": "Дата должна быть в формате YYYY-MM-DD."}
-                )
-            queryset = queryset.filter(operation_date__gte=parsed_date_from)
+            queryset = queryset.filter(operation_date__gte=date_from)
 
         if date_to:
-            parsed_date_to = parse_date(date_to)
-            if parsed_date_to is None:
-                raise ValidationError(
-                    {"date_to": "Дата должна быть в формате YYYY-MM-DD."}
-                )
-            queryset = queryset.filter(operation_date__lte=parsed_date_to)
+            queryset = queryset.filter(operation_date__lte=date_to)
 
         if ordering:
-            allowed_ordering = {
-                "operation_date",
-                "-operation_date",
-                "amount",
-                "-amount",
-                "created_at",
-                "-created_at",
-            }
-
-            if ordering not in allowed_ordering:
-                raise ValidationError(
-                    {
-                        "ordering": (
-                            "Допустимые значения: operation_date, "
-                            "-operation_date, amount, -amount, "
-                            "created_at, -created_at."
-                        )
-                    }
-                )
-
             queryset = queryset.order_by(ordering)
 
         return queryset
-
-    def _get_int_query_param(self, name: str):
-        value = self.request.query_params.get(name)
-
-        if value in (None, ""):
-            return None
-
-        try:
-            return int(value)
-        except ValueError as exc:
-            raise ValidationError(
-                {name: "Параметр должен быть целым числом."}
-            ) from exc
