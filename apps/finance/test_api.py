@@ -152,7 +152,7 @@ class FinanceAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
-        self.assertIn("parent", response.data["error"]["detail"])
+        self.assertIn("parent", response.data["error"]["field_errors"])
 
     def test_category_parent_must_have_same_type(self):
         self.authenticate()
@@ -170,7 +170,7 @@ class FinanceAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
-        self.assertIn("parent", response.data["error"]["detail"])
+        self.assertIn("parent", response.data["error"]["field_errors"])
 
     def test_delete_category_with_transactions_returns_conflict(self):
         self.authenticate()
@@ -270,7 +270,7 @@ class FinanceAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
-        self.assertIn("account", response.data["error"]["detail"])
+        self.assertIn("account", response.data["error"]["field_errors"])
 
     def test_transaction_rejects_foreign_category(self):
         self.authenticate()
@@ -290,7 +290,7 @@ class FinanceAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
-        self.assertIn("category", response.data["error"]["detail"])
+        self.assertIn("category", response.data["error"]["field_errors"])
 
     def test_transaction_rejects_category_type_mismatch(self):
         self.authenticate()
@@ -310,7 +310,7 @@ class FinanceAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
-        self.assertIn("category", response.data["error"]["detail"])
+        self.assertIn("category", response.data["error"]["field_errors"])
 
     def test_transaction_rejects_inactive_account(self):
         self.authenticate()
@@ -332,7 +332,7 @@ class FinanceAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
-        self.assertIn("account", response.data["error"]["detail"])
+        self.assertIn("account", response.data["error"]["field_errors"])
 
     def test_transaction_rejects_inactive_category(self):
         self.authenticate()
@@ -354,7 +354,7 @@ class FinanceAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
-        self.assertIn("category", response.data["error"]["detail"])
+        self.assertIn("category", response.data["error"]["field_errors"])
 
     def test_transaction_invalid_filters_return_bad_request(self):
         self.authenticate()

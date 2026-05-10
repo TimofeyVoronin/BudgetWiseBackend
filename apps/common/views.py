@@ -1,8 +1,9 @@
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiExample, extend_schema, extend_schema_view
 from rest_framework import serializers
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.generics import GenericAPIView
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 
@@ -23,6 +24,7 @@ class APIRootResponseSerializer(serializers.Serializer):
     tags=["health"],
     operation_id="health_check",
     summary="Проверка состояния backend-сервиса",
+    auth=[],
     responses={200: HealthCheckResponseSerializer},
     examples=[
         OpenApiExample(
@@ -38,6 +40,7 @@ class APIRootResponseSerializer(serializers.Serializer):
     ],
 )
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def health_check(request):
     return Response(
         {
@@ -54,6 +57,7 @@ def health_check(request):
         tags=["health"],
         operation_id="api_root",
         summary="Корневой endpoint API версии v1",
+        auth=[],
         responses={200: APIRootResponseSerializer},
         examples=[
             OpenApiExample(
@@ -76,6 +80,7 @@ def health_check(request):
 )
 class APIRootView(GenericAPIView):
     serializer_class = APIRootResponseSerializer
+    permission_classes = [AllowAny]
 
     def get(self, request):
         return Response(

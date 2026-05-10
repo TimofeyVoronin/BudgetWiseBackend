@@ -1,12 +1,18 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
-from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema, extend_schema_view
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiTypes,
+    extend_schema,
+    extend_schema_view,
+)
 from rest_framework import status, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.common.validation import get_bool_query_param, validate_ordering
 from apps.users.serializers import CurrentUserSerializer, UserSerializer
 
 
@@ -70,11 +76,23 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = User.objects.all().order_by("id")
 
-        is_active = self._get_bool_query_param("is_active")
-        is_staff = self._get_bool_query_param("is_staff")
-        is_superuser = self._get_bool_query_param("is_superuser")
+        is_active = get_bool_query_param(self.request.query_params, "is_active")
+        is_staff = get_bool_query_param(self.request.query_params, "is_staff")
+        is_superuser = get_bool_query_param(self.request.query_params, "is_superuser")
         search = self.request.query_params.get("search")
-        ordering = self.request.query_params.get("ordering")
+        ordering = validate_ordering(
+            self.request.query_params.get("ordering"),
+            {
+                "id",
+                "-id",
+                "username",
+                "-username",
+                "email",
+                "-email",
+                "date_joined",
+                "-date_joined",
+            },
+        )
 
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active)
@@ -91,27 +109,6 @@ class UserViewSet(viewsets.ModelViewSet):
             )
 
         if ordering:
-            allowed_ordering = {
-                "id",
-                "-id",
-                "username",
-                "-username",
-                "email",
-                "-email",
-                "date_joined",
-                "-date_joined",
-            }
-
-            if ordering not in allowed_ordering:
-                raise ValidationError(
-                    {
-                        "ordering": (
-                            "Допустимые значения: id, -id, username, -username, "
-                            "email, -email, date_joined, -date_joined."
-                        )
-                    }
-                )
-
             queryset = queryset.order_by(ordering)
 
         return queryset
@@ -133,21 +130,3 @@ class UserViewSet(viewsets.ModelViewSet):
         user.save(update_fields=["is_active"])
 
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-    def _get_bool_query_param(self, name: str):
-        value = self.request.query_params.get(name)
-
-        if value in (None, ""):
-            return None
-
-        if value in ("true", "True", "1"):
-            return True
-
-        if value in ("false", "False", "0"):
-            return False
-
-        raise ValidationError(
-            {
-                name: "Параметр должен быть boolean: true или false."
-            }
-        )
