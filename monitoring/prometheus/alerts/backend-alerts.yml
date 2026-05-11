@@ -1,0 +1,74 @@
+groups:
+  - name: budgetwise-backend-alerts
+    rules:
+      - alert: BackendDown
+        expr: up{job="budgetwise-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: budgetwise-backend
+        annotations:
+          summary: "Backend metrics endpoint is unavailable"
+          description: "Prometheus cannot scrape /metrics/ from BudgetWise backend for more than 1 minute."
+
+      - alert: BackendHealthDegraded
+        expr: health_status == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: budgetwise-backend
+        annotations:
+          summary: "Backend health status is degraded"
+          description: "The health_status metric is 0. At least one required health-check failed."
+
+      - alert: DatabaseDown
+        expr: database_up{alias="default"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: budgetwise-backend
+          dependency: database
+        annotations:
+          summary: "Database is unavailable"
+          description: "The database_up metric is 0 for more than 1 minute."
+
+      - alert: High5xxErrorRate
+        expr: sum(rate(api_server_errors_total[5m])) > 0
+        for: 2m
+        labels:
+          severity: critical
+          service: budgetwise-backend
+        annotations:
+          summary: "Backend returns 5xx errors"
+          description: "Server errors are detected for more than 2 minutes."
+
+      - alert: HighApiErrorRate
+        expr: sum(rate(api_errors_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: budgetwise-backend
+        annotations:
+          summary: "High API error rate"
+          description: "API error rate is higher than 0.1 errors per second for more than 5 minutes."
+
+      - alert: HighP95Latency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: budgetwise-backend
+        annotations:
+          summary: "High backend p95 latency"
+          description: "The p95 request latency is higher than 1 second for more than 5 minutes."
+
+      - alert: HighDatabaseCheckLatency
+        expr: histogram_quantile(0.95, sum(rate(database_check_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: budgetwise-backend
+          dependency: database
+        annotations:
+          summary: "High database health-check latency"
+          description: "The p95 database health-check latency is higher than 0.5 seconds for more than 5 minutes."

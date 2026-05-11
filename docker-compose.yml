@@ -44,6 +44,19 @@ services:
       db:
         condition: service_healthy
 
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: budgetwise-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: budgetwise-prometheus
@@ -52,6 +65,7 @@ services:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts:/etc/prometheus/alerts:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -59,6 +73,7 @@ services:
       - "--web.enable-lifecycle"
     depends_on:
       - backend
+      - alertmanager
 
   grafana:
     image: grafana/grafana-oss:11.6.0
@@ -83,4 +98,5 @@ volumes:
   mediafiles:
   logs:
   prometheus_data:
+  alertmanager_data:
   grafana_data:
