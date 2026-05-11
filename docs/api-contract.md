@@ -461,6 +461,81 @@ Authorization: Bearer <access_token>
 }
 ```
 
+### Вход пользователя
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/auth/login/` |
+| Метод | `POST` |
+| Доступ | Публичный |
+| Статус | Реализовано |
+
+Назначение: аутентификация пользователя по email и password.
+
+Тело запроса:
+
+| Поле | Тип | Обязательное | Описание |
+|---|---|---|---|
+| `email` | string | Да | Email пользователя |
+| `password` | string | Да | Пароль пользователя |
+
+Пример запроса:
+
+```http
+POST /api/v1/auth/login/ HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "admin-password-123"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "access": "jwt-access-token",
+  "refresh": "jwt-refresh-token",
+  "user": {
+    "id": 2,
+    "username": "admin",
+    "email": "admin@example.com",
+    "first_name": "Timofey",
+    "last_name": "Demo",
+    "role": "admin",
+    "is_active": true
+  }
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "code": "authentication_failed",
+    "message": "Пользователь не авторизован.",
+    "field_errors": null,
+    "detail": "Неверный email или пароль.",
+    "trace_id": null
+  }
+}
+```
+
+Возможные коды ответа:
+
+| Код | Описание |
+|---|---|
+| `200` | Пользователь успешно вошёл в систему |
+| `400` | Некорректное тело запроса |
+| `401` | Неверный email или пароль, либо пользователь неактивен |
+
 ### Регистрация пользователя
 
 | Поле | Значение |

@@ -121,27 +121,38 @@
       "name": "01 Auth",
       "item": [
         {
-          "name": "Get token - planned",
+          "name": "Login",
           "event": [
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code === 200) {",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains tokens and user\", function () {",
                   "    const json = pm.response.json();",
-                  "    if (json.access) {",
-                  "        pm.environment.set('access_token', json.access);",
-                  "    }",
-                  "    if (json.refresh) {",
-                  "        pm.environment.set('refresh_token', json.refresh);",
-                  "    }",
+                  "",
+                  "    pm.expect(json).to.have.property(\"access\");",
+                  "    pm.expect(json).to.have.property(\"refresh\");",
+                  "    pm.expect(json).to.have.property(\"user\");",
+                  "    pm.expect(json.user).to.have.property(\"email\");",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "if (json.access) {",
+                  "    pm.environment.set(\"admin_access_token\", json.access);",
                   "}",
                   "",
-                  "pm.test('Status is 200 after auth endpoint implementation', function () {",
-                  "    pm.expect([200, 404]).to.include(pm.response.code);",
-                  "});"
-                ]
+                  "if (json.refresh) {",
+                  "    pm.environment.set(\"admin_refresh_token\", json.refresh);",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -155,10 +166,10 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"admin-password-123\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/v1/auth/token/",
+              "raw": "{{base_url}}/api/v1/auth/login/",
               "host": [
                 "{{base_url}}"
               ],
@@ -166,7 +177,7 @@
                 "api",
                 "v1",
                 "auth",
-                "token",
+                "login",
                 ""
               ]
             },
@@ -175,27 +186,35 @@
           "response": []
         },
         {
-          "name": "Refresh token - planned",
+          "name": "Refresh token",
           "event": [
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code === 200) {",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains access token\", function () {",
                   "    const json = pm.response.json();",
-                  "    if (json.access) {",
-                  "        pm.environment.set('access_token', json.access);",
-                  "    }",
-                  "    if (json.refresh) {",
-                  "        pm.environment.set('refresh_token', json.refresh);",
-                  "    }",
+                  "",
+                  "    pm.expect(json).to.have.property(\"access\");",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "",
+                  "if (json.access) {",
+                  "    pm.environment.set(\"admin_access_token\", json.access);",
                   "}",
                   "",
-                  "pm.test('Status is 200 after auth endpoint implementation', function () {",
-                  "    pm.expect([200, 401, 404]).to.include(pm.response.code);",
-                  "});"
-                ]
+                  "if (json.refresh) {",
+                  "    pm.environment.set(\"admin_refresh_token\", json.refresh);",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -209,7 +228,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+              "raw": "{\n  \"refresh\": \"{{admin_refresh_token}}\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/auth/token/refresh/",
