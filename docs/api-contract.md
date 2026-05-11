@@ -410,7 +410,56 @@ Host: 127.0.0.1:8000
 
 ## Auth endpoints
 
-Endpoints аутентификации будут использовать JWT.
+## Механизм аутентификации
+
+В проекте используется JWT-аутентификация на базе Simple JWT.
+
+Backend возвращает `access` и `refresh` tokens в JSON-ответе. На текущем этапе токены не устанавливаются в cookie. Frontend должен самостоятельно сохранить полученные tokens и передавать access token в защищённые запросы через HTTP-заголовок:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+### Срок жизни токенов
+
+| Token | Lifetime | Назначение |
+|---|---|---|
+| `access` | 15 минут | Используется для доступа к защищённым endpoints |
+| `refresh` | 7 дней | Используется для получения нового access token |
+
+### Обновление refresh token
+
+Для refresh token включены:
+
+| Настройка | Значение | Назначение |
+|---|---|---|
+| `ROTATE_REFRESH_TOKENS` | `true` | При обновлении выдаётся новый refresh token |
+| `BLACKLIST_AFTER_ROTATION` | `true` | Старый refresh token добавляется в blacklist |
+| `UPDATE_LAST_LOGIN` | `true` | При успешном входе обновляется `last_login` пользователя |
+
+### Security notes
+
+На текущем этапе используется схема token return в JSON-ответе. Это проще для разработки REST API и Postman-тестирования.
+
+Для production-окружения можно рассмотреть хранение refresh token в `HttpOnly Secure SameSite` cookie, но это потребует отдельной настройки CSRF, CORS и frontend-логики.
+
+### Ошибки авторизации
+
+Все ошибки авторизации возвращаются в едином формате API:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "code": "authentication_failed",
+    "message": "Пользователь не авторизован.",
+    "field_errors": null,
+    "detail": "Неверные учётные данные.",
+    "trace_id": null
+  }
+}
+```
 
 ### Регистрация пользователя
 
