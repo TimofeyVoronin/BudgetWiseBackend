@@ -171,3 +171,4 @@ api_auth_errors_total
 | `docs/monitoring/prometheus.md` | Prometheus-compatible metrics endpoint |
 | `docs/monitoring/grafana.md` | Grafana dashboard |
 | `docs/monitoring/health-checks.md` | Health-check endpoints |
+| `docs/monitoring/alert-response.md` | Процедура реагирования на alerts |
