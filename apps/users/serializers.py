@@ -2,7 +2,7 @@ from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import update_last_login
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework_simplejwt.tokens import RefreshToken
 
 
@@ -165,9 +165,9 @@ class LoginSerializer(serializers.Serializer):
             )
 
         if user.check_password(password) and not user.is_active:
-            raise AuthenticationFailed(
+            raise PermissionDenied(
                 self.error_messages["inactive_user"],
-                code="authentication_failed",
+                code="permission_denied",
             )
 
         authenticated_user = authenticate(
