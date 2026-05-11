@@ -546,7 +546,7 @@ paths:
   /health/:
     get:
       operationId: health_check
-      summary: Проверка состояния backend-сервиса
+      summary: Проверка состояния backend-сервиса и зависимостей
       tags:
       - health
       responses:
@@ -561,8 +561,40 @@ paths:
                     status: ok
                     service: BudgetWiseBackend
                     version: 1.0.0
-                    timestamp: '2026-05-09T00:00:00+00:00'
+                    timestamp: '2026-05-10T00:00:00Z'
+                    checks:
+                      database:
+                        status: ok
+                        required: true
+                        latency_ms: 2.15
+                        details:
+                          alias: default
+                          vendor: postgresql
+                      redis:
+                        status: skipped
+                        required: false
+                        latency_ms: null
+                        details:
+                          reason: Redis is not configured yet.
+                      celery:
+                        status: skipped
+                        required: false
+                        latency_ms: null
+                        details:
+                          reason: Celery health-check is not configured yet.
+                      external_services:
+                        status: skipped
+                        required: false
+                        latency_ms: null
+                        details:
+                          reason: External services are not configured yet.
                   summary: Успешный ответ
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
           description: ''
 components:
   schemas:
@@ -743,7 +775,11 @@ components:
         timestamp:
           type: string
           format: date-time
+        checks:
+          type: object
+          additionalProperties: {}
       required:
+      - checks
       - service
       - status
       - timestamp
