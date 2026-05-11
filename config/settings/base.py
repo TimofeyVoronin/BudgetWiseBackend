@@ -137,6 +137,7 @@ LOG_DIR.mkdir(exist_ok=True)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+LOGIN_THROTTLE_RATE = env("LOGIN_THROTTLE_RATE", default="5/min")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -151,6 +152,9 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "apps.common.exceptions.custom_exception_handler",
     "DATETIME_FORMAT": "%Y-%m-%dT%H:%M:%S%z",
     "DATE_FORMAT": "%Y-%m-%d",
+    "DEFAULT_THROTTLE_RATES": {
+        "login": LOGIN_THROTTLE_RATE,
+    },
 }
 
 

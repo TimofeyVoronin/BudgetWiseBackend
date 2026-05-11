@@ -536,6 +536,50 @@ Content-Type: application/json
 | `400` | Некорректное тело запроса |
 | `401` | Неверный email или пароль, либо пользователь неактивен |
 
+### Rate limiting login endpoint
+
+Для endpoint входа включена базовая защита от brute force.
+
+Ограничение применяется по связке:
+
+```text
+IP address + email
+```
+
+Текущий лимит для dev-окружения:
+
+```text
+5/min
+```
+
+Если количество попыток превышено, backend возвращает:
+
+```http
+429 Too Many Requests
+```
+
+Пример ответа:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 429,
+    "code": "throttled",
+    "message": "Слишком много запросов.",
+    "field_errors": null,
+    "detail": "Request was throttled. Expected available in 60 seconds.",
+    "trace_id": null
+  }
+}
+```
+
+Лимит настраивается через переменную окружения:
+
+```env
+LOGIN_THROTTLE_RATE=5/min
+```
+
 ### Регистрация пользователя
 
 | Поле | Значение |

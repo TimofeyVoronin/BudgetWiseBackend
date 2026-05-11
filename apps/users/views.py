@@ -20,6 +20,7 @@ from apps.users.serializers import (
     LoginSerializer,
     UserSerializer,
 )
+from apps.users.throttles import LoginRateThrottle
 
 
 User = get_user_model()
@@ -27,6 +28,7 @@ User = get_user_model()
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [LoginRateThrottle]
     serializer_class = LoginSerializer
 
     @extend_schema(
