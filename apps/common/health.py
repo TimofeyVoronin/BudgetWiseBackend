@@ -5,6 +5,8 @@ from typing import Any
 
 from django.db import connection
 
+from apps.common.metrics import record_database_health_check, record_health_status
+
 
 CHECK_STATUS_OK = "ok"
 CHECK_STATUS_ERROR = "error"
@@ -21,6 +23,8 @@ def build_health_status() -> tuple[dict[str, Any], int]:
 
     overall_status = get_overall_status(checks)
     http_status = 200 if overall_status == CHECK_STATUS_OK else 503
+
+    record_health_status(is_ok=overall_status == CHECK_STATUS_OK)
 
     return {
         "status": overall_status,
@@ -46,27 +50,47 @@ def check_database() -> dict[str, Any]:
             cursor.execute("SELECT 1")
             cursor.fetchone()
 
-        latency_ms = round((perf_counter() - started_at) * 1000, 2)
+        duration_seconds = perf_counter() - started_at
+        latency_ms = round(duration_seconds * 1000, 2)
+        alias = connection.alias
+        vendor = connection.vendor
+
+        record_database_health_check(
+            is_available=True,
+            duration_seconds=duration_seconds,
+            alias=alias,
+            vendor=vendor,
+        )
 
         return {
             "status": CHECK_STATUS_OK,
             "required": True,
             "latency_ms": latency_ms,
             "details": {
-                "alias": connection.alias,
-                "vendor": connection.vendor,
+                "alias": alias,
+                "vendor": vendor,
             },
         }
     except Exception as exc:
-        latency_ms = round((perf_counter() - started_at) * 1000, 2)
+        duration_seconds = perf_counter() - started_at
+        latency_ms = round(duration_seconds * 1000, 2)
+        alias = getattr(connection, "alias", "default")
+        vendor = getattr(connection, "vendor", "unknown")
+
+        record_database_health_check(
+            is_available=False,
+            duration_seconds=duration_seconds,
+            alias=alias,
+            vendor=vendor,
+        )
 
         return {
             "status": CHECK_STATUS_ERROR,
             "required": True,
             "latency_ms": latency_ms,
             "details": {
-                "alias": getattr(connection, "alias", "default"),
-                "vendor": getattr(connection, "vendor", "unknown"),
+                "alias": alias,
+                "vendor": vendor,
                 "error": exc.__class__.__name__,
                 "message": str(exc),
             },

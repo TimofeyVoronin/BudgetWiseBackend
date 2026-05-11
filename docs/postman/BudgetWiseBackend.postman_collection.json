@@ -16,17 +16,47 @@
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
+                  "pm.test(\"Status code is 200\", function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "pm.test('Response has status ok', function () {",
-                  "    const json = pm.response.json();",
-                  "    pm.expect(json.status).to.eql('ok');",
+                  "const json = pm.response.json();",
+                  "",
+                  "pm.test(\"Response has status ok\", function () {",
+                  "    pm.expect(json.status).to.eql(\"ok\");",
+                  "});",
+                  "",
+                  "pm.test(\"Response has service info\", function () {",
+                  "    pm.expect(json.service).to.eql(\"BudgetWiseBackend\");",
+                  "    pm.expect(json.version).to.eql(\"1.0.0\");",
+                  "    pm.expect(json).to.have.property(\"timestamp\");",
+                  "});",
+                  "",
+                  "pm.test(\"Response has dependency checks\", function () {",
+                  "    pm.expect(json).to.have.property(\"checks\");",
+                  "    pm.expect(json.checks).to.have.property(\"database\");",
+                  "    pm.expect(json.checks).to.have.property(\"redis\");",
+                  "    pm.expect(json.checks).to.have.property(\"celery\");",
+                  "    pm.expect(json.checks).to.have.property(\"external_services\");",
+                  "});",
+                  "",
+                  "pm.test(\"Database check is ok\", function () {",
+                  "    pm.expect(json.checks.database.status).to.eql(\"ok\");",
+                  "    pm.expect(json.checks.database.required).to.eql(true);",
+                  "    pm.expect(json.checks.database).to.have.property(\"latency_ms\");",
+                  "    pm.expect(json.checks.database).to.have.property(\"details\");",
+                  "});",
+                  "",
+                  "pm.test(\"Optional services are skipped\", function () {",
+                  "    pm.expect(json.checks.redis.status).to.eql(\"skipped\");",
+                  "    pm.expect(json.checks.celery.status).to.eql(\"skipped\");",
+                  "    pm.expect(json.checks.external_services.status).to.eql(\"skipped\");",
                   "});"
-                ]
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -1224,6 +1254,67 @@
                 "v1",
                 "users",
                 "{{created_user_id}}",
+                ""
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05 Monitoring",
+      "item": [
+        {
+          "name": "Metrics",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Response contains Prometheus metrics\", function () {\r",
+                  "    pm.expect(pm.response.text()).to.include(\"http_requests_total\");\r",
+                  "    pm.expect(pm.response.text()).to.include(\"http_request_duration_seconds\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Metrics-Token",
+                "value": "{{metrics_access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/metrics/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "metrics",
                 ""
               ]
             }

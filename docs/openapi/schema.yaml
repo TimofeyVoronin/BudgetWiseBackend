@@ -596,6 +596,35 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthCheckResponse'
           description: ''
+  /metrics/:
+    get:
+      operationId: metrics
+      description: Возвращает метрики backend API в Prometheus text format. Endpoint
+        защищён заголовком X-Metrics-Token.
+      summary: Prometheus-compatible metrics endpoint
+      parameters:
+      - in: header
+        name: X-Metrics-Token
+        schema:
+          type: string
+        description: Token for accessing metrics endpoint.
+        required: true
+      tags:
+      - health
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
 components:
   schemas:
     APIRootResponse:
