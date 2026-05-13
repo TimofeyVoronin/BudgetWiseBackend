@@ -154,6 +154,49 @@ paths:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
           description: ''
+  /api/v1/auth/verify-email/:
+    post:
+      operationId: api_v1_auth_verify_email_create
+      description: Проверяет token подтверждения email. Если token действителен, активирует
+        аккаунт пользователя. Повторное использование token после активации запрещено.
+      summary: Подтвердить email пользователя
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  token: email-confirmation-token
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyEmail'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    id: 1
+                    email: user@example.com
+                    is_active: true
+                    detail: Email подтверждён. Аккаунт активирован.
+                  summary: Успешный ответ
+          description: ''
   /api/v1/finance/categories/:
     get:
       operationId: api_v1_finance_categories_list
@@ -1408,6 +1451,36 @@ components:
       required:
       - email
       - username
+    VerifyEmail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+      - email
+      - id
+      - is_active
+    VerifyEmailRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - token
   securitySchemes:
     jwtAuth:
       type: http

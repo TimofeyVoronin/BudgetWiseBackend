@@ -594,13 +594,13 @@ http://app.budgetwise.localhost:5173/auth/verify-email?token=<token>
 
 Frontend должен получить `token` из query params и отправить его на backend endpoint подтверждения email.
 
-Планируемый backend endpoint:
+backend endpoint:
 
 ```text
 POST /api/v1/auth/verify-email/
 ```
 
-Планируемое тело запроса:
+Тело запроса:
 
 ```json
 {

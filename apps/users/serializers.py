@@ -1,11 +1,21 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
+from django.core.signing import BadSignature, SignatureExpired
 from apps.users.email_confirmation import send_email_confirmation
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
+from rest_framework.exceptions import (
+    AuthenticationFailed, 
+    PermissionDenied,
+    ValidationError,
+)
 from rest_framework_simplejwt.tokens import RefreshToken
+from apps.users.email_confirmation import (
+    EMAIL_CONFIRMATION_PURPOSE,
+    load_email_confirmation_token,
+    send_email_confirmation,
+)
 
 
 User = get_user_model()
@@ -234,6 +244,114 @@ class RegisterSerializer(serializers.Serializer):
             counter += 1
 
         return username
+
+
+class VerifyEmailSerializer(serializers.Serializer):
+    token = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    id = serializers.IntegerField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    detail = serializers.CharField(read_only=True)
+
+    def validate(self, attrs):
+        token = attrs["token"]
+
+        try:
+            payload = load_email_confirmation_token(token)
+        except SignatureExpired:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Срок действия ссылки подтверждения истёк.",
+                            code="token_expired",
+                        )
+                    ]
+                }
+            )
+        except BadSignature:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Недействительная ссылка подтверждения email.",
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+
+        if payload.get("purpose") != EMAIL_CONFIRMATION_PURPOSE:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Недействительная ссылка подтверждения email.",
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+
+        user = User.objects.filter(id=payload.get("user_id")).first()
+
+        if user is None:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Недействительная ссылка подтверждения email.",
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+
+        token_email = str(payload.get("email", "")).lower()
+        user_email = str(user.email).lower()
+
+        if token_email != user_email:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Недействительная ссылка подтверждения email.",
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+
+        if user.is_active:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Email уже подтверждён.",
+                            code="token_already_used",
+                        )
+                    ]
+                }
+            )
+
+        attrs["user"] = user
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.validated_data["user"]
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+
+        return user
+
+    def to_representation(self, instance):
+        return {
+            "id": instance.id,
+            "email": instance.email,
+            "is_active": instance.is_active,
+            "detail": "Email подтверждён. Аккаунт активирован.",
+        }
 
 
 class LoginSerializer(serializers.Serializer):
