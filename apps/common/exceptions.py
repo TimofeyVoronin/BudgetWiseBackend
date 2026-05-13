@@ -86,7 +86,7 @@ def custom_exception_handler(exc, context):
     response = drf_exception_handler(exc, context)
 
     if response is not None:
-        response.data = _build_error_body_from_drf_response(response, request)
+        response.data = _build_error_body_from_drf_response(exc, response, request)
         _log_error(exc, request, response.data["error"])
         return response
 
@@ -156,11 +156,11 @@ def _build_domain_error_response(
     )
 
 
-def _build_error_body_from_drf_response(response, request) -> dict[str, Any]:
+def _build_error_body_from_drf_response(exc, response, request) -> dict[str, Any]:
     status_code = response.status_code
     response_data = normalize_error_detail(response.data)
 
-    code = _get_default_code_by_status(status_code)
+    code = _get_error_code_from_exception(exc, status_code)
     message = _get_default_message_by_status(status_code)
 
     field_errors = None
@@ -187,6 +187,59 @@ def _build_error_body_from_drf_response(response, request) -> dict[str, Any]:
             "trace_id": trace_id,
         },
     }
+
+
+def _get_error_code_from_exception(exc, status_code: int) -> str:
+    error_codes = _get_exception_codes(exc)
+    code = _extract_first_error_code(error_codes)
+
+    if code:
+        return code
+
+    return _get_default_code_by_status(status_code)
+
+
+def _get_exception_codes(exc) -> Any:
+    get_codes = getattr(exc, "get_codes", None)
+
+    if callable(get_codes):
+        return get_codes()
+
+    return None
+
+
+def _extract_first_error_code(error_codes) -> str | None:
+    if error_codes is None:
+        return None
+
+    if isinstance(error_codes, str):
+        return error_codes
+
+    if isinstance(error_codes, dict):
+        if "code" in error_codes:
+            code = _extract_first_error_code(error_codes["code"])
+
+            if code:
+                return code
+
+        for value in error_codes.values():
+            code = _extract_first_error_code(value)
+
+            if code:
+                return code
+
+        return None
+
+    if isinstance(error_codes, (list, tuple)):
+        for value in error_codes:
+            code = _extract_first_error_code(value)
+
+            if code:
+                return code
+
+        return None
+
+    return str(error_codes)
 
 
 def _get_trace_id_for_response(
@@ -334,12 +387,13 @@ def _get_client_ip(request) -> str | None:
 
 def _get_default_code_by_status(status_code: int) -> str:
     mapping = {
-        status.HTTP_400_BAD_REQUEST: "validation_error",
+        status.HTTP_400_BAD_REQUEST: "invalid",
         status.HTTP_401_UNAUTHORIZED: "not_authenticated",
         status.HTTP_403_FORBIDDEN: "permission_denied",
         status.HTTP_404_NOT_FOUND: "not_found",
         status.HTTP_405_METHOD_NOT_ALLOWED: "method_not_allowed",
         status.HTTP_409_CONFLICT: "conflict",
+        status.HTTP_429_TOO_MANY_REQUESTS: "throttled",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "server_error",
     }
 
@@ -354,6 +408,7 @@ def _get_default_message_by_status(status_code: int) -> str:
         status.HTTP_404_NOT_FOUND: "Объект не найден.",
         status.HTTP_405_METHOD_NOT_ALLOWED: "HTTP-метод не разрешён для этого endpoint.",
         status.HTTP_409_CONFLICT: "Конфликт состояния данных.",
+        status.HTTP_429_TOO_MANY_REQUESTS: "Слишком много запросов.",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Внутренняя ошибка сервера.",
     }
 

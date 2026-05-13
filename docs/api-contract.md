@@ -410,7 +410,175 @@ Host: 127.0.0.1:8000
 
 ## Auth endpoints
 
-Endpoints аутентификации будут использовать JWT.
+## Механизм аутентификации
+
+В проекте используется JWT-аутентификация на базе Simple JWT.
+
+Backend возвращает `access` и `refresh` tokens в JSON-ответе. На текущем этапе токены не устанавливаются в cookie. Frontend должен самостоятельно сохранить полученные tokens и передавать access token в защищённые запросы через HTTP-заголовок:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+### Срок жизни токенов
+
+| Token | Lifetime | Назначение |
+|---|---|---|
+| `access` | 15 минут | Используется для доступа к защищённым endpoints |
+| `refresh` | 7 дней | Используется для получения нового access token |
+
+### Обновление refresh token
+
+Для refresh token включены:
+
+| Настройка | Значение | Назначение |
+|---|---|---|
+| `ROTATE_REFRESH_TOKENS` | `true` | При обновлении выдаётся новый refresh token |
+| `BLACKLIST_AFTER_ROTATION` | `true` | Старый refresh token добавляется в blacklist |
+| `UPDATE_LAST_LOGIN` | `true` | При успешном входе обновляется `last_login` пользователя |
+
+### Security notes
+
+На текущем этапе используется схема token return в JSON-ответе. Это проще для разработки REST API и Postman-тестирования.
+
+Для production-окружения можно рассмотреть хранение refresh token в `HttpOnly Secure SameSite` cookie, но это потребует отдельной настройки CSRF, CORS и frontend-логики.
+
+### Ошибки авторизации
+
+Все ошибки авторизации возвращаются в едином формате API:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "code": "authentication_failed",
+    "message": "Пользователь не авторизован.",
+    "field_errors": null,
+    "detail": "Неверные учётные данные.",
+    "trace_id": null
+  }
+}
+```
+
+### Вход пользователя
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/auth/login/` |
+| Метод | `POST` |
+| Доступ | Публичный |
+| Статус | Реализовано |
+
+Назначение: аутентификация пользователя по email и password.
+
+Тело запроса:
+
+| Поле | Тип | Обязательное | Описание |
+|---|---|---|---|
+| `email` | string | Да | Email пользователя |
+| `password` | string | Да | Пароль пользователя |
+
+Пример запроса:
+
+```http
+POST /api/v1/auth/login/ HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "admin-password-123"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "access": "jwt-access-token",
+  "refresh": "jwt-refresh-token",
+  "user": {
+    "id": 2,
+    "username": "admin",
+    "email": "admin@example.com",
+    "first_name": "Timofey",
+    "last_name": "Demo",
+    "role": "admin",
+    "is_active": true
+  }
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "code": "authentication_failed",
+    "message": "Пользователь не авторизован.",
+    "field_errors": null,
+    "detail": "Неверный email или пароль.",
+    "trace_id": null
+  }
+}
+```
+
+Возможные коды ответа:
+
+| Код | Описание |
+|---|---|
+| `200` | Пользователь успешно вошёл в систему |
+| `400` | Некорректное тело запроса |
+| `401` | Неверный email или пароль, либо пользователь неактивен |
+
+### Rate limiting login endpoint
+
+Для endpoint входа включена базовая защита от brute force.
+
+Ограничение применяется по связке:
+
+```text
+IP address + email
+```
+
+Текущий лимит для dev-окружения:
+
+```text
+5/min
+```
+
+Если количество попыток превышено, backend возвращает:
+
+```http
+429 Too Many Requests
+```
+
+Пример ответа:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 429,
+    "code": "throttled",
+    "message": "Слишком много запросов.",
+    "field_errors": null,
+    "detail": "Request was throttled. Expected available in 60 seconds.",
+    "trace_id": null
+  }
+}
+```
+
+Лимит настраивается через переменную окружения:
+
+```env
+LOGIN_THROTTLE_RATE=5/min
+```
 
 ### Регистрация пользователя
 

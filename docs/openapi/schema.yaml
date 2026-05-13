@@ -30,6 +30,83 @@ paths:
                       health: /health/
                   summary: Успешный ответ
           description: ''
+  /api/v1/auth/login/:
+    post:
+      operationId: api_v1_auth_login_create
+      description: Аутентифицирует пользователя по email и password. При успешном
+        входе возвращает access token, refresh token и краткие данные пользователя.
+      summary: Войти в систему
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  email: admin@example.com
+                  password: admin-password-123
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Login'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    access: jwt-access-token
+                    refresh: jwt-refresh-token
+                    user:
+                      id: 1
+                      username: admin
+                      email: admin@example.com
+                      first_name: Timofey
+                      last_name: Demo
+                      role: admin
+                      is_active: true
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/auth/token/refresh/:
+    post:
+      operationId: api_v1_auth_token_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
   /api/v1/finance/categories/:
     get:
       operationId: api_v1_finance_categories_list
@@ -813,6 +890,38 @@ components:
       - status
       - timestamp
       - version
+    Login:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          readOnly: true
+        user:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+      required:
+      - access
+      - refresh
+      - user
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          writeOnly: true
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - email
+      - password
     PaginatedCategoryList:
       type: object
       required:
@@ -1002,6 +1111,25 @@ components:
           type: boolean
           title: Статус суперпользователя
           description: Указывает, что пользователь имеет все права без явного их назначения.
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
     Transaction:
       type: object
       properties:

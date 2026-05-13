@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from drf_spectacular.utils import (
+    OpenApiExample,
     OpenApiParameter,
     OpenApiTypes,
     extend_schema,
@@ -9,14 +10,73 @@ from drf_spectacular.utils import (
 from rest_framework import status, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import GenericAPIView
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.common.validation import get_bool_query_param, validate_ordering
-from apps.users.serializers import CurrentUserSerializer, UserSerializer
+from apps.users.serializers import (
+    CurrentUserSerializer,
+    LoginSerializer,
+    UserSerializer,
+)
+from apps.users.throttles import LoginRateThrottle
 
 
 User = get_user_model()
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [LoginRateThrottle]
+    serializer_class = LoginSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Войти в систему",
+        description=(
+            "Аутентифицирует пользователя по email и password. "
+            "При успешном входе возвращает access token, refresh token "
+            "и краткие данные пользователя."
+        ),
+        request=LoginSerializer,
+        responses={200: LoginSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={
+                    "email": "admin@example.com",
+                    "password": "admin-password-123",
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "access": "jwt-access-token",
+                    "refresh": "jwt-refresh-token",
+                    "user": {
+                        "id": 1,
+                        "username": "admin",
+                        "email": "admin@example.com",
+                        "first_name": "Timofey",
+                        "last_name": "Demo",
+                        "role": "admin",
+                        "is_active": True,
+                    },
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 
 class CurrentUserView(GenericAPIView):
@@ -65,7 +125,10 @@ class CurrentUserView(GenericAPIView):
     ),
     create=extend_schema(tags=["users"], summary="Создать пользователя"),
     retrieve=extend_schema(tags=["users"], summary="Получить пользователя"),
-    partial_update=extend_schema(tags=["users"], summary="Частично обновить пользователя"),
+    partial_update=extend_schema(
+        tags=["users"],
+        summary="Частично обновить пользователя",
+    ),
     destroy=extend_schema(tags=["users"], summary="Деактивировать пользователя"),
 )
 class UserViewSet(viewsets.ModelViewSet):
