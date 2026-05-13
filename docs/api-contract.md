@@ -633,7 +633,7 @@ EMAIL_CONFIRMATION_TOKEN_SALT=budgetwise.email-confirmation
 | URL | `/api/v1/auth/register/` |
 | Метод | `POST` |
 | Доступ | Публичный |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: создание нового пользователя.
 
@@ -641,7 +641,6 @@ EMAIL_CONFIRMATION_TOKEN_SALT=budgetwise.email-confirmation
 
 | Поле | Тип | Обязательное | Описание |
 |---|---|---|---|
-| `username` | string | Да | Имя пользователя |
 | `email` | string | Да | Email пользователя |
 | `password` | string | Да | Пароль |
 | `password_confirm` | string | Да | Подтверждение пароля |

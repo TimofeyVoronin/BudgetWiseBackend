@@ -80,6 +80,53 @@ paths:
                       is_active: true
                   summary: Успешный ответ
           description: ''
+  /api/v1/auth/register/:
+    post:
+      operationId: api_v1_auth_register_create
+      description: Создаёт нового неактивного пользователя по email и password. После
+        регистрации backend отправляет письмо со ссылкой подтверждения email.
+      summary: Зарегистрировать пользователя
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  email: user@example.com
+                  password: user-password-123
+                  password_confirm: user-password-123
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Register'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    id: 1
+                    username: user
+                    email: user@example.com
+                    is_active: false
+                    detail: Пользователь зарегистрирован. Для активации аккаунта подтвердите
+                      email.
+                  summary: Успешный ответ
+          description: ''
   /api/v1/auth/token/refresh/:
     post:
       operationId: api_v1_auth_token_refresh_create
@@ -1111,6 +1158,46 @@ components:
           type: boolean
           title: Статус суперпользователя
           description: Указывает, что пользователь имеет все права без явного их назначения.
+    Register:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+      - id
+      - is_active
+      - username
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          writeOnly: true
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        password_confirm:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - email
+      - password
+      - password_confirm
     TokenRefresh:
       type: object
       properties:

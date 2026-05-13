@@ -18,12 +18,65 @@ from apps.common.validation import get_bool_query_param, validate_ordering
 from apps.users.serializers import (
     CurrentUserSerializer,
     LoginSerializer,
+    RegisterSerializer,
     UserSerializer,
 )
 from apps.users.throttles import LoginRateThrottle
 
 
 User = get_user_model()
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = RegisterSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Зарегистрировать пользователя",
+        description=(
+            "Создаёт нового неактивного пользователя по email и password. "
+            "После регистрации backend отправляет письмо со ссылкой подтверждения email."
+        ),
+        request=RegisterSerializer,
+        responses={201: RegisterSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={
+                    "email": "user@example.com",
+                    "password": "user-password-123",
+                    "password_confirm": "user-password-123",
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "id": 1,
+                    "username": "user",
+                    "email": "user@example.com",
+                    "is_active": False,
+                    "detail": (
+                        "Пользователь зарегистрирован. "
+                        "Для активации аккаунта подтвердите email."
+                    ),
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        response_serializer = self.serializer_class(user)
+
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
 class LoginView(APIView):
