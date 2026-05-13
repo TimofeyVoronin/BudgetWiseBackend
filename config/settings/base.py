@@ -17,6 +17,32 @@ SECRET_KEY = env("SECRET_KEY", default="django-insecure-budgetwise-dev-secret-ke
 METRICS_ACCESS_TOKEN = env("METRICS_ACCESS_TOKEN", default="")
 
 
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
+
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL",
+    default="BudgetWise <noreply@budgetwise.local>",
+)
+
+FRONTEND_EMAIL_VERIFY_URL = env(
+    "FRONTEND_EMAIL_VERIFY_URL",
+    default="http://app.budgetwise.localhost:5173/auth/verify-email",
+)
+
+EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS = env.int(
+    "EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS",
+    default=60 * 60 * 24,
+)
+
+EMAIL_CONFIRMATION_TOKEN_SALT = env(
+    "EMAIL_CONFIRMATION_TOKEN_SALT",
+    default="budgetwise.email-confirmation",
+)
+
+
 ALLOWED_HOSTS = env.list(
     "ALLOWED_HOSTS",
     default=["localhost", "127.0.0.1"],
