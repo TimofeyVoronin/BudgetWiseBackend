@@ -1,13 +1,17 @@
+import logging
 import secrets
 from datetime import timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.conf import settings
+from django.core.mail import send_mail
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
 
 from apps.users.models import PasswordResetToken
 
+
+logger = logging.getLogger("apps")
 
 PASSWORD_RESET_TOKEN_SALT = "budgetwise.password-reset"
 
@@ -66,6 +70,64 @@ def build_password_reset_link(token: str) -> str:
             urlencode(query_params),
             url_parts.fragment,
         )
+    )
+
+
+def send_password_reset_email(user, request=None) -> int:
+    token = issue_password_reset_token(user=user, request=request)
+    reset_link = build_password_reset_link(token)
+
+    subject = "Восстановление пароля в BudgetWise"
+    message = _build_password_reset_email_message(
+        username=user.username,
+        reset_link=reset_link,
+    )
+
+    try:
+        sent_count = send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception(
+            (
+                "Password reset email sending failed. "
+                "user_id=%s client_ip=%s"
+            ),
+            user.id,
+            _get_client_ip(request),
+        )
+        raise
+
+    logger.info(
+        (
+            "Password reset email sent. "
+            "user_id=%s sent_count=%s client_ip=%s"
+        ),
+        user.id,
+        sent_count,
+        _get_client_ip(request),
+    )
+
+    return sent_count
+
+
+def _build_password_reset_email_message(username: str, reset_link: str) -> str:
+    timeout_minutes = max(
+        settings.PASSWORD_RESET_TOKEN_TIMEOUT_SECONDS // 60,
+        1,
+    )
+
+    return (
+        f"Здравствуйте, {username}!\n\n"
+        "Мы получили запрос на восстановление пароля в BudgetWise.\n\n"
+        "Чтобы задать новый пароль, перейдите по ссылке:\n\n"
+        f"{reset_link}\n\n"
+        f"Ссылка действительна {timeout_minutes} минут.\n\n"
+        "Если вы не запрашивали восстановление пароля, просто проигнорируйте это письмо."
     )
 
 
