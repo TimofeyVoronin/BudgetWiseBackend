@@ -21,6 +21,7 @@ from apps.users.serializers import (
     RegisterSerializer,
     UserSerializer,
     VerifyEmailSerializer,
+    ForgotPasswordSerializer,
 )
 from apps.users.throttles import LoginRateThrottle
 
@@ -125,6 +126,51 @@ class VerifyEmailView(APIView):
         response_serializer = self.serializer_class(user)
 
         return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+
+class ForgotPasswordView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = ForgotPasswordSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Запросить восстановление пароля",
+        description=(
+            "Принимает email и, если активный пользователь с таким email существует, "
+            "отправляет письмо со ссылкой восстановления пароля. "
+            "Ответ всегда одинаковый для существующего и несуществующего email."
+        ),
+        request=ForgotPasswordSerializer,
+        responses={200: ForgotPasswordSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={
+                    "email": "user@example.com",
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "detail": (
+                        "Если аккаунт с таким email существует, "
+                        "мы отправили ссылку для восстановления пароля."
+                    ),
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class LoginView(APIView):

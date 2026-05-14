@@ -13,15 +13,26 @@ from rest_framework.exceptions import (
     ValidationError,
 )
 from rest_framework_simplejwt.tokens import RefreshToken
+
+import logging
+
 from apps.users.email_confirmation import (
     EMAIL_CONFIRMATION_PURPOSE,
     load_email_confirmation_token,
     send_email_confirmation,
 )
+from apps.users.password_reset import send_password_reset_email
 
 
 User = get_user_model()
 
+logger = logging.getLogger("apps")
+
+
+PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE = (
+    "Если аккаунт с таким email существует, "
+    "мы отправили ссылку для восстановления пароля."
+)
 
 class CurrentUserSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField(read_only=True)
@@ -362,6 +373,64 @@ class VerifyEmailSerializer(serializers.Serializer):
             "is_active": instance.is_active,
             "detail": "Email подтверждён. Аккаунт активирован.",
         }
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField(write_only=True)
+    detail = serializers.CharField(read_only=True)
+
+    def validate_email(self, email):
+        return email.strip().lower()
+
+    def save(self, **kwargs):
+        request = self.context.get("request")
+        email = self.validated_data["email"]
+
+        user = (
+            User.objects
+            .filter(email__iexact=email, is_active=True)
+            .first()
+        )
+
+        if user is None:
+            logger.info(
+                "Password reset requested for non-existing or inactive account. "
+                "client_ip=%s",
+                self._get_client_ip(request),
+            )
+            return {
+                "detail": PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE,
+            }
+
+        try:
+            send_password_reset_email(user=user, request=request)
+        except Exception:
+            logger.exception(
+                "Password reset request accepted, but email sending failed. "
+                "user_id=%s client_ip=%s",
+                user.id,
+                self._get_client_ip(request),
+            )
+
+        return {
+            "detail": PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE,
+        }
+
+    def to_representation(self, instance):
+        return {
+            "detail": PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE,
+        }
+
+    def _get_client_ip(self, request) -> str | None:
+        if request is None:
+            return None
+
+        forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+
+        return request.META.get("REMOTE_ADDR")
 
 
 class LoginSerializer(serializers.Serializer):

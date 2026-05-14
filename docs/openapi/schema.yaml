@@ -30,6 +30,48 @@ paths:
                       health: /health/
                   summary: Успешный ответ
           description: ''
+  /api/v1/auth/forgot-password/check/:
+    post:
+      operationId: api_v1_auth_forgot_password_check_create
+      description: Принимает email и, если активный пользователь с таким email существует,
+        отправляет письмо со ссылкой восстановления пароля. Ответ всегда одинаковый
+        для существующего и несуществующего email.
+      summary: Запросить восстановление пароля
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  email: user@example.com
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgotPassword'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Если аккаунт с таким email существует, мы отправили ссылку
+                      для восстановления пароля.
+                  summary: Успешный ответ
+          description: ''
   /api/v1/auth/login/:
     post:
       operationId: api_v1_auth_login_create
@@ -959,6 +1001,24 @@ components:
       - is_active
       - role
       - username
+    ForgotPassword:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+    ForgotPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          writeOnly: true
+          minLength: 1
+      required:
+      - email
     HealthCheckResponse:
       type: object
       properties:
