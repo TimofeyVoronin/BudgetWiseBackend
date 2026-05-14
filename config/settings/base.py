@@ -184,6 +184,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_THROTTLE_RATE = env("LOGIN_THROTTLE_RATE", default="5/min")
 
+FORGOT_PASSWORD_IP_THROTTLE_RATE = env(
+    "FORGOT_PASSWORD_IP_THROTTLE_RATE",
+    default="10/min",
+)
+
+FORGOT_PASSWORD_EMAIL_THROTTLE_RATE = env(
+    "FORGOT_PASSWORD_EMAIL_THROTTLE_RATE",
+    default="3/hour",
+)
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -199,6 +209,8 @@ REST_FRAMEWORK = {
     "DATE_FORMAT": "%Y-%m-%d",
     "DEFAULT_THROTTLE_RATES": {
         "login": LOGIN_THROTTLE_RATE,
+        "forgot_password_ip": FORGOT_PASSWORD_IP_THROTTLE_RATE,
+        "forgot_password_email": FORGOT_PASSWORD_EMAIL_THROTTLE_RATE,
     },
 }
 

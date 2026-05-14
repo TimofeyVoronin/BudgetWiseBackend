@@ -23,7 +23,11 @@ from apps.users.serializers import (
     VerifyEmailSerializer,
     ForgotPasswordSerializer,
 )
-from apps.users.throttles import LoginRateThrottle
+from apps.users.throttles import (
+    LoginRateThrottle,
+    ForgotPasswordEmailThrottle,
+    ForgotPasswordIPThrottle,
+)
 
 
 User = get_user_model()
@@ -131,6 +135,10 @@ class VerifyEmailView(APIView):
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
     serializer_class = ForgotPasswordSerializer
+    throttle_classes = [
+        ForgotPasswordIPThrottle,
+        ForgotPasswordEmailThrottle,
+    ]
 
     @extend_schema(
         tags=["auth"],
