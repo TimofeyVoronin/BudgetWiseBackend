@@ -355,6 +355,323 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {\r",
+                  "    pm.response.to.have.status(201);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Registration response is valid\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json).to.have.property(\"id\");\r",
+                  "    pm.expect(json).to.have.property(\"username\");\r",
+                  "    pm.expect(json).to.have.property(\"email\");\r",
+                  "    pm.expect(json).to.have.property(\"is_active\");\r",
+                  "    pm.expect(json).to.have.property(\"detail\");\r",
+                  "\r",
+                  "    pm.expect(json.email).to.eql(pm.environment.get(\"register_email\"));\r",
+                  "    pm.expect(json.is_active).to.eql(false);\r",
+                  "});\r",
+                  "\r",
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "if (json.id) {\r",
+                  "    pm.environment.set(\"registered_user_id\", json.id);\r",
+                  "}\r",
+                  "\r",
+                  "if (json.email) {\r",
+                  "    pm.environment.set(\"registered_user_email\", json.email);\r",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"email\": \"{{register_email}}\",\r\n  \"password\": \"{{register_password}}\",\r\n  \"password_confirm\": \"{{register_password}}\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Register - duplicate email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {\r",
+                  "    pm.response.to.have.status(400);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Duplicate email error format is valid\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json.success).to.eql(false);\r",
+                  "    pm.expect(json.error.status_code).to.eql(400);\r",
+                  "    pm.expect(json.error.code).to.eql(\"unique\");\r",
+                  "    pm.expect(json.error.field_errors).to.have.property(\"email\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"email\": \"{{register_email}}\",\r\n  \"password\": \"{{register_password}}\",\r\n  \"password_confirm\": \"{{register_password}}\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Email verification response is valid\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json).to.have.property(\"id\");\r",
+                  "    pm.expect(json).to.have.property(\"email\");\r",
+                  "    pm.expect(json).to.have.property(\"is_active\");\r",
+                  "    pm.expect(json).to.have.property(\"detail\");\r",
+                  "\r",
+                  "    pm.expect(json.is_active).to.eql(true);\r",
+                  "    pm.expect(json.detail).to.eql(\"Email подтверждён. Аккаунт активирован.\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"token\": \"{{email_confirmation_token}}\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/verify-email/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "verify-email",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify email - invalid token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {\r",
+                  "    pm.response.to.have.status(400);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Invalid token error format is valid\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json.success).to.eql(false);\r",
+                  "    pm.expect(json.error.status_code).to.eql(400);\r",
+                  "    pm.expect(json.error.code).to.eql(\"invalid_token\");\r",
+                  "    pm.expect(json.error.field_errors).to.have.property(\"token\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"token\": \"{{invalid_email_confirmation_token}}\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/verify-email/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "verify-email",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify email - already used token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {\r",
+                  "    pm.response.to.have.status(400);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Already used token error format is valid\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json.success).to.eql(false);\r",
+                  "    pm.expect(json.error.status_code).to.eql(400);\r",
+                  "    pm.expect(json.error.code).to.eql(\"token_already_used\");\r",
+                  "    pm.expect(json.error.field_errors).to.have.property(\"token\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"token\": \"{{email_confirmation_token}}\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/verify-email/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "verify-email",
+                ""
+              ]
+            }
+          },
+          "response": []
         }
       ],
       "description": "Auth endpoints are planned for the next user/auth task. Until they are implemented, generate access_token through Django shell and paste it into the environment."
