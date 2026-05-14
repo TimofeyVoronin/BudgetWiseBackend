@@ -1,9 +1,23 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import update_last_login
+from django.contrib.auth.password_validation import validate_password
+from django.core.signing import BadSignature, SignatureExpired
+from django.conf import settings
+
+from apps.users.email_confirmation import send_email_confirmation
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
+from rest_framework.exceptions import (
+    AuthenticationFailed, 
+    PermissionDenied,
+    ValidationError,
+)
 from rest_framework_simplejwt.tokens import RefreshToken
+from apps.users.email_confirmation import (
+    EMAIL_CONFIRMATION_PURPOSE,
+    load_email_confirmation_token,
+    send_email_confirmation,
+)
 
 
 User = get_user_model()
@@ -135,6 +149,219 @@ class UserSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+
+
+class RegisterSerializer(serializers.Serializer):
+    email = serializers.EmailField(write_only=True)
+    password = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        min_length=8,
+    )
+    password_confirm = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        min_length=8,
+    )
+
+    id = serializers.IntegerField(read_only=True)
+    username = serializers.CharField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    detail = serializers.CharField(read_only=True)
+
+    def validate_email(self, email):
+        normalized_email = email.strip().lower()
+
+        if User.objects.filter(email__iexact=normalized_email).exists():
+            raise serializers.ValidationError(
+                "Пользователь с таким email уже существует.",
+                code="unique",
+            )
+
+        return normalized_email
+
+    def validate(self, attrs):
+        password = attrs.get("password")
+        password_confirm = attrs.get("password_confirm")
+
+        if password != password_confirm:
+            raise serializers.ValidationError(
+                {
+                    "password_confirm": [
+                        serializers.ErrorDetail(
+                            "Пароли не совпадают.",
+                            code="password_mismatch",
+                        )
+                    ]
+                }
+            )
+
+        validate_password(password)
+
+        return attrs
+
+    def create(self, validated_data):
+        email = validated_data["email"]
+        password = validated_data["password"]
+
+        username = self._generate_username(email)
+
+        require_email_confirmation = settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION
+
+        user = User(
+            username=username,
+            email=email,
+            is_active=not require_email_confirmation,
+        )
+        user.set_password(password)
+        user.save()
+
+        if require_email_confirmation:
+            send_email_confirmation(user)
+
+        return user
+
+    def to_representation(self, instance):
+        if settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION:
+            detail = (
+                "Пользователь зарегистрирован. "
+                "Для активации аккаунта подтвердите email."
+            )
+        else:
+            detail = "Пользователь зарегистрирован. Теперь можно войти в аккаунт."
+
+        return {
+            "id": instance.id,
+            "username": instance.username,
+            "email": instance.email,
+            "is_active": instance.is_active,
+            "detail": detail,
+        }
+
+    def _generate_username(self, email: str) -> str:
+        base_username = email.split("@")[0]
+        base_username = "".join(
+            char for char in base_username if char.isalnum() or char in "._+-"
+        )
+        base_username = base_username[:140] or "user"
+
+        username = base_username
+        counter = 1
+
+        while User.objects.filter(username=username).exists():
+            suffix = f"_{counter}"
+            username = f"{base_username[:150 - len(suffix)]}{suffix}"
+            counter += 1
+
+        return username
+
+        
+class VerifyEmailSerializer(serializers.Serializer):
+    token = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    id = serializers.IntegerField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    detail = serializers.CharField(read_only=True)
+
+    def validate(self, attrs):
+        token = attrs["token"]
+
+        try:
+            payload = load_email_confirmation_token(token)
+        except SignatureExpired:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Срок действия ссылки подтверждения истёк.",
+                            code="token_expired",
+                        )
+                    ]
+                }
+            )
+        except BadSignature:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Недействительная ссылка подтверждения email.",
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+
+        if payload.get("purpose") != EMAIL_CONFIRMATION_PURPOSE:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Недействительная ссылка подтверждения email.",
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+
+        user = User.objects.filter(id=payload.get("user_id")).first()
+
+        if user is None:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Недействительная ссылка подтверждения email.",
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+
+        token_email = str(payload.get("email", "")).lower()
+        user_email = str(user.email).lower()
+
+        if token_email != user_email:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Недействительная ссылка подтверждения email.",
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+
+        if user.is_active:
+            raise ValidationError(
+                {
+                    "token": [
+                        serializers.ErrorDetail(
+                            "Email уже подтверждён.",
+                            code="token_already_used",
+                        )
+                    ]
+                }
+            )
+
+        attrs["user"] = user
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.validated_data["user"]
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+
+        return user
+
+    def to_representation(self, instance):
+        return {
+            "id": instance.id,
+            "email": instance.email,
+            "is_active": instance.is_active,
+            "detail": "Email подтверждён. Аккаунт активирован.",
+        }
 
 
 class LoginSerializer(serializers.Serializer):

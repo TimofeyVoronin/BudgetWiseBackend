@@ -580,6 +580,52 @@ IP address + email
 LOGIN_THROTTLE_RATE=5/min
 ```
 
+### Email confirmation mechanism
+
+Для подтверждения email используется signed token.
+
+Backend генерирует token, формирует ссылку подтверждения и отправляет письмо пользователю. В dev-окружении используется console email backend, поэтому письмо выводится в терминал, а не отправляется через реальный SMTP-сервер.
+
+Текущая ссылка frontend для подтверждения email:
+
+```text
+http://app.budgetwise.localhost:5173/auth/verify-email?token=<token>
+```
+
+Frontend должен получить `token` из query params и отправить его на backend endpoint подтверждения email.
+
+backend endpoint:
+
+```text
+POST /api/v1/auth/verify-email/
+```
+
+Тело запроса:
+
+```json
+{
+  "token": "<email_confirmation_token>"
+}
+```
+
+Срок жизни token:
+
+```text
+24 часа
+```
+
+Env-настройки:
+
+```env
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+DEFAULT_FROM_EMAIL=BudgetWise <noreply@budgetwise.local>
+FRONTEND_EMAIL_VERIFY_URL=http://app.budgetwise.localhost:5173/auth/verify-email
+EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS=86400
+EMAIL_CONFIRMATION_TOKEN_SALT=budgetwise.email-confirmation
+```
+
+В production-окружении console email backend должен быть заменён на SMTP или другой реальный email provider.
+
 ### Регистрация пользователя
 
 | Поле | Значение |
@@ -587,7 +633,7 @@ LOGIN_THROTTLE_RATE=5/min
 | URL | `/api/v1/auth/register/` |
 | Метод | `POST` |
 | Доступ | Публичный |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: создание нового пользователя.
 
@@ -595,7 +641,6 @@ LOGIN_THROTTLE_RATE=5/min
 
 | Поле | Тип | Обязательное | Описание |
 |---|---|---|---|
-| `username` | string | Да | Имя пользователя |
 | `email` | string | Да | Email пользователя |
 | `password` | string | Да | Пароль |
 | `password_confirm` | string | Да | Подтверждение пароля |
