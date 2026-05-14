@@ -22,6 +22,7 @@ from apps.users.serializers import (
     UserSerializer,
     VerifyEmailSerializer,
     ForgotPasswordSerializer,
+    ResetPasswordSerializer,
 )
 from apps.users.throttles import (
     LoginRateThrottle,
@@ -165,6 +166,50 @@ class ForgotPasswordView(APIView):
                         "Если аккаунт с таким email существует, "
                         "мы отправили ссылку для восстановления пароля."
                     ),
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ResetPasswordView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = ResetPasswordSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Сбросить пароль по token",
+        description=(
+            "Принимает token восстановления пароля и новый пароль. "
+            "Проверяет, что token существует, не истёк и не был использован. "
+            "После успешной смены пароля token помечается использованным."
+        ),
+        request=ResetPasswordSerializer,
+        responses={200: ResetPasswordSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={
+                    "token": "password-reset-token",
+                    "password": "NewPassword123!",
+                    "password_confirm": "NewPassword123!",
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "detail": "Пароль успешно изменён. Теперь можно войти с новым паролем.",
                 },
                 response_only=True,
             ),
