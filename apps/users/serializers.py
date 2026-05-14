@@ -2,6 +2,8 @@ from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
 from django.core.signing import BadSignature, SignatureExpired
+from django.conf import settings
+
 from apps.users.email_confirmation import send_email_confirmation
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
@@ -204,28 +206,36 @@ class RegisterSerializer(serializers.Serializer):
 
         username = self._generate_username(email)
 
+        require_email_confirmation = settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION
+
         user = User(
             username=username,
             email=email,
-            is_active=False,
+            is_active=not require_email_confirmation,
         )
         user.set_password(password)
         user.save()
 
-        send_email_confirmation(user)
+        if require_email_confirmation:
+            send_email_confirmation(user)
 
         return user
 
     def to_representation(self, instance):
+        if settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION:
+            detail = (
+                "Пользователь зарегистрирован. "
+                "Для активации аккаунта подтвердите email."
+            )
+        else:
+            detail = "Пользователь зарегистрирован. Теперь можно войти в аккаунт."
+
         return {
             "id": instance.id,
             "username": instance.username,
             "email": instance.email,
             "is_active": instance.is_active,
-            "detail": (
-                "Пользователь зарегистрирован. "
-                "Для активации аккаунта подтвердите email."
-            ),
+            "detail": detail,
         }
 
     def _generate_username(self, email: str) -> str:
@@ -245,7 +255,7 @@ class RegisterSerializer(serializers.Serializer):
 
         return username
 
-
+        
 class VerifyEmailSerializer(serializers.Serializer):
     token = serializers.CharField(write_only=True, trim_whitespace=False)
 

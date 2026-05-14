@@ -42,6 +42,10 @@ EMAIL_CONFIRMATION_TOKEN_SALT = env(
     default="budgetwise.email-confirmation",
 )
 
+REGISTRATION_REQUIRE_EMAIL_CONFIRMATION = env.bool(
+    "REGISTRATION_REQUIRE_EMAIL_CONFIRMATION",
+    default=False,
+)
 
 ALLOWED_HOSTS = env.list(
     "ALLOWED_HOSTS",

@@ -217,6 +217,11 @@ class LoginAPITests(APITestCase):
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     FRONTEND_EMAIL_VERIFY_URL="http://app.budgetwise.localhost:5173/auth/verify-email",
 )
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    FRONTEND_EMAIL_VERIFY_URL="http://app.budgetwise.localhost:5173/auth/verify-email",
+    REGISTRATION_REQUIRE_EMAIL_CONFIRMATION=False,
+)
 class RegistrationAndEmailVerificationAPITests(APITestCase):
     def setUp(self):
         cache.clear()
@@ -226,7 +231,7 @@ class RegistrationAndEmailVerificationAPITests(APITestCase):
 
         self.password = "StrongRegisterPassword123!"
 
-    def test_register_success_creates_inactive_user_and_sends_email(self):
+    def test_register_success_creates_active_user_without_email_confirmation(self):
         response = self.client.post(
             self.register_url,
             {
@@ -242,20 +247,61 @@ class RegistrationAndEmailVerificationAPITests(APITestCase):
         self.assertIn("id", response.data)
         self.assertEqual(response.data["email"], "register-user@example.com")
         self.assertEqual(response.data["username"], "register-user")
+        self.assertTrue(response.data["is_active"])
+        self.assertEqual(
+            response.data["detail"],
+            "Пользователь зарегистрирован. Теперь можно войти в аккаунт.",
+        )
+
+        user = User.objects.get(email="register-user@example.com")
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.check_password(self.password))
+
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(REGISTRATION_REQUIRE_EMAIL_CONFIRMATION=True)
+    def test_register_with_email_confirmation_creates_inactive_user_and_sends_email(self):
+        response = self.client.post(
+            self.register_url,
+            {
+                "email": "register-with-confirmation@example.com",
+                "password": self.password,
+                "password_confirm": self.password,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        self.assertIn("id", response.data)
+        self.assertEqual(
+            response.data["email"],
+            "register-with-confirmation@example.com",
+        )
+        self.assertEqual(
+            response.data["username"],
+            "register-with-confirmation",
+        )
         self.assertFalse(response.data["is_active"])
         self.assertEqual(
             response.data["detail"],
             "Пользователь зарегистрирован. Для активации аккаунта подтвердите email.",
         )
 
-        user = User.objects.get(email="register-user@example.com")
+        user = User.objects.get(email="register-with-confirmation@example.com")
         self.assertFalse(user.is_active)
         self.assertTrue(user.check_password(self.password))
 
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ["register-user@example.com"])
+        self.assertEqual(
+            mail.outbox[0].to,
+            ["register-with-confirmation@example.com"],
+        )
         self.assertIn("Подтверждение email", mail.outbox[0].subject)
-        self.assertIn("http://app.budgetwise.localhost:5173/auth/verify-email?token=", mail.outbox[0].body)
+        self.assertIn(
+            "http://app.budgetwise.localhost:5173/auth/verify-email?token=",
+            mail.outbox[0].body,
+        )
 
     def test_register_normalizes_email_to_lowercase(self):
         response = self.client.post(
