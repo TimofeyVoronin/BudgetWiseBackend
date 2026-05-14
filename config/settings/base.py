@@ -47,6 +47,21 @@ REGISTRATION_REQUIRE_EMAIL_CONFIRMATION = env.bool(
     default=False,
 )
 
+FRONTEND_PASSWORD_RESET_URL = env(
+    "FRONTEND_PASSWORD_RESET_URL",
+    default="http://app.budgetwise.localhost:5173/auth/reset-password",
+)
+
+PASSWORD_RESET_TOKEN_TIMEOUT_SECONDS = env.int(
+    "PASSWORD_RESET_TOKEN_TIMEOUT_SECONDS",
+    default=60 * 60,
+)
+
+PASSWORD_RESET_TOKEN_BYTES = env.int(
+    "PASSWORD_RESET_TOKEN_BYTES",
+    default=32,
+)
+
 ALLOWED_HOSTS = env.list(
     "ALLOWED_HOSTS",
     default=["localhost", "127.0.0.1"],
@@ -169,6 +184,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_THROTTLE_RATE = env("LOGIN_THROTTLE_RATE", default="5/min")
 
+FORGOT_PASSWORD_IP_THROTTLE_RATE = env(
+    "FORGOT_PASSWORD_IP_THROTTLE_RATE",
+    default="10/min",
+)
+
+FORGOT_PASSWORD_EMAIL_THROTTLE_RATE = env(
+    "FORGOT_PASSWORD_EMAIL_THROTTLE_RATE",
+    default="3/hour",
+)
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -184,6 +209,8 @@ REST_FRAMEWORK = {
     "DATE_FORMAT": "%Y-%m-%d",
     "DEFAULT_THROTTLE_RATES": {
         "login": LOGIN_THROTTLE_RATE,
+        "forgot_password_ip": FORGOT_PASSWORD_IP_THROTTLE_RATE,
+        "forgot_password_email": FORGOT_PASSWORD_EMAIL_THROTTLE_RATE,
     },
 }
 
