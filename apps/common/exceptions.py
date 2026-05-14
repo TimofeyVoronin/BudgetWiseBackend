@@ -393,6 +393,7 @@ def _get_default_code_by_status(status_code: int) -> str:
         status.HTTP_404_NOT_FOUND: "not_found",
         status.HTTP_405_METHOD_NOT_ALLOWED: "method_not_allowed",
         status.HTTP_409_CONFLICT: "conflict",
+        status.HTTP_410_GONE: "gone",
         status.HTTP_429_TOO_MANY_REQUESTS: "throttled",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "server_error",
     }
@@ -408,6 +409,7 @@ def _get_default_message_by_status(status_code: int) -> str:
         status.HTTP_404_NOT_FOUND: "Объект не найден.",
         status.HTTP_405_METHOD_NOT_ALLOWED: "HTTP-метод не разрешён для этого endpoint.",
         status.HTTP_409_CONFLICT: "Конфликт состояния данных.",
+        status.HTTP_410_GONE: "Ссылка больше недействительна.",
         status.HTTP_429_TOO_MANY_REQUESTS: "Слишком много запросов.",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Внутренняя ошибка сервера.",
     }

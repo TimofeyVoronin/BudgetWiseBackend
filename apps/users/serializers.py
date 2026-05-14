@@ -27,6 +27,11 @@ from apps.users.password_reset import (
     get_password_reset_token_record,
     send_password_reset_email,
 )
+from apps.users.exceptions import (
+    PasswordResetTokenAlreadyUsed,
+    PasswordResetTokenExpired,
+    PasswordResetTokenInvalid,
+)
 
 
 User = get_user_model()
@@ -482,40 +487,13 @@ class ResetPasswordSerializer(serializers.Serializer):
         token_record = get_password_reset_token_record(token)
 
         if token_record is None:
-            raise serializers.ValidationError(
-                {
-                    "token": [
-                        serializers.ErrorDetail(
-                            "Недействительная ссылка восстановления пароля.",
-                            code="invalid_token",
-                        )
-                    ]
-                }
-            )
+            raise PasswordResetTokenInvalid()
 
         if token_record.is_used:
-            raise serializers.ValidationError(
-                {
-                    "token": [
-                        serializers.ErrorDetail(
-                            "Ссылка восстановления пароля уже использована.",
-                            code="token_already_used",
-                        )
-                    ]
-                }
-            )
+            raise PasswordResetTokenAlreadyUsed()
 
         if token_record.is_expired:
-            raise serializers.ValidationError(
-                {
-                    "token": [
-                        serializers.ErrorDetail(
-                            "Срок действия ссылки восстановления пароля истёк.",
-                            code="token_expired",
-                        )
-                    ]
-                }
-            )
+            raise PasswordResetTokenExpired()
 
         validate_password(password, user=token_record.user)
 
@@ -536,28 +514,10 @@ class ResetPasswordSerializer(serializers.Serializer):
             )
 
             if locked_token_record.is_used:
-                raise serializers.ValidationError(
-                    {
-                        "token": [
-                            serializers.ErrorDetail(
-                                "Ссылка восстановления пароля уже использована.",
-                                code="token_already_used",
-                            )
-                        ]
-                    }
-                )
+                raise PasswordResetTokenAlreadyUsed()
 
             if locked_token_record.is_expired:
-                raise serializers.ValidationError(
-                    {
-                        "token": [
-                            serializers.ErrorDetail(
-                                "Срок действия ссылки восстановления пароля истёк.",
-                                code="token_expired",
-                            )
-                        ]
-                    }
-                )
+                raise PasswordResetTokenExpired()
 
             user = locked_token_record.user
             user.set_password(password)
