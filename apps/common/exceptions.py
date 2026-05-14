@@ -169,6 +169,11 @@ def _build_error_body_from_drf_response(exc, response, request) -> dict[str, Any
     if status_code == status.HTTP_400_BAD_REQUEST and isinstance(response_data, dict):
         field_errors = response_data
         detail = None
+    elif (
+        isinstance(response_data, dict)
+        and set(response_data.keys()) == {"detail"}
+    ):
+        detail = response_data["detail"]
 
     trace_id = _get_trace_id_for_response(
         request=request,
@@ -187,7 +192,6 @@ def _build_error_body_from_drf_response(exc, response, request) -> dict[str, Any
             "trace_id": trace_id,
         },
     }
-
 
 def _get_error_code_from_exception(exc, status_code: int) -> str:
     error_codes = _get_exception_codes(exc)
@@ -393,6 +397,7 @@ def _get_default_code_by_status(status_code: int) -> str:
         status.HTTP_404_NOT_FOUND: "not_found",
         status.HTTP_405_METHOD_NOT_ALLOWED: "method_not_allowed",
         status.HTTP_409_CONFLICT: "conflict",
+        status.HTTP_410_GONE: "gone",
         status.HTTP_429_TOO_MANY_REQUESTS: "throttled",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "server_error",
     }
@@ -408,6 +413,7 @@ def _get_default_message_by_status(status_code: int) -> str:
         status.HTTP_404_NOT_FOUND: "Объект не найден.",
         status.HTTP_405_METHOD_NOT_ALLOWED: "HTTP-метод не разрешён для этого endpoint.",
         status.HTTP_409_CONFLICT: "Конфликт состояния данных.",
+        status.HTTP_410_GONE: "Ссылка больше недействительна.",
         status.HTTP_429_TOO_MANY_REQUESTS: "Слишком много запросов.",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Внутренняя ошибка сервера.",
     }

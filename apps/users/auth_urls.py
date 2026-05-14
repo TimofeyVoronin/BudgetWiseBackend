@@ -5,6 +5,7 @@ from apps.users.views import (
     ForgotPasswordView,
     LoginView,
     RegisterView,
+    ResetPasswordView,
     VerifyEmailView,
 )
 
@@ -16,6 +17,7 @@ urlpatterns = [
     path("login/", LoginView.as_view(), name="login"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     path("verify-email/", VerifyEmailView.as_view(), name="verify-email"),
+    path("reset-password/", ResetPasswordView.as_view(), name="reset-password"),
     path(
         "forgot-password/check/",
         ForgotPasswordView.as_view(),

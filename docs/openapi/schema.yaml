@@ -169,6 +169,49 @@ paths:
                       email.
                   summary: Успешный ответ
           description: ''
+  /api/v1/auth/reset-password/:
+    post:
+      operationId: api_v1_auth_reset_password_create
+      description: Принимает token восстановления пароля и новый пароль. Проверяет,
+        что token существует, не истёк и не был использован. После успешной смены
+        пароля token помечается использованным.
+      summary: Сбросить пароль по token
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  token: password-reset-token
+                  password: NewPassword123!
+                  password_confirm: NewPassword123!
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetPassword'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Пароль успешно изменён. Теперь можно войти с новым паролем.
+                  summary: Успешный ответ
+          description: ''
   /api/v1/auth/token/refresh/:
     post:
       operationId: api_v1_auth_token_refresh_create
@@ -1301,6 +1344,33 @@ components:
       - email
       - password
       - password_confirm
+    ResetPassword:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+    ResetPasswordRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          writeOnly: true
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        password_confirm:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - password
+      - password_confirm
+      - token
     TokenRefresh:
       type: object
       properties:

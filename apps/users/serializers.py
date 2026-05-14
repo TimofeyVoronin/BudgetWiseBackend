@@ -1,27 +1,37 @@
+import logging
+
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
 from django.core.signing import BadSignature, SignatureExpired
-from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 
-from apps.users.email_confirmation import send_email_confirmation
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import (
-    AuthenticationFailed, 
+    AuthenticationFailed,
     PermissionDenied,
     ValidationError,
 )
 from rest_framework_simplejwt.tokens import RefreshToken
-
-import logging
 
 from apps.users.email_confirmation import (
     EMAIL_CONFIRMATION_PURPOSE,
     load_email_confirmation_token,
     send_email_confirmation,
 )
-from apps.users.password_reset import send_password_reset_email
+from apps.users.models import PasswordResetToken
+from apps.users.password_reset import (
+    get_password_reset_token_record,
+    send_password_reset_email,
+)
+from apps.users.exceptions import (
+    PasswordResetTokenAlreadyUsed,
+    PasswordResetTokenExpired,
+    PasswordResetTokenInvalid,
+)
 
 
 User = get_user_model()
@@ -33,6 +43,11 @@ PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE = (
     "Если аккаунт с таким email существует, "
     "мы отправили ссылку для восстановления пароля."
 )
+
+PASSWORD_RESET_SUCCESS_MESSAGE = (
+    "Пароль успешно изменён. Теперь можно войти с новым паролем."
+)
+
 
 class CurrentUserSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField(read_only=True)
@@ -266,7 +281,7 @@ class RegisterSerializer(serializers.Serializer):
 
         return username
 
-        
+
 class VerifyEmailSerializer(serializers.Serializer):
     token = serializers.CharField(write_only=True, trim_whitespace=False)
 
@@ -394,8 +409,10 @@ class ForgotPasswordSerializer(serializers.Serializer):
 
         if user is None:
             logger.info(
-                "Password reset requested for non-existing or inactive account. "
-                "client_ip=%s",
+                (
+                    "Password reset requested for non-existing or inactive account. "
+                    "client_ip=%s"
+                ),
                 self._get_client_ip(request),
             )
             return {
@@ -406,8 +423,10 @@ class ForgotPasswordSerializer(serializers.Serializer):
             send_password_reset_email(user=user, request=request)
         except Exception:
             logger.exception(
-                "Password reset request accepted, but email sending failed. "
-                "user_id=%s client_ip=%s",
+                (
+                    "Password reset request accepted, but email sending failed. "
+                    "user_id=%s client_ip=%s"
+                ),
                 user.id,
                 self._get_client_ip(request),
             )
@@ -419,6 +438,119 @@ class ForgotPasswordSerializer(serializers.Serializer):
     def to_representation(self, instance):
         return {
             "detail": PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE,
+        }
+
+    def _get_client_ip(self, request) -> str | None:
+        if request is None:
+            return None
+
+        forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+
+        return request.META.get("REMOTE_ADDR")
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    token = serializers.CharField(write_only=True, trim_whitespace=False)
+    password = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        min_length=8,
+    )
+    password_confirm = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+        min_length=8,
+    )
+
+    detail = serializers.CharField(read_only=True)
+
+    def validate(self, attrs):
+        token = attrs.get("token")
+        password = attrs.get("password")
+        password_confirm = attrs.get("password_confirm")
+
+        if password != password_confirm:
+            raise serializers.ValidationError(
+                {
+                    "password_confirm": [
+                        serializers.ErrorDetail(
+                            "Пароли не совпадают.",
+                            code="password_mismatch",
+                        )
+                    ]
+                }
+            )
+
+        token_record = get_password_reset_token_record(token)
+
+        if token_record is None:
+            raise PasswordResetTokenInvalid()
+
+        if token_record.is_used:
+            raise PasswordResetTokenAlreadyUsed()
+
+        if token_record.is_expired:
+            raise PasswordResetTokenExpired()
+
+        validate_password(password, user=token_record.user)
+
+        attrs["token_record"] = token_record
+        return attrs
+
+    def save(self, **kwargs):
+        token_record = self.validated_data["token_record"]
+        password = self.validated_data["password"]
+        request = self.context.get("request")
+
+        with transaction.atomic():
+            locked_token_record = (
+                PasswordResetToken.objects
+                .select_for_update()
+                .select_related("user")
+                .get(pk=token_record.pk)
+            )
+
+            if locked_token_record.is_used:
+                raise PasswordResetTokenAlreadyUsed()
+
+            if locked_token_record.is_expired:
+                raise PasswordResetTokenExpired()
+
+            user = locked_token_record.user
+            user.set_password(password)
+            user.save(update_fields=["password"])
+
+            now = timezone.now()
+
+            locked_token_record.used_at = now
+            locked_token_record.save(update_fields=["used_at"])
+
+            invalidated_tokens_count = (
+                PasswordResetToken.objects
+                .filter(
+                    user=user,
+                    used_at__isnull=True,
+                )
+                .exclude(pk=locked_token_record.pk)
+                .update(used_at=now)
+            )
+
+        logger.info(
+            (
+                "Password reset completed. "
+                "user_id=%s token_id=%s invalidated_tokens_count=%s client_ip=%s"
+            ),
+            user.id,
+            locked_token_record.id,
+            invalidated_tokens_count,
+            self._get_client_ip(request),
+        )
+
+        return {
+            "detail": PASSWORD_RESET_SUCCESS_MESSAGE,
         }
 
     def _get_client_ip(self, request) -> str | None:

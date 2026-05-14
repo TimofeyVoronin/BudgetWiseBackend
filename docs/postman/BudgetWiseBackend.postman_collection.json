@@ -385,6 +385,329 @@
           ]
         },
         {
+          "name": "Reset password",
+          "item": [
+            {
+              "name": "Forgot password check",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {\r",
+                      "    pm.response.to.have.status(200);\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Generic password reset response\", function () {\r",
+                      "    const json = pm.response.json();\r",
+                      "\r",
+                      "    pm.expect(json.detail).to.eql(\r",
+                      "        \"Если аккаунт с таким email существует, мы отправили ссылку для восстановления пароля.\"\r",
+                      "    );\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"email\": \"{{password_reset_email}}\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/auth/forgot-password/check/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "forgot-password",
+                    "check",
+                    ""
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Reset password - success",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {\r",
+                      "    pm.response.to.have.status(200);\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Password reset success response\", function () {\r",
+                      "    const json = pm.response.json();\r",
+                      "\r",
+                      "    pm.expect(json.detail).to.eql(\r",
+                      "        \"Пароль успешно изменён. Теперь можно войти с новым паролем.\"\r",
+                      "    );\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"token\": \"{{password_reset_token}}\",\r\n  \"password\": \"{{reset_new_password}}\",\r\n  \"password_confirm\": \"{{reset_new_password}}\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/auth/reset-password/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "reset-password",
+                    ""
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Reset password - reused token",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 410\", function () {\r",
+                      "    pm.response.to.have.status(410);\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Reused token error format\", function () {\r",
+                      "    const json = pm.response.json();\r",
+                      "\r",
+                      "    pm.expect(json.success).to.eql(false);\r",
+                      "    pm.expect(json.error.status_code).to.eql(410);\r",
+                      "    pm.expect(json.error.code).to.eql(\"token_already_used\");\r",
+                      "    pm.expect(json.error.detail).to.eql(\r",
+                      "        \"Ссылка восстановления пароля уже использована.\"\r",
+                      "    );\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"token\": \"{{password_reset_token}}\",\r\n  \"password\": \"{{reset_another_password}}\",\r\n  \"password_confirm\": \"{{reset_another_password}}\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/auth/reset-password/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "reset-password",
+                    ""
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Reset password - invalid token",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 404\", function () {\r",
+                      "    pm.response.to.have.status(404);\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Invalid token error format\", function () {\r",
+                      "    const json = pm.response.json();\r",
+                      "\r",
+                      "    pm.expect(json.success).to.eql(false);\r",
+                      "    pm.expect(json.error.status_code).to.eql(404);\r",
+                      "    pm.expect(json.error.code).to.eql(\"invalid_token\");\r",
+                      "    pm.expect(json.error.detail).to.eql(\r",
+                      "        \"Недействительная ссылка восстановления пароля.\"\r",
+                      "    );\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"token\": \"wrong-token\",\r\n  \"password\": \"{{reset_new_password}}\",\r\n  \"password_confirm\": \"{{reset_new_password}}\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/auth/reset-password/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "reset-password",
+                    ""
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Reset password - password mismatch",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 400\", function () {\r",
+                      "    pm.response.to.have.status(400);\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Password mismatch error format\", function () {\r",
+                      "    const json = pm.response.json();\r",
+                      "\r",
+                      "    pm.expect(json.success).to.eql(false);\r",
+                      "    pm.expect(json.error.status_code).to.eql(400);\r",
+                      "    pm.expect(json.error.code).to.eql(\"password_mismatch\");\r",
+                      "    pm.expect(json.error.field_errors).to.have.property(\"password_confirm\");\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"token\": \"{{password_reset_token}}\",\r\n  \"password\": \"{{reset_new_password}}\",\r\n  \"password_confirm\": \"{{reset_another_password}}\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/v1/auth/reset-password/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "auth",
+                    "reset-password",
+                    ""
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
           "name": "Login",
           "event": [
             {
