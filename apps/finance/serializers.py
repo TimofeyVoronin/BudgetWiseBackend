@@ -234,13 +234,14 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
         queryset = obj.children.all().order_by("sort_order", "name", "id")
 
         if request:
-            is_active = request.query_params.get("is_active")
+            is_active = self._get_bool_query_param(request, "is_active")
+            is_archived = self._get_bool_query_param(request, "is_archived")
 
-            if is_active in ("true", "True", "1"):
-                queryset = queryset.filter(is_active=True)
+            if is_active is not None:
+                queryset = queryset.filter(is_active=is_active)
 
-            if is_active in ("false", "False", "0"):
-                queryset = queryset.filter(is_active=False)
+            if is_archived is not None:
+                queryset = queryset.filter(is_archived=is_archived)
 
         serializer = CategoryTreeSerializer(
             queryset,
@@ -248,6 +249,17 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
             context=self.context,
         )
         return serializer.data
+
+    def _get_bool_query_param(self, request, name: str) -> bool | None:
+        value = request.query_params.get(name)
+
+        if value in ("true", "True", "1"):
+            return True
+
+        if value in ("false", "False", "0"):
+            return False
+
+        return None
 
 
 class TransactionSerializer(serializers.ModelSerializer):
@@ -302,12 +314,21 @@ class TransactionSerializer(serializers.ModelSerializer):
                 }
             )
 
-        if (
+        should_validate_category_status = (
             not self.instance or "category" in attrs
-        ) and category and not category.is_active:
+        )
+
+        if should_validate_category_status and category and not category.is_active:
             raise serializers.ValidationError(
                 {
                     "category": "Нельзя использовать неактивную категорию."
+                }
+            )
+
+        if should_validate_category_status and category and category.is_archived:
+            raise serializers.ValidationError(
+                {
+                    "category": "Нельзя использовать архивную категорию."
                 }
             )
 

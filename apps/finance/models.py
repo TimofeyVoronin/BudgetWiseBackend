@@ -396,6 +396,12 @@ class Budget(TimeStampedModel):
                 "Бюджет можно создавать только для категории расходов."
             )
 
+        if self.category_id and not self.category.is_active:
+            errors["category"] = "Нельзя использовать неактивную категорию в бюджете."
+
+        if self.category_id and self.category.is_archived:
+            errors["category"] = "Нельзя использовать архивную категорию в бюджете."
+
         if errors:
             raise ValidationError(errors)
 

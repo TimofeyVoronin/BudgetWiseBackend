@@ -42,6 +42,14 @@ MAX_TRANSACTION_SEARCH_LENGTH = 100
             OpenApiParameter("parent", OpenApiTypes.INT),
             OpenApiParameter("is_active", OpenApiTypes.BOOL),
             OpenApiParameter(
+                "is_archived",
+                OpenApiTypes.BOOL,
+                description=(
+                    "Фильтр по архивному состоянию категории. "
+                    "true - только архивные, false - только неархивные."
+                ),
+            ),
+            OpenApiParameter(
                 "ordering",
                 OpenApiTypes.STR,
                 description=(
@@ -91,6 +99,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
         )
         parent_id = get_int_query_param(self.request.query_params, "parent")
         is_active = get_bool_query_param(self.request.query_params, "is_active")
+        is_archived = get_bool_query_param(
+            self.request.query_params,
+            "is_archived",
+        )
         ordering = validate_ordering(
             self.request.query_params.get("ordering"),
             {
@@ -116,6 +128,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active)
 
+        if is_archived is not None:
+            queryset = queryset.filter(is_archived=is_archived)
+
         if ordering:
             queryset = queryset.order_by(ordering)
 
@@ -127,6 +142,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
         parameters=[
             OpenApiParameter("type", OpenApiTypes.STR),
             OpenApiParameter("is_active", OpenApiTypes.BOOL),
+            OpenApiParameter(
+                "is_archived",
+                OpenApiTypes.BOOL,
+                description=(
+                    "Фильтр по архивному состоянию категории. "
+                    "true - только архивные, false - только неархивные."
+                ),
+            ),
         ],
         responses={200: CategoryTreeSerializer(many=True)},
     )

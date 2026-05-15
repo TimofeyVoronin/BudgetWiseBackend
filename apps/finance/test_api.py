@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
@@ -9,7 +10,13 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.finance.models import Account, Category, Transaction, TransactionType
+from apps.finance.models import (
+    Account,
+    Budget,
+    Category,
+    Transaction,
+    TransactionType,
+)
 
 
 User = get_user_model()
@@ -425,6 +432,227 @@ class FinanceAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["parent"], second_parent.id)
         self.assertEqual(response.data["sort_order"], existing_child.sort_order + 1)
+
+    def test_category_can_be_archived_and_hidden(self):
+        self.authenticate()
+
+        response = self.client.patch(
+            reverse("finance:category-detail", kwargs={"pk": self.expense_category.id}),
+            data={
+                "is_archived": True,
+                "is_active": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_archived"])
+        self.assertFalse(response.data["is_active"])
+
+        self.expense_category.refresh_from_db()
+        self.assertTrue(self.expense_category.is_archived)
+        self.assertFalse(self.expense_category.is_active)
+
+    def test_category_list_filters_by_is_archived(self):
+        self.authenticate()
+
+        self.expense_category.is_archived = True
+        self.expense_category.save(update_fields=["is_archived"])
+
+        archived_response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "is_archived": "true",
+            },
+        )
+
+        self.assertEqual(archived_response.status_code, status.HTTP_200_OK)
+
+        archived_ids = [
+            item["id"]
+            for item in archived_response.data["results"]
+        ]
+
+        self.assertIn(self.expense_category.id, archived_ids)
+        self.assertNotIn(self.transport_category.id, archived_ids)
+
+        active_response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "is_archived": "false",
+            },
+        )
+
+        self.assertEqual(active_response.status_code, status.HTTP_200_OK)
+
+        active_ids = [
+            item["id"]
+            for item in active_response.data["results"]
+        ]
+
+        self.assertNotIn(self.expense_category.id, active_ids)
+        self.assertIn(self.transport_category.id, active_ids)
+
+    def test_category_tree_filters_archived_categories_and_children(self):
+        self.authenticate()
+
+        parent = Category.objects.create(
+            user=self.user,
+            name="Родитель для архива",
+            type=TransactionType.EXPENSE,
+            sort_order=10,
+        )
+        active_child = Category.objects.create(
+            user=self.user,
+            parent=parent,
+            name="Активный ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+            is_archived=False,
+        )
+        archived_child = Category.objects.create(
+            user=self.user,
+            parent=parent,
+            name="Архивный ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=1,
+            is_archived=True,
+        )
+
+        response = self.client.get(
+            reverse("finance:category-tree"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "is_archived": "false",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        parent_node = next(
+            item for item in response.data if item["id"] == parent.id
+        )
+        child_ids = [item["id"] for item in parent_node["children"]]
+
+        self.assertIn(active_child.id, child_ids)
+        self.assertNotIn(archived_child.id, child_ids)
+
+    def test_transaction_rejects_archived_category(self):
+        self.authenticate()
+
+        self.expense_category.is_archived = True
+        self.expense_category.save(update_fields=["is_archived"])
+
+        response = self.client.post(
+            reverse("finance:transaction-list"),
+            data={
+                "account": self.account.id,
+                "category": self.expense_category.id,
+                "type": TransactionType.EXPENSE,
+                "amount": "100.00",
+                "description": "Архивная категория",
+                "operation_date": str(self.today),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("category", response.data["error"]["field_errors"])
+
+    def test_transaction_history_keeps_archived_category(self):
+        self.authenticate()
+
+        transaction = self.create_transaction(
+            category=self.expense_category,
+            amount="250.00",
+            description="Операция до архивации",
+            operation_date=self.today,
+        )
+
+        self.expense_category.is_archived = True
+        self.expense_category.save(update_fields=["is_archived"])
+
+        list_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "category": self.expense_category.id,
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(list_response.data["count"], 1)
+        self.assertEqual(
+            self.get_transaction_ids(list_response),
+            [transaction.id],
+        )
+
+        detail_response = self.client.get(
+            reverse("finance:transaction-detail", kwargs={"pk": transaction.id})
+        )
+
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail_response.data["category"], self.expense_category.id)
+
+    def test_transaction_with_archived_category_can_update_non_category_fields(self):
+        self.authenticate()
+
+        transaction = self.create_transaction(
+            category=self.expense_category,
+            amount="250.00",
+            description="До обновления",
+            operation_date=self.today,
+        )
+
+        self.expense_category.is_archived = True
+        self.expense_category.save(update_fields=["is_archived"])
+
+        response = self.client.patch(
+            reverse("finance:transaction-detail", kwargs={"pk": transaction.id}),
+            data={
+                "description": "После обновления",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["description"], "После обновления")
+
+        transaction.refresh_from_db()
+        self.assertEqual(transaction.category_id, self.expense_category.id)
+
+    def test_budget_rejects_archived_category(self):
+        self.expense_category.is_archived = True
+        self.expense_category.save(update_fields=["is_archived"])
+
+        budget = Budget(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=self.today,
+            period_end=self.today + timezone.timedelta(days=30),
+        )
+
+        with self.assertRaises(ValidationError):
+            budget.full_clean()
+
+    def test_budget_rejects_inactive_category(self):
+        self.expense_category.is_active = False
+        self.expense_category.save(update_fields=["is_active"])
+
+        budget = Budget(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=self.today,
+            period_end=self.today + timezone.timedelta(days=30),
+        )
+
+        with self.assertRaises(ValidationError):
+            budget.full_clean()
 
     def test_delete_category_with_transactions_returns_conflict(self):
         self.authenticate()

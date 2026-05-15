@@ -292,6 +292,12 @@ paths:
         schema:
           type: boolean
       - in: query
+        name: is_archived
+        schema:
+          type: boolean
+        description: Фильтр по архивному состоянию категории. true - только архивные,
+          false - только неархивные.
+      - in: query
         name: ordering
         schema:
           type: string
@@ -434,6 +440,12 @@ paths:
         name: is_active
         schema:
           type: boolean
+      - in: query
+        name: is_archived
+        schema:
+          type: boolean
+        description: Фильтр по архивному состоянию категории. true - только архивные,
+          false - только неархивные.
       - name: page
         required: false
         in: query
