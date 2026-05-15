@@ -24,6 +24,7 @@ from apps.common.validation import (
 from apps.finance.models import Category, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
 from apps.finance.serializers import (
+    CategoryArchiveSerializer,
     CategoryFavoriteSerializer,
     CategorySerializer,
     CategoryTreeSerializer,
@@ -77,6 +78,10 @@ MAX_TRANSACTION_SEARCH_LENGTH = 100
         tags=["finance"],
         summary="Получить категорию",
     ),
+    update=extend_schema(
+        tags=["finance"],
+        summary="Полностью обновить категорию",
+    ),
     partial_update=extend_schema(
         tags=["finance"],
         summary="Частично обновить категорию",
@@ -89,7 +94,15 @@ MAX_TRANSACTION_SEARCH_LENGTH = 100
 class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticated, IsObjectOwner]
-    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    http_method_names = [
+        "get",
+        "post",
+        "put",
+        "patch",
+        "delete",
+        "head",
+        "options",
+    ]
 
     def get_queryset(self):
         if not self.request.user.is_authenticated:
@@ -201,6 +214,29 @@ class CategoryViewSet(viewsets.ModelViewSet):
     def favorite(self, request, pk=None):
         instance = self.get_object()
         serializer = CategoryFavoriteSerializer(
+            instance=instance,
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data)
+
+    @extend_schema(
+        tags=["finance"],
+        summary="Архивировать или восстановить категорию",
+        description=(
+            "Если тело запроса пустое, категория архивируется. "
+            "Для восстановления передайте archived=false."
+        ),
+        request=CategoryArchiveSerializer,
+        responses={200: CategoryArchiveSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="archive")
+    def archive(self, request, pk=None):
+        instance = self.get_object()
+        serializer = CategoryArchiveSerializer(
             instance=instance,
             data=request.data,
             context=self.get_serializer_context(),

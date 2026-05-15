@@ -388,6 +388,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/Category'
           description: ''
+    put:
+      operationId: api_v1_finance_categories_update
+      summary: Полностью обновить категорию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Категория.
+        required: true
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+          description: ''
     patch:
       operationId: api_v1_finance_categories_partial_update
       summary: Частично обновить категорию
@@ -437,6 +470,41 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/finance/categories/{id}/archive/:
+    post:
+      operationId: api_v1_finance_categories_archive_create
+      description: Если тело запроса пустое, категория архивируется. Для восстановления
+        передайте archived=false.
+      summary: Архивировать или восстановить категорию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Категория.
+        required: true
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryArchiveRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategoryArchiveRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategoryArchiveRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryArchive'
+          description: ''
   /api/v1/finance/categories/{id}/favorite/:
     patch:
       operationId: api_v1_finance_categories_favorite_partial_update
@@ -1030,6 +1098,33 @@ components:
       - name
       - type
       - updated_at
+    CategoryArchive:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        is_archived:
+          type: boolean
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+      - id
+      - is_active
+      - is_archived
+    CategoryArchiveRequest:
+      type: object
+      properties:
+        archived:
+          type: boolean
+          writeOnly: true
+          default: true
     CategoryFavorite:
       type: object
       properties:

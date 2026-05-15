@@ -234,6 +234,43 @@ class CategoryFavoriteSerializer(serializers.Serializer):
         }
 
 
+class CategoryArchiveSerializer(serializers.Serializer):
+    archived = serializers.BooleanField(
+        required=False,
+        default=True,
+        write_only=True,
+    )
+
+    id = serializers.IntegerField(read_only=True)
+    is_archived = serializers.BooleanField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+    detail = serializers.CharField(read_only=True)
+
+    def update(self, instance: Category, validated_data):
+        archived = validated_data.get("archived", True)
+
+        instance.is_archived = archived
+        instance.is_active = not archived
+        instance.save(update_fields=["is_archived", "is_active", "updated_at"])
+
+        return instance
+
+    def create(self, validated_data):
+        raise NotImplementedError("CategoryArchiveSerializer does not create objects.")
+
+    def to_representation(self, instance):
+        return {
+            "id": instance.id,
+            "is_archived": instance.is_archived,
+            "is_active": instance.is_active,
+            "detail": (
+                "Категория отправлена в архив."
+                if instance.is_archived
+                else "Категория восстановлена из архива."
+            ),
+        }
+
+
 class CategoryTreeSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
 

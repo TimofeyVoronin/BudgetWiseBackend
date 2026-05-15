@@ -180,6 +180,179 @@ class FinanceAPITests(TestCase):
         self.assertEqual(delete_child_response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Category.objects.filter(pk=child_category_id).exists())
 
+    def test_category_put_full_update_success(self):
+        self.authenticate()
+
+        response = self.client.put(
+            reverse("finance:category-detail", kwargs={"pk": self.expense_category.id}),
+            data={
+                "parent": None,
+                "name": "Полностью обновленная категория",
+                "type": TransactionType.EXPENSE,
+                "icon": "cart",
+                "color": "#4F46E5",
+                "sort_order": 7,
+                "is_favorite": True,
+                "is_archived": False,
+                "is_active": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.expense_category.id)
+        self.assertEqual(response.data["name"], "Полностью обновленная категория")
+        self.assertEqual(response.data["type"], TransactionType.EXPENSE)
+        self.assertEqual(response.data["icon"], "cart")
+        self.assertEqual(response.data["color"], "#4F46E5")
+        self.assertEqual(response.data["sort_order"], 7)
+        self.assertTrue(response.data["is_favorite"])
+        self.assertFalse(response.data["is_archived"])
+        self.assertTrue(response.data["is_active"])
+
+        self.expense_category.refresh_from_db()
+        self.assertEqual(self.expense_category.name, "Полностью обновленная категория")
+        self.assertEqual(self.expense_category.icon, "cart")
+        self.assertEqual(self.expense_category.color, "#4F46E5")
+        self.assertEqual(self.expense_category.sort_order, 7)
+        self.assertTrue(self.expense_category.is_favorite)
+
+    def test_category_archive_endpoint_archives_category_by_default(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse(
+                "finance:category-archive",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.expense_category.id)
+        self.assertTrue(response.data["is_archived"])
+        self.assertFalse(response.data["is_active"])
+        self.assertEqual(response.data["detail"], "Категория отправлена в архив.")
+
+        self.expense_category.refresh_from_db()
+        self.assertTrue(self.expense_category.is_archived)
+        self.assertFalse(self.expense_category.is_active)
+
+    def test_category_archive_endpoint_restores_category(self):
+        self.authenticate()
+
+        self.expense_category.is_archived = True
+        self.expense_category.is_active = False
+        self.expense_category.save(update_fields=["is_archived", "is_active"])
+
+        response = self.client.post(
+            reverse(
+                "finance:category-archive",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={
+                "archived": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.expense_category.id)
+        self.assertFalse(response.data["is_archived"])
+        self.assertTrue(response.data["is_active"])
+        self.assertEqual(response.data["detail"], "Категория восстановлена из архива.")
+
+        self.expense_category.refresh_from_db()
+        self.assertFalse(self.expense_category.is_archived)
+        self.assertTrue(self.expense_category.is_active)
+
+    def test_category_archive_endpoint_does_not_allow_foreign_category(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse(
+                "finance:category-archive",
+                kwargs={"pk": self.other_category.id},
+            ),
+            data={},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(response.data["success"])
+
+        self.other_category.refresh_from_db()
+        self.assertFalse(self.other_category.is_archived)
+        self.assertTrue(self.other_category.is_active)
+
+    def test_delete_empty_category_success(self):
+        self.authenticate()
+
+        category = Category.objects.create(
+            user=self.user,
+            name="Пустая категория",
+            type=TransactionType.EXPENSE,
+        )
+
+        response = self.client.delete(
+            reverse("finance:category-detail", kwargs={"pk": category.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Category.objects.filter(pk=category.id).exists())
+
+    def test_delete_category_with_children_returns_conflict(self):
+        self.authenticate()
+
+        parent = Category.objects.create(
+            user=self.user,
+            name="Родитель для удаления",
+            type=TransactionType.EXPENSE,
+        )
+        Category.objects.create(
+            user=self.user,
+            parent=parent,
+            name="Дочерняя категория для удаления",
+            type=TransactionType.EXPENSE,
+        )
+
+        response = self.client.delete(
+            reverse("finance:category-detail", kwargs={"pk": parent.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["error"]["code"], "category_has_children")
+
+        self.assertTrue(Category.objects.filter(pk=parent.id).exists())
+
+    def test_delete_category_with_budgets_returns_conflict(self):
+        self.authenticate()
+
+        category = Category.objects.create(
+            user=self.user,
+            name="Категория с бюджетом",
+            type=TransactionType.EXPENSE,
+        )
+        Budget.objects.create(
+            user=self.user,
+            category=category,
+            amount_limit=Decimal("10000.00"),
+            period_start=self.today,
+            period_end=self.today + timezone.timedelta(days=30),
+        )
+
+        response = self.client.delete(
+            reverse("finance:category-detail", kwargs={"pk": category.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["error"]["code"], "category_has_budgets")
+
+        self.assertTrue(Category.objects.filter(pk=category.id).exists())
+
     def test_category_parent_must_belong_to_current_user(self):
         self.authenticate()
 
