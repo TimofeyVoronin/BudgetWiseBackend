@@ -928,6 +928,26 @@ components:
           allOf:
           - $ref: '#/components/schemas/TypeEnum'
           title: Тип категории
+        icon:
+          type: string
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок сортировки
+        is_favorite:
+          type: boolean
+          title: Избранная
+        is_archived:
+          type: boolean
+          title: Архивная
         is_active:
           type: boolean
           title: Активна
@@ -967,6 +987,28 @@ components:
           allOf:
           - $ref: '#/components/schemas/TypeEnum'
           title: Тип категории
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок сортировки
+        is_favorite:
+          type: boolean
+          title: Избранная
+        is_archived:
+          type: boolean
+          title: Архивная
         is_active:
           type: boolean
           title: Активна
@@ -991,6 +1033,26 @@ components:
           allOf:
           - $ref: '#/components/schemas/TypeEnum'
           title: Тип категории
+        icon:
+          type: string
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок сортировки
+        is_favorite:
+          type: boolean
+          title: Избранная
+        is_archived:
+          type: boolean
+          title: Архивная
         is_active:
           type: boolean
           title: Активна
@@ -1239,6 +1301,28 @@ components:
           allOf:
           - $ref: '#/components/schemas/TypeEnum'
           title: Тип категории
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок сортировки
+        is_favorite:
+          type: boolean
+          title: Избранная
+        is_archived:
+          type: boolean
+          title: Архивная
         is_active:
           type: boolean
           title: Активна

@@ -18,6 +18,11 @@ class CategorySerializer(serializers.ModelSerializer):
             "parent",
             "name",
             "type",
+            "icon",
+            "color",
+            "sort_order",
+            "is_favorite",
+            "is_archived",
             "is_active",
             "children_count",
             "created_at",
@@ -155,6 +160,11 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
             "parent",
             "name",
             "type",
+            "icon",
+            "color",
+            "sort_order",
+            "is_favorite",
+            "is_archived",
             "is_active",
             "children",
             "created_at",
@@ -164,7 +174,7 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_children(self, obj):
         request = self.context.get("request")
-        queryset = obj.children.all().order_by("type", "name")
+        queryset = obj.children.all().order_by("sort_order", "name")
 
         if request:
             is_active = request.query_params.get("is_active")
