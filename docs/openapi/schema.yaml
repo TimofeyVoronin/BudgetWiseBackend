@@ -513,7 +513,7 @@ paths:
         name: search
         schema:
           type: string
-        description: Поиск по описанию операции.
+        description: Поиск по описанию операции. Максимальная длина 100 символов.
       - in: query
         name: type
         schema:

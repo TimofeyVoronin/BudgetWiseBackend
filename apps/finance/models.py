@@ -119,7 +119,10 @@ class Category(TimeStampedModel):
                 name="category_type_valid",
             ),
             models.CheckConstraint(
-                condition=models.Q(parent__isnull=True) | ~models.Q(parent=models.F("id")),
+                condition=(
+                    models.Q(parent__isnull=True)
+                    | ~models.Q(parent=models.F("id"))
+                ),
                 name="category_parent_not_self",
             ),
         ]
@@ -128,7 +131,10 @@ class Category(TimeStampedModel):
             models.Index(fields=["user", "type"], name="idx_category_user_type"),
             models.Index(fields=["user", "parent"], name="idx_category_user_parent"),
             models.Index(fields=["user", "is_active"], name="idx_category_user_active"),
-            models.Index(fields=["user", "name", "type"], name="idx_category_user_name_type"),
+            models.Index(
+                fields=["user", "name", "type"],
+                name="idx_category_user_name_type",
+            ),
         ]
 
     def clean(self) -> None:
@@ -139,7 +145,9 @@ class Category(TimeStampedModel):
                 errors["parent"] = "Категория не может быть родителем самой себя."
 
             if self.parent.user_id != self.user_id:
-                errors["parent"] = "Родительская категория должна принадлежать тому же пользователю."
+                errors["parent"] = (
+                    "Родительская категория должна принадлежать тому же пользователю."
+                )
 
             if self.parent.type != self.type:
                 errors["parent"] = "Родительская категория должна иметь тот же тип."
@@ -171,6 +179,7 @@ class Category(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.type})"
+
 
 class Transaction(TimeStampedModel):
     user = models.ForeignKey(
@@ -226,11 +235,30 @@ class Transaction(TimeStampedModel):
         ]
         indexes = [
             models.Index(fields=["user"], name="idx_transaction_user"),
-            models.Index(fields=["user", "operation_date"], name="idx_transaction_user_date"),
-            models.Index(fields=["account", "operation_date"], name="idx_transaction_account_date"),
-            models.Index(fields=["category", "operation_date"], name="idx_transaction_category_date"),
-            models.Index(fields=["user", "type", "operation_date"], name="idx_transaction_user_type_date"),
-            models.Index(fields=["user", "created_at"], name="idx_transaction_user_created"),
+            models.Index(
+                fields=["user", "operation_date"],
+                name="idx_transaction_user_date",
+            ),
+            models.Index(
+                fields=["user", "account", "operation_date"],
+                name="idx_tx_user_acct_date",
+            ),
+            models.Index(
+                fields=["user", "category", "operation_date"],
+                name="idx_tx_user_cat_date",
+            ),
+            models.Index(
+                fields=["user", "type", "operation_date"],
+                name="idx_tx_user_type_date",
+            ),
+            models.Index(
+                fields=["user", "amount"],
+                name="idx_tx_user_amount",
+            ),
+            models.Index(
+                fields=["user", "created_at"],
+                name="idx_tx_user_created",
+            ),
         ]
 
     def clean(self) -> None:
@@ -302,25 +330,32 @@ class Budget(TimeStampedModel):
         ]
         indexes = [
             models.Index(fields=["user"], name="idx_budget_user"),
-            models.Index(fields=["user", "period_start", "period_end"], name="idx_budget_user_period"),
+            models.Index(
+                fields=["user", "period_start", "period_end"],
+                name="idx_budget_user_period",
+            ),
             models.Index(
                 fields=["user", "category", "period_start", "period_end"],
                 name="idx_budget_user_cat_period",
             ),
             models.Index(fields=["user", "is_active"], name="idx_budget_user_active"),
-]
+        ]
 
     def clean(self) -> None:
         errors = {}
 
         if self.period_start and self.period_end and self.period_end < self.period_start:
-            errors["period_end"] = "Дата окончания периода не может быть раньше даты начала."
+            errors["period_end"] = (
+                "Дата окончания периода не может быть раньше даты начала."
+            )
 
         if self.category_id and self.user_id and self.category.user_id != self.user_id:
             errors["category"] = "Категория бюджета должна принадлежать пользователю."
 
         if self.category_id and self.category.type != TransactionType.EXPENSE:
-            errors["category"] = "Бюджет можно создавать только для категории расходов."
+            errors["category"] = (
+                "Бюджет можно создавать только для категории расходов."
+            )
 
         if errors:
             raise ValidationError(errors)

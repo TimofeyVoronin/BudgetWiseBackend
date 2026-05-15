@@ -30,6 +30,9 @@ from apps.finance.serializers import (
 )
 
 
+MAX_TRANSACTION_SEARCH_LENGTH = 100
+
+
 @extend_schema_view(
     list=extend_schema(
         tags=["finance"],
@@ -201,7 +204,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
             OpenApiParameter(
                 "search",
                 OpenApiTypes.STR,
-                description="Поиск по описанию операции.",
+                description=(
+                    "Поиск по описанию операции. Максимальная длина 100 символов."
+                ),
             ),
             OpenApiParameter(
                 "ordering",
@@ -311,6 +316,18 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
         if search:
             search_value = search.strip()
+
+            if len(search_value) > MAX_TRANSACTION_SEARCH_LENGTH:
+                raise ValidationError(
+                    {
+                        "search": [
+                            (
+                                "Параметр search не может быть длиннее "
+                                f"{MAX_TRANSACTION_SEARCH_LENGTH} символов."
+                            )
+                        ]
+                    }
+                )
 
             if search_value:
                 queryset = queryset.filter(description__icontains=search_value)
