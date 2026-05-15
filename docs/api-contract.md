@@ -216,33 +216,27 @@ API client error. status_code=400 code=invalid message=Некорректные 
 
 Серверные ошибки `5xx` логируются на уровне `ERROR` со stack trace.
 
-## Пагинация
+## Pagination
 
-Для списков используется стандартная пагинация.
+Для списочных endpoint используется page-based pagination.
 
-Параметры:
+### Query parameters
 
 | Параметр | Тип | Обязательный | Описание |
 |---|---|---|---|
-| `page` | integer | Нет | Номер страницы |
-| `page_size` | integer | Нет | Размер страницы, максимум 100 |
+| `page` | integer | нет | Номер страницы. По умолчанию используется первая страница. |
+| `page_size` | integer | нет | Размер страницы. По умолчанию `20`, максимальное значение `100`. |
 
-Базовый размер страницы:
-
-```text
-20
-```
-
-Формат пагинированного ответа:
+### Response format
 
 ```json
 {
-  "count": 100,
-  "next": "http://127.0.0.1:8000/api/v1/finance/transactions/?page=2",
+  "count": 125,
+  "next": "http://127.0.0.1:8000/api/v1/finance/transactions/?page=2&page_size=20",
   "previous": null,
   "results": []
 }
-```
+
 
 ## Соответствие API и ORM-моделей
 

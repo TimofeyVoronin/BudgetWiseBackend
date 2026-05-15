@@ -469,6 +469,16 @@ paths:
         schema:
           type: integer
       - in: query
+        name: amount_max
+        schema:
+          type: number
+        description: Максимальная сумма операции.
+      - in: query
+        name: amount_min
+        schema:
+          type: number
+        description: Минимальная сумма операции.
+      - in: query
         name: category
         schema:
           type: integer
@@ -486,18 +496,24 @@ paths:
         name: ordering
         schema:
           type: string
-      - name: page
-        required: false
-        in: query
-        description: A page number within the paginated result set.
+        description: 'Сортировка. Поддерживаются поля: date, operation_date, amount,
+          name, description, category, created_at. Для сортировки по убыванию используйте
+          префикс ''-''. Можно передать несколько полей через запятую, например: -operation_date,amount.'
+      - in: query
+        name: page
         schema:
           type: integer
-      - name: page_size
-        required: false
-        in: query
-        description: Number of results to return per page.
+        description: Номер страницы. По умолчанию используется первая страница.
+      - in: query
+        name: page_size
         schema:
           type: integer
+        description: Размер страницы. По умолчанию 20, максимум 100.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по описанию операции. Максимальная длина 100 символов.
       - in: query
         name: type
         schema:
