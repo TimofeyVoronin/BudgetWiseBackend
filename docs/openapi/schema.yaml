@@ -496,6 +496,9 @@ paths:
         name: ordering
         schema:
           type: string
+        description: 'Сортировка. Поддерживаются поля: date, operation_date, amount,
+          name, description, category, created_at. Для сортировки по убыванию используйте
+          префикс ''-''. Можно передать несколько полей через запятую, например: -operation_date,amount.'
       - in: query
         name: page
         schema:

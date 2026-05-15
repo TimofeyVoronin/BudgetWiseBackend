@@ -125,3 +125,47 @@ def get_decimal_query_param(query_params, param_name: str) -> Decimal | None:
         )
 
     return decimal_value
+
+
+def validate_ordering_fields(
+    ordering: str | None,
+    allowed_fields: dict[str, str],
+) -> list[str] | None:
+    if not ordering:
+        return None
+
+    result = []
+
+    for raw_field in ordering.split(","):
+        field = raw_field.strip()
+
+        if not field:
+            continue
+
+        direction = ""
+
+        if field.startswith("-"):
+            direction = "-"
+            field = field[1:]
+
+        if field not in allowed_fields:
+            allowed_values = sorted(
+                list(allowed_fields.keys()) + [
+                    f"-{allowed_field}" for allowed_field in allowed_fields.keys()
+                ]
+            )
+            raise ValidationError(
+                {
+                    "ordering": [
+                        (
+                            "Недопустимое поле сортировки. "
+                            f"Допустимые значения: {', '.join(allowed_values)}."
+                        )
+                    ]
+                }
+            )
+
+        orm_field = allowed_fields[field]
+        result.append(f"{direction}{orm_field}")
+
+    return result or None

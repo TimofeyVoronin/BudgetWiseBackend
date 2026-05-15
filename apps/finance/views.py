@@ -19,6 +19,7 @@ from apps.common.validation import (
     get_int_query_param,
     validate_choice_query_param,
     validate_ordering,
+    validate_ordering_fields,
 )
 from apps.finance.models import Category, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
@@ -202,7 +203,17 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 OpenApiTypes.STR,
                 description="Поиск по описанию операции.",
             ),
-            OpenApiParameter("ordering", OpenApiTypes.STR),
+            OpenApiParameter(
+                "ordering",
+                OpenApiTypes.STR,
+                description=(
+                    "Сортировка. Поддерживаются поля: date, operation_date, amount, "
+                    "name, description, category, created_at. "
+                    "Для сортировки по убыванию используйте префикс '-'. "
+                    "Можно передать несколько полей через запятую, например: "
+                    "-operation_date,amount."
+                ),
+            ),
         ],
     ),
     create=extend_schema(
@@ -251,15 +262,16 @@ class TransactionViewSet(viewsets.ModelViewSet):
         amount_min = get_decimal_query_param(self.request.query_params, "amount_min")
         amount_max = get_decimal_query_param(self.request.query_params, "amount_max")
         search = self.request.query_params.get("search")
-        ordering = validate_ordering(
+        ordering_fields = validate_ordering_fields(
             self.request.query_params.get("ordering"),
             {
-                "operation_date",
-                "-operation_date",
-                "amount",
-                "-amount",
-                "created_at",
-                "-created_at",
+                "date": "operation_date",
+                "operation_date": "operation_date",
+                "amount": "amount",
+                "name": "description",
+                "description": "description",
+                "category": "category__name",
+                "created_at": "created_at",
             },
         )
 
@@ -303,7 +315,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             if search_value:
                 queryset = queryset.filter(description__icontains=search_value)
 
-        if ordering:
-            queryset = queryset.order_by(ordering)
+        if ordering_fields:
+            queryset = queryset.order_by(*ordering_fields)
 
         return queryset
