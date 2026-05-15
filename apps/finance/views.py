@@ -6,13 +6,16 @@ from drf_spectacular.utils import (
 )
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common.exceptions import ConflictError
+from apps.common.pagination import StandardResultsSetPagination
 from apps.common.validation import (
     get_bool_query_param,
     get_date_query_param,
+    get_decimal_query_param,
     get_int_query_param,
     validate_choice_query_param,
     validate_ordering,
@@ -63,7 +66,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
         if not self.request.user.is_authenticated:
             return Category.objects.none()
 
-        queryset = Category.objects.filter(user=self.request.user).order_by("type", "name")
+        queryset = (
+            Category.objects
+            .filter(user=self.request.user)
+            .order_by("type", "name")
+        )
 
         category_type = validate_choice_query_param(
             self.request.query_params,
@@ -127,7 +134,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
         if instance.children.exists():
             raise ConflictError(
                 {
-                    "detail": "Категорию нельзя удалить, так как у неё есть дочерние категории.",
+                    "detail": (
+                        "Категорию нельзя удалить, так как у неё есть "
+                        "дочерние категории."
+                    ),
                     "code": "category_has_children",
                 }
             )
@@ -135,7 +145,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
         if instance.transactions.exists():
             raise ConflictError(
                 {
-                    "detail": "Категорию нельзя удалить, так как она используется в операциях.",
+                    "detail": (
+                        "Категорию нельзя удалить, так как она используется "
+                        "в операциях."
+                    ),
                     "code": "category_has_transactions",
                 }
             )
@@ -143,7 +156,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
         if instance.budgets.exists():
             raise ConflictError(
                 {
-                    "detail": "Категорию нельзя удалить, так как она используется в бюджетах.",
+                    "detail": (
+                        "Категорию нельзя удалить, так как она используется "
+                        "в бюджетах."
+                    ),
                     "code": "category_has_budgets",
                 }
             )
@@ -156,11 +172,36 @@ class CategoryViewSet(viewsets.ModelViewSet):
         tags=["finance"],
         summary="Получить список операций",
         parameters=[
+            OpenApiParameter(
+                "page",
+                OpenApiTypes.INT,
+                description="Номер страницы. По умолчанию используется первая страница.",
+            ),
+            OpenApiParameter(
+                "page_size",
+                OpenApiTypes.INT,
+                description="Размер страницы. По умолчанию 20, максимум 100.",
+            ),
             OpenApiParameter("account", OpenApiTypes.INT),
             OpenApiParameter("category", OpenApiTypes.INT),
             OpenApiParameter("type", OpenApiTypes.STR),
             OpenApiParameter("date_from", OpenApiTypes.DATE),
             OpenApiParameter("date_to", OpenApiTypes.DATE),
+            OpenApiParameter(
+                "amount_min",
+                OpenApiTypes.NUMBER,
+                description="Минимальная сумма операции.",
+            ),
+            OpenApiParameter(
+                "amount_max",
+                OpenApiTypes.NUMBER,
+                description="Максимальная сумма операции.",
+            ),
+            OpenApiParameter(
+                "search",
+                OpenApiTypes.STR,
+                description="Поиск по описанию операции.",
+            ),
             OpenApiParameter("ordering", OpenApiTypes.STR),
         ],
     ),
@@ -184,6 +225,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
 class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated, IsObjectOwner]
+    pagination_class = StandardResultsSetPagination
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
@@ -191,7 +233,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
             return Transaction.objects.none()
 
         queryset = (
-            Transaction.objects.filter(user=self.request.user)
+            Transaction.objects
+            .filter(user=self.request.user)
             .select_related("account", "category")
             .order_by("-operation_date", "-created_at")
         )
@@ -205,6 +248,9 @@ class TransactionViewSet(viewsets.ModelViewSet):
         )
         date_from = get_date_query_param(self.request.query_params, "date_from")
         date_to = get_date_query_param(self.request.query_params, "date_to")
+        amount_min = get_decimal_query_param(self.request.query_params, "amount_min")
+        amount_max = get_decimal_query_param(self.request.query_params, "amount_max")
+        search = self.request.query_params.get("search")
         ordering = validate_ordering(
             self.request.query_params.get("ordering"),
             {
@@ -216,6 +262,19 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 "-created_at",
             },
         )
+
+        if (
+            amount_min is not None
+            and amount_max is not None
+            and amount_min > amount_max
+        ):
+            raise ValidationError(
+                {
+                    "amount_min": [
+                        "Параметр amount_min не может быть больше amount_max."
+                    ]
+                }
+            )
 
         if account_id is not None:
             queryset = queryset.filter(account_id=account_id)
@@ -231,6 +290,18 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
         if date_to:
             queryset = queryset.filter(operation_date__lte=date_to)
+
+        if amount_min is not None:
+            queryset = queryset.filter(amount__gte=amount_min)
+
+        if amount_max is not None:
+            queryset = queryset.filter(amount__lte=amount_max)
+
+        if search:
+            search_value = search.strip()
+
+            if search_value:
+                queryset = queryset.filter(description__icontains=search_value)
 
         if ordering:
             queryset = queryset.order_by(ordering)

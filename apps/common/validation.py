@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Iterable
+from decimal import Decimal, InvalidOperation
 
 from django.utils.dateparse import parse_date
 from rest_framework.exceptions import ValidationError
@@ -95,3 +96,32 @@ def validate_ordering(
         )
 
     return ordering
+
+
+def get_decimal_query_param(query_params, param_name: str) -> Decimal | None:
+    value = query_params.get(param_name)
+
+    if value in (None, ""):
+        return None
+
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValidationError(
+            {
+                param_name: [
+                    f"Параметр {param_name} должен быть числом."
+                ]
+            }
+        )
+
+    if decimal_value < 0:
+        raise ValidationError(
+            {
+                param_name: [
+                    f"Параметр {param_name} не может быть отрицательным."
+                ]
+            }
+        )
+
+    return decimal_value
