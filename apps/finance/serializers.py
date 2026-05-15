@@ -1,3 +1,4 @@
+from django.db.models import Max
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
@@ -130,8 +131,64 @@ class CategorySerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context["request"]
-        validated_data["user"] = request.user
+        user = request.user
+
+        validated_data["user"] = user
+
+        if "sort_order" not in validated_data:
+            validated_data["sort_order"] = self._get_next_sort_order(
+                user=user,
+                category_type=validated_data["type"],
+                parent=validated_data.get("parent"),
+            )
+
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        parent_changed = (
+            "parent" in validated_data
+            and validated_data["parent"] != instance.parent
+        )
+        type_changed = (
+            "type" in validated_data
+            and validated_data["type"] != instance.type
+        )
+
+        if (parent_changed or type_changed) and "sort_order" not in validated_data:
+            validated_data["sort_order"] = self._get_next_sort_order(
+                user=instance.user,
+                category_type=validated_data.get("type", instance.type),
+                parent=validated_data.get("parent", instance.parent),
+                exclude_instance=instance,
+            )
+
+        return super().update(instance, validated_data)
+
+    def _get_next_sort_order(
+        self,
+        *,
+        user,
+        category_type: str,
+        parent: Category | None,
+        exclude_instance: Category | None = None,
+    ) -> int:
+        queryset = Category.objects.filter(
+            user=user,
+            type=category_type,
+            parent=parent,
+        )
+
+        if exclude_instance is not None:
+            queryset = queryset.exclude(pk=exclude_instance.pk)
+
+        max_sort_order = queryset.aggregate(
+            max_sort_order=Max("sort_order")
+        )["max_sort_order"]
+
+        if max_sort_order is None:
+            return 0
+
+        return max_sort_order + 1
 
     def _has_parent_cycle(self, instance: Category, parent: Category) -> bool:
         current_parent = parent
@@ -174,7 +231,7 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_children(self, obj):
         request = self.context.get("request")
-        queryset = obj.children.all().order_by("sort_order", "name")
+        queryset = obj.children.all().order_by("sort_order", "name", "id")
 
         if request:
             is_active = request.query_params.get("is_active")

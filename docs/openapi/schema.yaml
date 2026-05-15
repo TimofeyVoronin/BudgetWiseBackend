@@ -295,6 +295,8 @@ paths:
         name: ordering
         schema:
           type: string
+        description: 'Сортировка категорий. Поддерживаются поля: name, type, sort_order,
+          created_at, updated_at. Для сортировки по убыванию используйте префикс ''-''.'
       - name: page
         required: false
         in: query

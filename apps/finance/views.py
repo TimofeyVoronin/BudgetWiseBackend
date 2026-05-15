@@ -41,7 +41,15 @@ MAX_TRANSACTION_SEARCH_LENGTH = 100
             OpenApiParameter("type", OpenApiTypes.STR),
             OpenApiParameter("parent", OpenApiTypes.INT),
             OpenApiParameter("is_active", OpenApiTypes.BOOL),
-            OpenApiParameter("ordering", OpenApiTypes.STR),
+            OpenApiParameter(
+                "ordering",
+                OpenApiTypes.STR,
+                description=(
+                    "Сортировка категорий. Поддерживаются поля: name, type, "
+                    "sort_order, created_at, updated_at. "
+                    "Для сортировки по убыванию используйте префикс '-'."
+                ),
+            ),
         ],
     ),
     create=extend_schema(
@@ -73,7 +81,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         queryset = (
             Category.objects
             .filter(user=self.request.user)
-            .order_by("type", "name")
+            .order_by("type", "parent_id", "sort_order", "name", "id")
         )
 
         category_type = validate_choice_query_param(
@@ -90,8 +98,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 "-name",
                 "type",
                 "-type",
+                "sort_order",
+                "-sort_order",
                 "created_at",
                 "-created_at",
+                "updated_at",
+                "-updated_at",
             },
         )
 
@@ -123,7 +135,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         queryset = (
             self.get_queryset()
             .filter(parent__isnull=True)
-            .order_by("type", "name")
+            .order_by("type", "sort_order", "name", "id")
         )
         serializer = CategoryTreeSerializer(
             queryset,

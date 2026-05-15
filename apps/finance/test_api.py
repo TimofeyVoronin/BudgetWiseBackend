@@ -208,6 +208,223 @@ class FinanceAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(response.data["success"])
         self.assertIn("parent", response.data["error"]["field_errors"])
+    
+    def test_category_create_without_sort_order_appends_to_siblings(self):
+        self.authenticate()
+
+        current_max_sort_order = (
+            Category.objects
+            .filter(
+                user=self.user,
+                type=TransactionType.EXPENSE,
+                parent__isnull=True,
+            )
+            .order_by("-sort_order")
+            .values_list("sort_order", flat=True)
+            .first()
+        )
+
+        first_expected_sort_order = (
+            0 if current_max_sort_order is None else current_max_sort_order + 1
+        )
+
+        first_response = self.client.post(
+            reverse("finance:category-list"),
+            data={
+                "parent": None,
+                "name": "Первая категория",
+                "type": TransactionType.EXPENSE,
+                "icon": "cart",
+                "color": "#4F46E5",
+            },
+            format="json",
+        )
+
+        second_response = self.client.post(
+            reverse("finance:category-list"),
+            data={
+                "parent": None,
+                "name": "Вторая категория",
+                "type": TransactionType.EXPENSE,
+                "icon": "home",
+                "color": "#10B981",
+            },
+            format="json",
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second_response.status_code, status.HTTP_201_CREATED)
+
+        self.assertEqual(first_response.data["sort_order"], first_expected_sort_order)
+        self.assertEqual(second_response.data["sort_order"], first_expected_sort_order + 1)
+
+    def test_category_child_create_without_sort_order_appends_to_parent_children(self):
+        self.authenticate()
+
+        parent = Category.objects.create(
+            user=self.user,
+            name="Родитель",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+        first_child = Category.objects.create(
+            user=self.user,
+            parent=parent,
+            name="Первый ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+
+        response = self.client.post(
+            reverse("finance:category-list"),
+            data={
+                "parent": parent.id,
+                "name": "Второй ребёнок",
+                "type": TransactionType.EXPENSE,
+                "icon": "cart",
+                "color": "#4F46E5",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["parent"], parent.id)
+        self.assertEqual(response.data["sort_order"], first_child.sort_order + 1)
+
+    def test_category_tree_is_ordered_by_sort_order_inside_hierarchy(self):
+        self.authenticate()
+
+        second_parent = Category.objects.create(
+            user=self.user,
+            name="Второй родитель",
+            type=TransactionType.EXPENSE,
+            sort_order=2,
+        )
+        first_parent = Category.objects.create(
+            user=self.user,
+            name="Первый родитель",
+            type=TransactionType.EXPENSE,
+            sort_order=1,
+        )
+        second_child = Category.objects.create(
+            user=self.user,
+            parent=first_parent,
+            name="Второй ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=2,
+        )
+        first_child = Category.objects.create(
+            user=self.user,
+            parent=first_parent,
+            name="Первый ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=1,
+        )
+
+        response = self.client.get(
+            reverse("finance:category-tree"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "is_active": "true",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response_ids = [item["id"] for item in response.data]
+
+        self.assertLess(
+            response_ids.index(first_parent.id),
+            response_ids.index(second_parent.id),
+        )
+
+        first_parent_node = next(
+            item for item in response.data if item["id"] == first_parent.id
+        )
+        child_ids = [item["id"] for item in first_parent_node["children"]]
+
+        self.assertEqual(child_ids, [first_child.id, second_child.id])
+
+    def test_category_update_parent_to_descendant_returns_bad_request(self):
+        self.authenticate()
+
+        root = Category.objects.create(
+            user=self.user,
+            name="Корень",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+        child = Category.objects.create(
+            user=self.user,
+            parent=root,
+            name="Дочерняя категория",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+        grandchild = Category.objects.create(
+            user=self.user,
+            parent=child,
+            name="Вложенная категория",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+
+        response = self.client.patch(
+            reverse("finance:category-detail", kwargs={"pk": root.id}),
+            data={
+                "parent": grandchild.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("parent", response.data["error"]["field_errors"])
+
+        root.refresh_from_db()
+        self.assertIsNone(root.parent)
+
+    def test_category_move_to_new_parent_without_sort_order_appends_to_new_siblings(self):
+        self.authenticate()
+
+        first_parent = Category.objects.create(
+            user=self.user,
+            name="Первый родитель",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+        second_parent = Category.objects.create(
+            user=self.user,
+            name="Второй родитель",
+            type=TransactionType.EXPENSE,
+            sort_order=1,
+        )
+        existing_child = Category.objects.create(
+            user=self.user,
+            parent=second_parent,
+            name="Существующий ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+        moved_child = Category.objects.create(
+            user=self.user,
+            parent=first_parent,
+            name="Перемещаемый ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+
+        response = self.client.patch(
+            reverse("finance:category-detail", kwargs={"pk": moved_child.id}),
+            data={
+                "parent": second_parent.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["parent"], second_parent.id)
+        self.assertEqual(response.data["sort_order"], existing_child.sort_order + 1)
 
     def test_delete_category_with_transactions_returns_conflict(self):
         self.authenticate()
