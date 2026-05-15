@@ -1,4 +1,6 @@
+from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
@@ -6,6 +8,7 @@ from apps.finance.models import (
     Account,
     Category,
     Transaction,
+    TransactionType,
 )
 
 
@@ -269,6 +272,234 @@ class CategoryArchiveSerializer(serializers.Serializer):
                 else "Категория восстановлена из архива."
             ),
         }
+
+
+class CategoryReorderItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    parent = serializers.IntegerField(required=False, allow_null=True)
+    parentId = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    sort_order = serializers.IntegerField(required=False, min_value=0)
+    position = serializers.IntegerField(required=False, min_value=0, write_only=True)
+
+    def validate(self, attrs):
+        if "parent" not in attrs and "parentId" in attrs:
+            attrs["parent"] = attrs["parentId"]
+
+        if "parent" not in attrs:
+            attrs["parent"] = None
+
+        if "sort_order" not in attrs and "position" in attrs:
+            attrs["sort_order"] = attrs["position"]
+
+        if "sort_order" not in attrs:
+            raise serializers.ValidationError(
+                {
+                    "sort_order": (
+                        "Укажите sort_order или position для новой позиции категории."
+                    )
+                }
+            )
+
+        return attrs
+
+
+class CategoryReorderSerializer(serializers.Serializer):
+    type = serializers.ChoiceField(
+        choices=TransactionType.values,
+        required=False,
+        write_only=True,
+    )
+    kind = serializers.ChoiceField(
+        choices=TransactionType.values,
+        required=False,
+        write_only=True,
+    )
+    order = CategoryReorderItemSerializer(many=True, write_only=True)
+
+    detail = serializers.CharField(read_only=True)
+    updated_count = serializers.IntegerField(read_only=True)
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if user is None or not user.is_authenticated:
+            raise serializers.ValidationError(
+                {
+                    "detail": "Пользователь не авторизован."
+                }
+            )
+
+        category_type = attrs.get("type") or attrs.get("kind")
+
+        if not category_type:
+            raise serializers.ValidationError(
+                {
+                    "type": "Укажите type или kind для перестановки категорий."
+                }
+            )
+
+        order_items = attrs.get("order") or []
+
+        if not order_items:
+            raise serializers.ValidationError(
+                {
+                    "order": "Передайте непустой список категорий для перестановки."
+                }
+            )
+
+        category_ids = [item["id"] for item in order_items]
+
+        if len(category_ids) != len(set(category_ids)):
+            raise serializers.ValidationError(
+                {
+                    "order": "Список категорий содержит повторяющиеся id."
+                }
+            )
+
+        categories = Category.objects.filter(
+            user=user,
+            id__in=category_ids,
+        )
+        categories_by_id = {
+            category.id: category
+            for category in categories
+        }
+
+        if len(categories_by_id) != len(category_ids):
+            raise serializers.ValidationError(
+                {
+                    "order": (
+                        "Все категории из order должны принадлежать "
+                        "текущему пользователю."
+                    )
+                }
+            )
+
+        wrong_type_ids = [
+            category.id
+            for category in categories_by_id.values()
+            if category.type != category_type
+        ]
+
+        if wrong_type_ids:
+            raise serializers.ValidationError(
+                {
+                    "order": (
+                        "Все перемещаемые категории должны иметь тип "
+                        f"{category_type}."
+                    )
+                }
+            )
+
+        parent_ids = {
+            item["parent"]
+            for item in order_items
+            if item.get("parent") is not None
+        }
+
+        all_type_categories = Category.objects.filter(
+            user=user,
+            type=category_type,
+        )
+        parent_map = {
+            category.id: category.parent_id
+            for category in all_type_categories
+        }
+
+        missing_parent_ids = [
+            parent_id
+            for parent_id in parent_ids
+            if parent_id not in parent_map
+        ]
+
+        if missing_parent_ids:
+            raise serializers.ValidationError(
+                {
+                    "order": (
+                        "Все родительские категории должны принадлежать "
+                        "текущему пользователю и иметь тот же тип."
+                    )
+                }
+            )
+
+        proposed_parent_map = dict(parent_map)
+
+        for item in order_items:
+            category_id = item["id"]
+            parent_id = item.get("parent")
+
+            if parent_id == category_id:
+                raise serializers.ValidationError(
+                    {
+                        "order": "Категория не может быть родителем самой себя."
+                    }
+                )
+
+            proposed_parent_map[category_id] = parent_id
+
+        if self._has_cycles(proposed_parent_map):
+            raise serializers.ValidationError(
+                {
+                    "order": "В иерархии категорий обнаружена циклическая связь."
+                }
+            )
+
+        attrs["type"] = category_type
+        attrs["categories_by_id"] = categories_by_id
+        return attrs
+
+    def create(self, validated_data):
+        order_items = validated_data["order"]
+        categories_by_id = validated_data["categories_by_id"]
+
+        now = timezone.now()
+        categories_to_update = []
+
+        with transaction.atomic():
+            locked_categories = (
+                Category.objects
+                .select_for_update()
+                .filter(id__in=categories_by_id.keys())
+            )
+            locked_categories_by_id = {
+                category.id: category
+                for category in locked_categories
+            }
+
+            for item in order_items:
+                category = locked_categories_by_id[item["id"]]
+                category.parent_id = item.get("parent")
+                category.sort_order = item["sort_order"]
+                category.updated_at = now
+                categories_to_update.append(category)
+
+            Category.objects.bulk_update(
+                categories_to_update,
+                fields=["parent", "sort_order", "updated_at"],
+            )
+
+        return {
+            "detail": "Порядок категорий обновлён.",
+            "updated_count": len(categories_to_update),
+        }
+
+    def update(self, instance, validated_data):
+        raise NotImplementedError("CategoryReorderSerializer does not update objects.")
+
+    def _has_cycles(self, parent_map: dict[int, int | None]) -> bool:
+        for category_id in parent_map:
+            visited = set()
+            current_id = category_id
+
+            while current_id is not None:
+                if current_id in visited:
+                    return True
+
+                visited.add(current_id)
+                current_id = parent_map.get(current_id)
+
+        return False
 
 
 class CategoryTreeSerializer(serializers.ModelSerializer):

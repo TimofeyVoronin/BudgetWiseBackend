@@ -26,6 +26,7 @@ from apps.finance.permissions import IsObjectOwner
 from apps.finance.serializers import (
     CategoryArchiveSerializer,
     CategoryFavoriteSerializer,
+    CategoryReorderSerializer,
     CategorySerializer,
     CategoryTreeSerializer,
     TransactionSerializer,
@@ -322,6 +323,28 @@ class CategoryViewSet(viewsets.ModelViewSet):
         serializer.save()
 
         return Response(serializer.data)
+
+    @extend_schema(
+        tags=["finance"],
+        summary="Изменить порядок и иерархию категорий",
+        description=(
+            "Endpoint используется после drag & drop. "
+            "Можно передавать backend-поля parent/sort_order или фронтовые "
+            "поля parentId/position."
+        ),
+        request=CategoryReorderSerializer,
+        responses={200: CategoryReorderSerializer},
+    )
+    @action(detail=False, methods=["put"], url_path="reorder")
+    def reorder(self, request):
+        serializer = CategoryReorderSerializer(
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+
+        return Response(result)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
