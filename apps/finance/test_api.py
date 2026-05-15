@@ -654,6 +654,176 @@ class FinanceAPITests(TestCase):
         with self.assertRaises(ValidationError):
             budget.full_clean()
 
+    def test_category_favorite_endpoint_sets_category_as_favorite(self):
+        self.authenticate()
+
+        response = self.client.patch(
+            reverse(
+                "finance:category-favorite",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={
+                "favorite": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.expense_category.id)
+        self.assertTrue(response.data["is_favorite"])
+        self.assertEqual(response.data["detail"], "Категория добавлена в избранное.")
+
+        self.expense_category.refresh_from_db()
+        self.assertTrue(self.expense_category.is_favorite)
+
+    def test_category_favorite_endpoint_removes_category_from_favorites(self):
+        self.authenticate()
+
+        self.expense_category.is_favorite = True
+        self.expense_category.save(update_fields=["is_favorite"])
+
+        response = self.client.patch(
+            reverse(
+                "finance:category-favorite",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={
+                "favorite": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.expense_category.id)
+        self.assertFalse(response.data["is_favorite"])
+        self.assertEqual(response.data["detail"], "Категория удалена из избранного.")
+
+        self.expense_category.refresh_from_db()
+        self.assertFalse(self.expense_category.is_favorite)
+
+    def test_category_favorite_endpoint_requires_favorite_field(self):
+        self.authenticate()
+
+        response = self.client.patch(
+            reverse(
+                "finance:category-favorite",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("favorite", response.data["error"]["field_errors"])
+
+    def test_category_favorite_endpoint_does_not_allow_foreign_category(self):
+        self.authenticate()
+
+        response = self.client.patch(
+            reverse(
+                "finance:category-favorite",
+                kwargs={"pk": self.other_category.id},
+            ),
+            data={
+                "favorite": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(response.data["success"])
+
+        self.other_category.refresh_from_db()
+        self.assertFalse(self.other_category.is_favorite)
+
+    def test_category_list_filters_by_is_favorite(self):
+        self.authenticate()
+
+        self.expense_category.is_favorite = True
+        self.expense_category.save(update_fields=["is_favorite"])
+
+        favorite_response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "is_favorite": "true",
+            },
+        )
+
+        self.assertEqual(favorite_response.status_code, status.HTTP_200_OK)
+
+        favorite_ids = [
+            item["id"]
+            for item in favorite_response.data["results"]
+        ]
+
+        self.assertIn(self.expense_category.id, favorite_ids)
+        self.assertNotIn(self.transport_category.id, favorite_ids)
+
+        not_favorite_response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "is_favorite": "false",
+            },
+        )
+
+        self.assertEqual(not_favorite_response.status_code, status.HTTP_200_OK)
+
+        not_favorite_ids = [
+            item["id"]
+            for item in not_favorite_response.data["results"]
+        ]
+
+        self.assertNotIn(self.expense_category.id, not_favorite_ids)
+        self.assertIn(self.transport_category.id, not_favorite_ids)
+
+    def test_category_tree_filters_favorite_categories_and_children(self):
+        self.authenticate()
+
+        parent = Category.objects.create(
+            user=self.user,
+            name="Избранный родитель",
+            type=TransactionType.EXPENSE,
+            sort_order=10,
+            is_favorite=True,
+        )
+        favorite_child = Category.objects.create(
+            user=self.user,
+            parent=parent,
+            name="Избранный ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+            is_favorite=True,
+        )
+        not_favorite_child = Category.objects.create(
+            user=self.user,
+            parent=parent,
+            name="Обычный ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=1,
+            is_favorite=False,
+        )
+
+        response = self.client.get(
+            reverse("finance:category-tree"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "is_favorite": "true",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        parent_node = next(
+            item for item in response.data if item["id"] == parent.id
+        )
+        child_ids = [item["id"] for item in parent_node["children"]]
+
+        self.assertIn(favorite_child.id, child_ids)
+        self.assertNotIn(not_favorite_child.id, child_ids)
+
     def test_delete_category_with_transactions_returns_conflict(self):
         self.authenticate()
 

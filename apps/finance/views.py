@@ -24,6 +24,7 @@ from apps.common.validation import (
 from apps.finance.models import Category, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
 from apps.finance.serializers import (
+    CategoryFavoriteSerializer,
     CategorySerializer,
     CategoryTreeSerializer,
     TransactionSerializer,
@@ -47,6 +48,14 @@ MAX_TRANSACTION_SEARCH_LENGTH = 100
                 description=(
                     "Фильтр по архивному состоянию категории. "
                     "true - только архивные, false - только неархивные."
+                ),
+            ),
+            OpenApiParameter(
+                "is_favorite",
+                OpenApiTypes.BOOL,
+                description=(
+                    "Фильтр по избранным категориям. "
+                    "true - только избранные, false - только не избранные."
                 ),
             ),
             OpenApiParameter(
@@ -103,6 +112,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
             self.request.query_params,
             "is_archived",
         )
+        is_favorite = get_bool_query_param(
+            self.request.query_params,
+            "is_favorite",
+        )
         ordering = validate_ordering(
             self.request.query_params.get("ordering"),
             {
@@ -131,6 +144,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
         if is_archived is not None:
             queryset = queryset.filter(is_archived=is_archived)
 
+        if is_favorite is not None:
+            queryset = queryset.filter(is_favorite=is_favorite)
+
         if ordering:
             queryset = queryset.order_by(ordering)
 
@@ -150,6 +166,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
                     "true - только архивные, false - только неархивные."
                 ),
             ),
+            OpenApiParameter(
+                "is_favorite",
+                OpenApiTypes.BOOL,
+                description=(
+                    "Фильтр по избранным категориям. "
+                    "true - только избранные, false - только не избранные."
+                ),
+            ),
         ],
         responses={200: CategoryTreeSerializer(many=True)},
     )
@@ -165,6 +189,25 @@ class CategoryViewSet(viewsets.ModelViewSet):
             many=True,
             context=self.get_serializer_context(),
         )
+        return Response(serializer.data)
+
+    @extend_schema(
+        tags=["finance"],
+        summary="Изменить признак избранной категории",
+        request=CategoryFavoriteSerializer,
+        responses={200: CategoryFavoriteSerializer},
+    )
+    @action(detail=True, methods=["patch"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        instance = self.get_object()
+        serializer = CategoryFavoriteSerializer(
+            instance=instance,
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
         return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):

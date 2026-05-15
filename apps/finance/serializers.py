@@ -207,6 +207,33 @@ class CategorySerializer(serializers.ModelSerializer):
         return False
 
 
+class CategoryFavoriteSerializer(serializers.Serializer):
+    favorite = serializers.BooleanField(write_only=True)
+
+    id = serializers.IntegerField(read_only=True)
+    is_favorite = serializers.BooleanField(read_only=True)
+    detail = serializers.CharField(read_only=True)
+
+    def update(self, instance: Category, validated_data):
+        instance.is_favorite = validated_data["favorite"]
+        instance.save(update_fields=["is_favorite", "updated_at"])
+        return instance
+
+    def create(self, validated_data):
+        raise NotImplementedError("CategoryFavoriteSerializer does not create objects.")
+
+    def to_representation(self, instance):
+        return {
+            "id": instance.id,
+            "is_favorite": instance.is_favorite,
+            "detail": (
+                "Категория добавлена в избранное."
+                if instance.is_favorite
+                else "Категория удалена из избранного."
+            ),
+        }
+
+
 class CategoryTreeSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
 
@@ -236,12 +263,16 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
         if request:
             is_active = self._get_bool_query_param(request, "is_active")
             is_archived = self._get_bool_query_param(request, "is_archived")
+            is_favorite = self._get_bool_query_param(request, "is_favorite")
 
             if is_active is not None:
                 queryset = queryset.filter(is_active=is_active)
 
             if is_archived is not None:
                 queryset = queryset.filter(is_archived=is_archived)
+
+            if is_favorite is not None:
+                queryset = queryset.filter(is_favorite=is_favorite)
 
         serializer = CategoryTreeSerializer(
             queryset,

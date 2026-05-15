@@ -298,6 +298,12 @@ paths:
         description: Фильтр по архивному состоянию категории. true - только архивные,
           false - только неархивные.
       - in: query
+        name: is_favorite
+        schema:
+          type: boolean
+        description: Фильтр по избранным категориям. true - только избранные, false
+          - только не избранные.
+      - in: query
         name: ordering
         schema:
           type: string
@@ -431,6 +437,39 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/finance/categories/{id}/favorite/:
+    patch:
+      operationId: api_v1_finance_categories_favorite_partial_update
+      summary: Изменить признак избранной категории
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Категория.
+        required: true
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCategoryFavoriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCategoryFavoriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCategoryFavoriteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryFavorite'
+          description: ''
   /api/v1/finance/categories/tree/:
     get:
       operationId: api_v1_finance_categories_tree_list
@@ -446,6 +485,12 @@ paths:
           type: boolean
         description: Фильтр по архивному состоянию категории. true - только архивные,
           false - только неархивные.
+      - in: query
+        name: is_favorite
+        schema:
+          type: boolean
+        description: Фильтр по избранным категориям. true - только избранные, false
+          - только не избранные.
       - name: page
         required: false
         in: query
@@ -985,6 +1030,22 @@ components:
       - name
       - type
       - updated_at
+    CategoryFavorite:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        is_favorite:
+          type: boolean
+          readOnly: true
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+      - id
+      - is_favorite
     CategoryRequest:
       type: object
       properties:
@@ -1299,6 +1360,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/User'
+    PatchedCategoryFavoriteRequest:
+      type: object
+      properties:
+        favorite:
+          type: boolean
+          writeOnly: true
     PatchedCategoryRequest:
       type: object
       properties:
