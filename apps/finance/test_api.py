@@ -997,6 +997,231 @@ class FinanceAPITests(TestCase):
         self.assertIn(favorite_child.id, child_ids)
         self.assertNotIn(not_favorite_child.id, child_ids)
 
+    def test_category_list_searches_by_name(self):
+        self.authenticate()
+
+        target_category = Category.objects.create(
+            user=self.user,
+            name="Кафе и рестораны",
+            type=TransactionType.EXPENSE,
+            sort_order=10,
+        )
+
+        response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "search": "кафе",
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        category_ids = [
+            item["id"]
+            for item in response.data["results"]
+        ]
+
+        self.assertIn(target_category.id, category_ids)
+        self.assertNotIn(self.transport_category.id, category_ids)
+
+    def test_category_list_filters_root_categories(self):
+        self.authenticate()
+
+        parent = Category.objects.create(
+            user=self.user,
+            name="Родитель root",
+            type=TransactionType.EXPENSE,
+            sort_order=10,
+        )
+        child = Category.objects.create(
+            user=self.user,
+            parent=parent,
+            name="Дочерняя root",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+
+        root_response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "root": "true",
+                "page_size": 50,
+            },
+        )
+
+        self.assertEqual(root_response.status_code, status.HTTP_200_OK)
+
+        root_ids = [
+            item["id"]
+            for item in root_response.data["results"]
+        ]
+
+        self.assertIn(parent.id, root_ids)
+        self.assertIn(self.expense_category.id, root_ids)
+        self.assertNotIn(child.id, root_ids)
+
+        child_response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "root": "false",
+                "page_size": 50,
+            },
+        )
+
+        self.assertEqual(child_response.status_code, status.HTTP_200_OK)
+
+        child_ids = [
+            item["id"]
+            for item in child_response.data["results"]
+        ]
+
+        self.assertIn(child.id, child_ids)
+        self.assertNotIn(parent.id, child_ids)
+        self.assertNotIn(self.expense_category.id, child_ids)
+
+    def test_category_list_combines_search_type_hierarchy_and_flags(self):
+        self.authenticate()
+
+        matching_category = Category.objects.create(
+            user=self.user,
+            name="Комбо категория",
+            type=TransactionType.EXPENSE,
+            sort_order=10,
+            is_active=True,
+            is_archived=False,
+            is_favorite=True,
+        )
+        archived_category = Category.objects.create(
+            user=self.user,
+            name="Комбо архив",
+            type=TransactionType.EXPENSE,
+            sort_order=11,
+            is_active=False,
+            is_archived=True,
+            is_favorite=True,
+        )
+        not_favorite_category = Category.objects.create(
+            user=self.user,
+            name="Комбо обычная",
+            type=TransactionType.EXPENSE,
+            sort_order=12,
+            is_active=True,
+            is_archived=False,
+            is_favorite=False,
+        )
+        income_category = Category.objects.create(
+            user=self.user,
+            name="Комбо доход",
+            type=TransactionType.INCOME,
+            sort_order=13,
+            is_active=True,
+            is_archived=False,
+            is_favorite=True,
+        )
+
+        response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "root": "true",
+                "is_active": "true",
+                "is_archived": "false",
+                "is_favorite": "true",
+                "search": "комбо",
+                "page_size": 50,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        category_ids = [
+            item["id"]
+            for item in response.data["results"]
+        ]
+
+        self.assertIn(matching_category.id, category_ids)
+        self.assertNotIn(archived_category.id, category_ids)
+        self.assertNotIn(not_favorite_category.id, category_ids)
+        self.assertNotIn(income_category.id, category_ids)
+
+    def test_category_list_invalid_root_returns_bad_request(self):
+        self.authenticate()
+
+        response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "root": "wrong",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("root", response.data["error"]["field_errors"])
+
+    def test_category_list_too_long_search_returns_bad_request(self):
+        self.authenticate()
+
+        response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "search": "a" * 101,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("search", response.data["error"]["field_errors"])
+
+    def test_category_tree_searches_root_categories_by_name(self):
+        self.authenticate()
+
+        matching_parent = Category.objects.create(
+            user=self.user,
+            name="Дерево поиск",
+            type=TransactionType.EXPENSE,
+            sort_order=10,
+        )
+        Category.objects.create(
+            user=self.user,
+            parent=matching_parent,
+            name="Дерево ребёнок",
+            type=TransactionType.EXPENSE,
+            sort_order=0,
+        )
+        not_matching_parent = Category.objects.create(
+            user=self.user,
+            name="Другая категория",
+            type=TransactionType.EXPENSE,
+            sort_order=11,
+        )
+
+        response = self.client.get(
+            reverse("finance:category-tree"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "search": "дерево",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        root_ids = [
+            item["id"]
+            for item in response.data
+        ]
+
+        self.assertIn(matching_parent.id, root_ids)
+        self.assertNotIn(not_matching_parent.id, root_ids)
+
+        matching_node = next(
+            item for item in response.data if item["id"] == matching_parent.id
+        )
+
+        self.assertEqual(len(matching_node["children"]), 1)
+
     def test_delete_category_with_transactions_returns_conflict(self):
         self.authenticate()
 

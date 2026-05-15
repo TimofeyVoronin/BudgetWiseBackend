@@ -291,6 +291,8 @@ paths:
         name: is_active
         schema:
           type: boolean
+        description: Фильтр по активности категории. true - только активные, false
+          - только неактивные.
       - in: query
         name: is_archived
         schema:
@@ -325,10 +327,23 @@ paths:
         name: parent
         schema:
           type: integer
+        description: ID родительской категории.
+      - in: query
+        name: root
+        schema:
+          type: boolean
+        description: Фильтр по уровню иерархии. true - только корневые категории,
+          false - только дочерние.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию категории. Максимальная длина 100 символов.
       - in: query
         name: type
         schema:
           type: string
+        description: 'Тип категории: income или expense.'
       tags:
       - finance
       security:
@@ -547,6 +562,8 @@ paths:
         name: is_active
         schema:
           type: boolean
+        description: Фильтр по активности категории. true - только активные, false
+          - только неактивные.
       - in: query
         name: is_archived
         schema:
@@ -572,9 +589,16 @@ paths:
         schema:
           type: integer
       - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию корневой категории. Максимальная длина 100
+          символов.
+      - in: query
         name: type
         schema:
           type: string
+        description: 'Тип категории: income или expense.'
       tags:
       - finance
       security:

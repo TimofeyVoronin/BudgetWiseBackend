@@ -171,6 +171,26 @@ class Category(TimeStampedModel):
                 name="idx_category_user_name_type",
             ),
             models.Index(
+                fields=["user", "type", "name"],
+                name="idx_cat_user_type_name",
+            ),
+            models.Index(
+                fields=["user", "type", "is_active", "is_archived", "is_favorite"],
+                name="idx_cat_user_type_flags",
+            ),
+            models.Index(
+                fields=[
+                    "user",
+                    "type",
+                    "parent",
+                    "is_active",
+                    "is_archived",
+                    "is_favorite",
+                    "sort_order",
+                ],
+                name="idx_cat_tree_flags_order",
+            ),
+            models.Index(
                 fields=["user", "type", "parent", "sort_order"],
                 name="idx_cat_user_type_parent_order",
             ),

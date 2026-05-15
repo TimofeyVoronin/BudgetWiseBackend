@@ -32,6 +32,7 @@ from apps.finance.serializers import (
 )
 
 
+MAX_CATEGORY_SEARCH_LENGTH = 100
 MAX_TRANSACTION_SEARCH_LENGTH = 100
 
 
@@ -40,9 +41,32 @@ MAX_TRANSACTION_SEARCH_LENGTH = 100
         tags=["finance"],
         summary="Получить список категорий",
         parameters=[
-            OpenApiParameter("type", OpenApiTypes.STR),
-            OpenApiParameter("parent", OpenApiTypes.INT),
-            OpenApiParameter("is_active", OpenApiTypes.BOOL),
+            OpenApiParameter(
+                "type",
+                OpenApiTypes.STR,
+                description="Тип категории: income или expense.",
+            ),
+            OpenApiParameter(
+                "parent",
+                OpenApiTypes.INT,
+                description="ID родительской категории.",
+            ),
+            OpenApiParameter(
+                "root",
+                OpenApiTypes.BOOL,
+                description=(
+                    "Фильтр по уровню иерархии. "
+                    "true - только корневые категории, false - только дочерние."
+                ),
+            ),
+            OpenApiParameter(
+                "is_active",
+                OpenApiTypes.BOOL,
+                description=(
+                    "Фильтр по активности категории. "
+                    "true - только активные, false - только неактивные."
+                ),
+            ),
             OpenApiParameter(
                 "is_archived",
                 OpenApiTypes.BOOL,
@@ -57,6 +81,14 @@ MAX_TRANSACTION_SEARCH_LENGTH = 100
                 description=(
                     "Фильтр по избранным категориям. "
                     "true - только избранные, false - только не избранные."
+                ),
+            ),
+            OpenApiParameter(
+                "search",
+                OpenApiTypes.STR,
+                description=(
+                    "Поиск по названию категории. "
+                    "Максимальная длина 100 символов."
                 ),
             ),
             OpenApiParameter(
@@ -120,6 +152,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
             TransactionType.values,
         )
         parent_id = get_int_query_param(self.request.query_params, "parent")
+        root = get_bool_query_param(self.request.query_params, "root")
         is_active = get_bool_query_param(self.request.query_params, "is_active")
         is_archived = get_bool_query_param(
             self.request.query_params,
@@ -129,6 +162,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
             self.request.query_params,
             "is_favorite",
         )
+        search = self.request.query_params.get("search")
         ordering = validate_ordering(
             self.request.query_params.get("ordering"),
             {
@@ -151,6 +185,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
         if parent_id is not None:
             queryset = queryset.filter(parent_id=parent_id)
 
+        if root is True:
+            queryset = queryset.filter(parent__isnull=True)
+
+        if root is False:
+            queryset = queryset.filter(parent__isnull=False)
+
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active)
 
@@ -159,6 +199,24 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
         if is_favorite is not None:
             queryset = queryset.filter(is_favorite=is_favorite)
+
+        if search:
+            search_value = search.strip()
+
+            if len(search_value) > MAX_CATEGORY_SEARCH_LENGTH:
+                raise ValidationError(
+                    {
+                        "search": [
+                            (
+                                "Параметр search не может быть длиннее "
+                                f"{MAX_CATEGORY_SEARCH_LENGTH} символов."
+                            )
+                        ]
+                    }
+                )
+
+            if search_value:
+                queryset = queryset.filter(name__icontains=search_value)
 
         if ordering:
             queryset = queryset.order_by(ordering)
@@ -169,8 +227,19 @@ class CategoryViewSet(viewsets.ModelViewSet):
         tags=["finance"],
         summary="Получить дерево категорий",
         parameters=[
-            OpenApiParameter("type", OpenApiTypes.STR),
-            OpenApiParameter("is_active", OpenApiTypes.BOOL),
+            OpenApiParameter(
+                "type",
+                OpenApiTypes.STR,
+                description="Тип категории: income или expense.",
+            ),
+            OpenApiParameter(
+                "is_active",
+                OpenApiTypes.BOOL,
+                description=(
+                    "Фильтр по активности категории. "
+                    "true - только активные, false - только неактивные."
+                ),
+            ),
             OpenApiParameter(
                 "is_archived",
                 OpenApiTypes.BOOL,
@@ -185,6 +254,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 description=(
                     "Фильтр по избранным категориям. "
                     "true - только избранные, false - только не избранные."
+                ),
+            ),
+            OpenApiParameter(
+                "search",
+                OpenApiTypes.STR,
+                description=(
+                    "Поиск по названию корневой категории. "
+                    "Максимальная длина 100 символов."
                 ),
             ),
         ],
