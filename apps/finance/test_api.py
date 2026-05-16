@@ -2587,6 +2587,390 @@ class FinanceAPITests(TestCase):
             ],
         )
 
+    def test_transaction_list_response_contains_frontend_read_fields(self):
+        self.authenticate()
+
+        expense_transaction = self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            type=TransactionType.EXPENSE,
+            amount="1245.00",
+            description="Покупка продуктов",
+            operation_date=self.today,
+        )
+        income_transaction = self.create_transaction(
+            account=self.account,
+            category=self.income_category,
+            type=TransactionType.INCOME,
+            amount="50000.00",
+            description="Зарплата за май",
+            operation_date=self.today,
+        )
+
+        expense_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "category": self.expense_category.id,
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(expense_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(expense_response.data["count"], 1)
+
+        expense_item = expense_response.data["results"][0]
+
+        self.assertEqual(expense_item["id"], expense_transaction.id)
+        self.assertEqual(expense_item["account"], self.account.id)
+        self.assertEqual(expense_item["account_name"], self.account.name)
+        self.assertEqual(expense_item["account_currency"], self.account.currency)
+        self.assertEqual(expense_item["category"], self.expense_category.id)
+        self.assertEqual(expense_item["category_name"], self.expense_category.name)
+        self.assertEqual(expense_item["category_icon"], self.expense_category.icon)
+        self.assertEqual(expense_item["category_color"], self.expense_category.color)
+        self.assertEqual(expense_item["type"], TransactionType.EXPENSE)
+        self.assertEqual(expense_item["kind"], TransactionType.EXPENSE)
+        self.assertEqual(expense_item["amount"], "1245.00")
+        self.assertEqual(expense_item["amount_abs"], "1245.00")
+        self.assertEqual(expense_item["signed_amount"], "-1245.00")
+        self.assertEqual(expense_item["operation_date"], str(self.today))
+        self.assertEqual(expense_item["date"], str(self.today))
+
+        income_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "category": self.income_category.id,
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(income_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(income_response.data["count"], 1)
+
+        income_item = income_response.data["results"][0]
+
+        self.assertEqual(income_item["id"], income_transaction.id)
+        self.assertEqual(income_item["type"], TransactionType.INCOME)
+        self.assertEqual(income_item["kind"], TransactionType.INCOME)
+        self.assertEqual(income_item["amount_abs"], "50000.00")
+        self.assertEqual(income_item["signed_amount"], "50000.00")
+
+    def test_transactions_list_accepts_limit_as_page_size_alias(self):
+        self.authenticate()
+
+        for index in range(7):
+            self.create_transaction(
+                amount=str(Decimal("100.00") + index),
+                description=f"Операция limit {index}",
+                operation_date=self.today - timezone.timedelta(days=index),
+            )
+
+        response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "page": 1,
+                "limit": 3,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 7)
+        self.assertIsNotNone(response.data["next"])
+        self.assertIsNone(response.data["previous"])
+        self.assertEqual(len(response.data["results"]), 3)
+
+    def test_transaction_filters_accept_frontend_aliases(self):
+        self.authenticate()
+
+        target_transaction = self.create_transaction(
+            account=self.cash_account,
+            category=self.transport_category,
+            type=TransactionType.EXPENSE,
+            amount="350.00",
+            description="Такси до университета",
+            operation_date=self.today - timezone.timedelta(days=2),
+        )
+        self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            type=TransactionType.EXPENSE,
+            amount="350.00",
+            description="Покупка продуктов",
+            operation_date=self.today - timezone.timedelta(days=2),
+        )
+        self.create_transaction(
+            account=self.cash_account,
+            category=self.transport_category,
+            type=TransactionType.EXPENSE,
+            amount="900.00",
+            description="Дорогая поездка",
+            operation_date=self.today - timezone.timedelta(days=2),
+        )
+        self.create_transaction(
+            account=self.cash_account,
+            category=self.income_category,
+            type=TransactionType.INCOME,
+            amount="350.00",
+            description="Возврат денег",
+            operation_date=self.today - timezone.timedelta(days=2),
+        )
+
+        response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "kind": TransactionType.EXPENSE,
+                "accountId": self.cash_account.id,
+                "categoryId": self.transport_category.id,
+                "dateFrom": str(self.today - timezone.timedelta(days=5)),
+                "dateTo": str(self.today),
+                "amountMin": "100.00",
+                "amountMax": "500.00",
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(self.get_transaction_ids(response), [target_transaction.id])
+
+    def test_transaction_kind_all_returns_income_and_expense_transactions(self):
+        self.authenticate()
+
+        expense_transaction = self.create_transaction(
+            type=TransactionType.EXPENSE,
+            amount="100.00",
+            description="Расход",
+            operation_date=self.today,
+        )
+        income_transaction = self.create_transaction(
+            category=self.income_category,
+            type=TransactionType.INCOME,
+            amount="50000.00",
+            description="Доход",
+            operation_date=self.today,
+        )
+        self.create_transaction(
+            user=self.other_user,
+            account=self.other_account,
+            category=self.other_category,
+            type=TransactionType.EXPENSE,
+            amount="999.00",
+            description="Чужая операция",
+            operation_date=self.today,
+        )
+
+        response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "kind": "all",
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual(
+            set(self.get_transaction_ids(response)),
+            {expense_transaction.id, income_transaction.id},
+        )
+
+    def test_transaction_searches_by_description_category_and_account_name(self):
+        self.authenticate()
+
+        transport_transaction = self.create_transaction(
+            account=self.cash_account,
+            category=self.transport_category,
+            type=TransactionType.EXPENSE,
+            amount="350.00",
+            description="Поездка",
+            operation_date=self.today,
+        )
+        product_transaction = self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            type=TransactionType.EXPENSE,
+            amount="600.00",
+            description="Покупка",
+            operation_date=self.today,
+        )
+
+        account_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "search": "наличные",
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(account_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(account_response.data["count"], 1)
+        self.assertEqual(
+            self.get_transaction_ids(account_response),
+            [transport_transaction.id],
+        )
+
+        category_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "search": "продукты",
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(category_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(category_response.data["count"], 1)
+        self.assertEqual(
+            self.get_transaction_ids(category_response),
+            [product_transaction.id],
+        )
+
+    def test_transaction_filters_by_only_with_comment_alias(self):
+        self.authenticate()
+
+        described_transaction = self.create_transaction(
+            amount="100.00",
+            description="Есть описание",
+            operation_date=self.today,
+        )
+        empty_description_transaction = self.create_transaction(
+            amount="200.00",
+            description="",
+            operation_date=self.today,
+        )
+
+        with_comment_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "onlyWithComment": "true",
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(with_comment_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(with_comment_response.data["count"], 1)
+        self.assertEqual(
+            self.get_transaction_ids(with_comment_response),
+            [described_transaction.id],
+        )
+
+        without_comment_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "onlyWithComment": "false",
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(without_comment_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(without_comment_response.data["count"], 1)
+        self.assertEqual(
+            self.get_transaction_ids(without_comment_response),
+            [empty_description_transaction.id],
+        )
+
+    def test_transaction_sort_by_and_sort_dir_aliases(self):
+        self.authenticate()
+
+        high_amount_transaction = self.create_transaction(
+            amount="300.00",
+            description="B operation",
+            operation_date=self.today,
+        )
+        low_amount_transaction = self.create_transaction(
+            amount="100.00",
+            description="A operation",
+            operation_date=self.today,
+        )
+        old_transaction = self.create_transaction(
+            amount="200.00",
+            description="C operation",
+            operation_date=self.today - timezone.timedelta(days=1),
+        )
+
+        amount_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "sortBy": "amountRub",
+                "sortDir": "desc",
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(amount_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.get_transaction_ids(amount_response),
+            [
+                high_amount_transaction.id,
+                old_transaction.id,
+                low_amount_transaction.id,
+            ],
+        )
+
+        date_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "sortBy": "date",
+                "sortDir": "asc",
+                "page_size": 20,
+            },
+        )
+
+        self.assertEqual(date_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.get_transaction_ids(date_response),
+            [
+                old_transaction.id,
+                low_amount_transaction.id,
+                high_amount_transaction.id,
+            ],
+        )
+
+    def test_transaction_frontend_alias_invalid_filters_return_bad_request(self):
+        self.authenticate()
+
+        invalid_kind_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "kind": "wrong",
+            },
+        )
+
+        self.assertEqual(
+            invalid_kind_response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertFalse(invalid_kind_response.data["success"])
+        self.assertIn("kind", invalid_kind_response.data["error"]["field_errors"])
+
+        invalid_sort_by_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "sortBy": "wrong",
+            },
+        )
+
+        self.assertEqual(
+            invalid_sort_by_response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertFalse(invalid_sort_by_response.data["success"])
+        self.assertIn("sortBy", invalid_sort_by_response.data["error"]["field_errors"])
+
+        invalid_sort_dir_response = self.client.get(
+            reverse("finance:transaction-list"),
+            data={
+                "sortBy": "date",
+                "sortDir": "wrong",
+            },
+        )
+
+        self.assertEqual(
+            invalid_sort_dir_response.status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        self.assertFalse(invalid_sort_dir_response.data["success"])
+        self.assertIn("sortDir", invalid_sort_dir_response.data["error"]["field_errors"])
+
     def test_transaction_invalid_filters_return_bad_request(self):
         self.authenticate()
 
