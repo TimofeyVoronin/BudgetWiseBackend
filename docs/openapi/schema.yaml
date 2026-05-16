@@ -582,6 +582,36 @@ paths:
               schema:
                 $ref: '#/components/schemas/CategoryReorder'
           description: ''
+  /api/v1/finance/categories/suggest/:
+    post:
+      operationId: api_v1_finance_categories_suggest_create
+      description: Интеграционная точка для smart categorization. Endpoint использует
+        простой rule-based алгоритм по названию категории и ключевым словам. Возвращаются
+        только активные и неархивные категории текущего пользователя.
+      summary: Получить подсказки категорий по описанию операции
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategorySuggestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategorySuggestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategorySuggestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategorySuggest'
+          description: ''
   /api/v1/finance/categories/tree/:
     get:
       operationId: api_v1_finance_categories_tree_list
@@ -1321,6 +1351,87 @@ components:
           title: Активна
       required:
       - name
+      - type
+    CategorySuggest:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategorySuggestion'
+          readOnly: true
+      required:
+      - suggestions
+    CategorySuggestRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          writeOnly: true
+          minLength: 2
+          maxLength: 300
+        type:
+          allOf:
+          - $ref: '#/components/schemas/Type00fEnum'
+          writeOnly: true
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/KindEnum'
+          writeOnly: true
+        limit:
+          type: integer
+          maximum: 10
+          minimum: 1
+          writeOnly: true
+          default: 3
+      required:
+      - description
+    CategorySuggestion:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        category:
+          type: integer
+          readOnly: true
+        parent:
+          type: integer
+          readOnly: true
+          nullable: true
+        name:
+          type: string
+          readOnly: true
+        type:
+          type: string
+          readOnly: true
+        icon:
+          type: string
+          readOnly: true
+        color:
+          type: string
+          readOnly: true
+        confidence:
+          type: number
+          format: double
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        matched_keyword:
+          type: string
+          readOnly: true
+          nullable: true
+      required:
+      - category
+      - color
+      - confidence
+      - icon
+      - id
+      - matched_keyword
+      - name
+      - parent
+      - reason
       - type
     CategoryTree:
       type: object

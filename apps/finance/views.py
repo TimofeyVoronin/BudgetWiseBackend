@@ -29,6 +29,7 @@ from apps.finance.serializers import (
     CategoryFavoriteSerializer,
     CategoryReorderSerializer,
     CategorySerializer,
+    CategorySuggestSerializer,
     CategoryTreeSerializer,
     TransactionSerializer,
 )
@@ -354,6 +355,29 @@ class CategoryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["put"], url_path="reorder")
     def reorder(self, request):
         serializer = CategoryReorderSerializer(
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+
+        return Response(result)
+
+    @extend_schema(
+        tags=["finance"],
+        summary="Получить подсказки категорий по описанию операции",
+        description=(
+            "Интеграционная точка для smart categorization. "
+            "Endpoint использует простой rule-based алгоритм по названию "
+            "категории и ключевым словам. Возвращаются только активные "
+            "и неархивные категории текущего пользователя."
+        ),
+        request=CategorySuggestSerializer,
+        responses={200: CategorySuggestSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="suggest")
+    def suggest(self, request):
+        serializer = CategorySuggestSerializer(
             data=request.data,
             context=self.get_serializer_context(),
         )

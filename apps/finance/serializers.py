@@ -1,3 +1,5 @@
+import re
+
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -10,6 +12,314 @@ from apps.finance.models import (
     Transaction,
     TransactionType,
 )
+
+
+MAX_CATEGORY_SUGGEST_DESCRIPTION_LENGTH = 300
+MAX_CATEGORY_SUGGESTIONS_LIMIT = 10
+
+
+CATEGORY_SUGGESTION_RULES = {
+    TransactionType.EXPENSE: [
+        (
+            (
+                "продукт",
+                "супермаркет",
+                "магазин",
+                "пятероч",
+                "пятёроч",
+                "магнит",
+                "лента",
+                "ашан",
+                "перекрест",
+                "перекрёст",
+                "metro",
+                "grocery",
+                "supermarket",
+            ),
+            (
+                "продукт",
+                "еда",
+                "питани",
+                "супермаркет",
+                "магазин",
+                "food",
+                "grocery",
+            ),
+            0.92,
+        ),
+        (
+            (
+                "кафе",
+                "ресторан",
+                "кофе",
+                "кофейня",
+                "доставка",
+                "пицца",
+                "суши",
+                "бургер",
+                "restaurant",
+                "cafe",
+                "coffee",
+                "delivery",
+            ),
+            (
+                "кафе",
+                "ресторан",
+                "кофе",
+                "доставк",
+                "еда",
+                "food",
+                "restaurant",
+                "cafe",
+            ),
+            0.9,
+        ),
+        (
+            (
+                "такси",
+                "автобус",
+                "метро",
+                "транспорт",
+                "проезд",
+                "билет",
+                "uber",
+                "taxi",
+                "bus",
+                "metro",
+                "transport",
+            ),
+            (
+                "транспорт",
+                "такси",
+                "проезд",
+                "travel",
+                "transport",
+                "taxi",
+            ),
+            0.9,
+        ),
+        (
+            (
+                "бензин",
+                "топливо",
+                "азс",
+                "заправка",
+                "газпромнефть",
+                "лукойл",
+                "fuel",
+                "gas",
+                "petrol",
+            ),
+            (
+                "топлив",
+                "бензин",
+                "авто",
+                "машин",
+                "транспорт",
+                "fuel",
+                "car",
+            ),
+            0.9,
+        ),
+        (
+            (
+                "квартира",
+                "аренда",
+                "жкх",
+                "коммунал",
+                "электрич",
+                "вода",
+                "интернет",
+                "rent",
+                "utility",
+                "utilities",
+                "internet",
+            ),
+            (
+                "жиль",
+                "квартир",
+                "аренд",
+                "дом",
+                "коммунал",
+                "интернет",
+                "housing",
+                "rent",
+                "utilities",
+            ),
+            0.88,
+        ),
+        (
+            (
+                "аптека",
+                "лекар",
+                "медицин",
+                "врач",
+                "клиника",
+                "pharmacy",
+                "medicine",
+                "clinic",
+                "doctor",
+            ),
+            (
+                "здоров",
+                "медицин",
+                "аптек",
+                "лекар",
+                "health",
+                "medicine",
+                "pharmacy",
+            ),
+            0.88,
+        ),
+        (
+            (
+                "спорт",
+                "зал",
+                "фитнес",
+                "трениров",
+                "gym",
+                "fitness",
+                "sport",
+            ),
+            (
+                "спорт",
+                "фитнес",
+                "зал",
+                "развлеч",
+                "gym",
+                "fitness",
+            ),
+            0.84,
+        ),
+        (
+            (
+                "кино",
+                "театр",
+                "игра",
+                "подписка",
+                "netflix",
+                "spotify",
+                "entertainment",
+                "subscription",
+            ),
+            (
+                "развлеч",
+                "подписк",
+                "кино",
+                "игр",
+                "entertainment",
+                "subscription",
+            ),
+            0.84,
+        ),
+        (
+            (
+                "одежда",
+                "обувь",
+                "маркетплейс",
+                "wildberries",
+                "ozon",
+                "wb",
+                "clothes",
+                "shoes",
+                "marketplace",
+            ),
+            (
+                "одеж",
+                "обув",
+                "покупк",
+                "маркет",
+                "shopping",
+                "clothes",
+            ),
+            0.84,
+        ),
+    ],
+    TransactionType.INCOME: [
+        (
+            (
+                "зарплата",
+                "зп",
+                "аванс",
+                "оклад",
+                "salary",
+                "payroll",
+                "wage",
+            ),
+            (
+                "зарплат",
+                "работ",
+                "доход",
+                "salary",
+                "payroll",
+            ),
+            0.94,
+        ),
+        (
+            (
+                "фриланс",
+                "заказ",
+                "проект",
+                "подработка",
+                "freelance",
+                "project",
+                "side job",
+            ),
+            (
+                "фриланс",
+                "заказ",
+                "проект",
+                "подработ",
+                "доход",
+                "freelance",
+            ),
+            0.9,
+        ),
+        (
+            (
+                "подарок",
+                "перевод",
+                "возврат",
+                "кэшбэк",
+                "cashback",
+                "refund",
+                "gift",
+                "transfer",
+            ),
+            (
+                "подар",
+                "перевод",
+                "возврат",
+                "кэшбэк",
+                "cashback",
+                "refund",
+                "gift",
+            ),
+            0.86,
+        ),
+        (
+            (
+                "процент",
+                "вклад",
+                "дивиденд",
+                "инвест",
+                "interest",
+                "deposit",
+                "dividend",
+                "investment",
+            ),
+            (
+                "инвест",
+                "дивиденд",
+                "процент",
+                "вклад",
+                "investment",
+                "dividend",
+            ),
+            0.86,
+        ),
+    ],
+}
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -539,6 +849,270 @@ class CategoryReorderSerializer(serializers.Serializer):
                 current_id = parent_map.get(current_id)
 
         return False
+
+
+class CategorySuggestionSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    category = serializers.IntegerField(read_only=True)
+    parent = serializers.IntegerField(read_only=True, allow_null=True)
+    name = serializers.CharField(read_only=True)
+    type = serializers.CharField(read_only=True)
+    icon = serializers.CharField(read_only=True)
+    color = serializers.CharField(read_only=True)
+    confidence = serializers.FloatField(read_only=True)
+    reason = serializers.CharField(read_only=True)
+    matched_keyword = serializers.CharField(read_only=True, allow_null=True)
+
+
+class CategorySuggestSerializer(serializers.Serializer):
+    description = serializers.CharField(
+        write_only=True,
+        trim_whitespace=True,
+        min_length=2,
+        max_length=MAX_CATEGORY_SUGGEST_DESCRIPTION_LENGTH,
+    )
+    type = serializers.ChoiceField(
+        choices=TransactionType.values,
+        required=False,
+        write_only=True,
+    )
+    kind = serializers.ChoiceField(
+        choices=TransactionType.values,
+        required=False,
+        write_only=True,
+    )
+    limit = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=MAX_CATEGORY_SUGGESTIONS_LIMIT,
+        default=3,
+        write_only=True,
+    )
+
+    suggestions = CategorySuggestionSerializer(many=True, read_only=True)
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if user is None or not user.is_authenticated:
+            raise serializers.ValidationError(
+                {
+                    "detail": "Пользователь не авторизован."
+                }
+            )
+
+        category_type = attrs.get("type") or attrs.get("kind")
+
+        if not category_type:
+            raise serializers.ValidationError(
+                {
+                    "type": "Укажите type или kind для подбора категории."
+                }
+            )
+
+        description = attrs.get("description", "").strip()
+
+        if not description:
+            raise serializers.ValidationError(
+                {
+                    "description": "Описание операции не может быть пустым."
+                }
+            )
+
+        attrs["type"] = category_type
+        attrs["description"] = description
+        return attrs
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        user = request.user
+
+        description = validated_data["description"]
+        category_type = validated_data["type"]
+        limit = validated_data.get("limit", 3)
+
+        normalized_description = self._normalize_text(description)
+
+        categories = (
+            Category.objects
+            .filter(
+                user=user,
+                type=category_type,
+                is_active=True,
+                is_archived=False,
+            )
+            .order_by("-is_favorite", "sort_order", "name", "id")
+        )
+
+        suggestions = []
+
+        for category in categories:
+            suggestion = self._build_suggestion(
+                category=category,
+                normalized_description=normalized_description,
+                category_type=category_type,
+            )
+
+            if suggestion is not None:
+                suggestions.append(suggestion)
+
+        suggestions.sort(
+            key=lambda item: (
+                -item["confidence"],
+                item["name"].lower(),
+                item["id"],
+            )
+        )
+
+        return {
+            "suggestions": suggestions[:limit],
+        }
+
+    def update(self, instance, validated_data):
+        raise NotImplementedError("CategorySuggestSerializer does not update objects.")
+
+    def _build_suggestion(
+        self,
+        *,
+        category: Category,
+        normalized_description: str,
+        category_type: str,
+    ) -> dict | None:
+        normalized_name = self._normalize_text(category.name)
+        name_score = self._get_name_match_score(
+            normalized_name=normalized_name,
+            normalized_description=normalized_description,
+        )
+
+        if name_score is not None:
+            return self._serialize_suggestion(
+                category=category,
+                confidence=name_score,
+                reason="Найдено совпадение с названием категории.",
+                matched_keyword=category.name,
+            )
+
+        rule_match = self._find_rule_match(
+            category=category,
+            normalized_description=normalized_description,
+            category_type=category_type,
+        )
+
+        if rule_match is None:
+            return None
+
+        matched_keyword, confidence = rule_match
+
+        return self._serialize_suggestion(
+            category=category,
+            confidence=confidence,
+            reason=f"Найдено совпадение по ключевому слову: {matched_keyword}.",
+            matched_keyword=matched_keyword,
+        )
+
+    def _serialize_suggestion(
+        self,
+        *,
+        category: Category,
+        confidence: float,
+        reason: str,
+        matched_keyword: str | None,
+    ) -> dict:
+        return {
+            "id": category.id,
+            "category": category.id,
+            "parent": category.parent_id,
+            "name": category.name,
+            "type": category.type,
+            "icon": category.icon,
+            "color": category.color,
+            "confidence": round(confidence, 2),
+            "reason": reason,
+            "matched_keyword": matched_keyword,
+        }
+
+    def _get_name_match_score(
+        self,
+        *,
+        normalized_name: str,
+        normalized_description: str,
+    ) -> float | None:
+        if len(normalized_name) >= 3 and normalized_name in normalized_description:
+            return 0.95
+
+        name_tokens = self._tokenize(normalized_name)
+        description_tokens = set(self._tokenize(normalized_description))
+
+        for token in name_tokens:
+            if token in description_tokens:
+                return 0.82
+
+        return None
+
+    def _find_rule_match(
+        self,
+        *,
+        category: Category,
+        normalized_description: str,
+        category_type: str,
+    ) -> tuple[str, float] | None:
+        normalized_name = self._normalize_text(category.name)
+        rules = CATEGORY_SUGGESTION_RULES.get(category_type, [])
+
+        for keywords, category_markers, confidence in rules:
+            matched_keyword = self._find_first_keyword(
+                normalized_description,
+                keywords,
+            )
+
+            if matched_keyword is None:
+                continue
+
+            if self._category_matches_markers(normalized_name, category_markers):
+                return matched_keyword, confidence
+
+        return None
+
+    def _find_first_keyword(
+        self,
+        normalized_description: str,
+        keywords: tuple[str, ...],
+    ) -> str | None:
+        for keyword in keywords:
+            normalized_keyword = self._normalize_text(keyword)
+
+            if normalized_keyword in normalized_description:
+                return keyword
+
+        return None
+
+    def _category_matches_markers(
+        self,
+        normalized_name: str,
+        markers: tuple[str, ...],
+    ) -> bool:
+        for marker in markers:
+            normalized_marker = self._normalize_text(marker)
+
+            if normalized_marker in normalized_name:
+                return True
+
+        return False
+
+    def _normalize_text(self, value: str) -> str:
+        normalized_value = value.lower().replace("ё", "е")
+        normalized_value = re.sub(r"\s+", " ", normalized_value)
+        return normalized_value.strip()
+
+    def _tokenize(self, value: str) -> list[str]:
+        tokens = re.split(r"[^0-9a-zа-я]+", value.lower().replace("ё", "е"))
+
+        return [
+            token
+            for token in tokens
+            if len(token) >= 3
+        ]
 
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
