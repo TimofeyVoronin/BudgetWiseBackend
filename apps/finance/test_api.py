@@ -2622,6 +2622,133 @@ class FinanceAPITests(TestCase):
         self.assertEqual(response.data["count"], 105)
         self.assertEqual(len(response.data["results"]), 100)
 
+    def test_transactions_list_avoids_n_plus_one_queries(self):
+        self.authenticate()
+
+        for index in range(20):
+            category = (
+                self.expense_category
+                if index % 2 == 0
+                else self.transport_category
+            )
+            account = (
+                self.account
+                if index % 2 == 0
+                else self.cash_account
+            )
+
+            self.create_transaction(
+                account=account,
+                category=category,
+                type=TransactionType.EXPENSE,
+                amount=str(Decimal("100.00") + index),
+                description=f"Операция N+1 {index}",
+                operation_date=self.today - timezone.timedelta(days=index),
+            )
+
+        with CaptureQueriesContext(connection) as captured_queries:
+            response = self.client.get(
+                reverse("finance:transaction-list"),
+                data={
+                    "page": 1,
+                    "page_size": 20,
+                },
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 20)
+        self.assertEqual(len(response.data["results"]), 20)
+
+        for item in response.data["results"]:
+            self.assertIn("account_name", item)
+            self.assertIn("account_currency", item)
+            self.assertIn("category_name", item)
+            self.assertIn("category_icon", item)
+            self.assertIn("category_color", item)
+
+        self.assertLessEqual(len(captured_queries), 5)
+
+    def test_transactions_filtered_list_avoids_n_plus_one_queries(self):
+        self.authenticate()
+
+        for index in range(30):
+            category = (
+                self.expense_category
+                if index % 2 == 0
+                else self.transport_category
+            )
+            account = (
+                self.account
+                if index % 2 == 0
+                else self.cash_account
+            )
+
+            self.create_transaction(
+                account=account,
+                category=category,
+                type=TransactionType.EXPENSE,
+                amount=str(Decimal("100.00") + index),
+                description=(
+                    "Магазин продукты"
+                    if index % 2 == 0
+                    else "Такси транспорт"
+                ),
+                operation_date=self.today - timezone.timedelta(days=index),
+            )
+
+        with CaptureQueriesContext(connection) as captured_queries:
+            response = self.client.get(
+                reverse("finance:transaction-list"),
+                data={
+                    "kind": TransactionType.EXPENSE,
+                    "accountId": self.account.id,
+                    "categoryId": self.expense_category.id,
+                    "dateFrom": str(self.today - timezone.timedelta(days=30)),
+                    "dateTo": str(self.today),
+                    "amountMin": "100.00",
+                    "amountMax": "200.00",
+                    "search": "магазин",
+                    "sortBy": "date",
+                    "sortDir": "desc",
+                    "page_size": 20,
+                },
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(response.data["count"], 1)
+
+        for item in response.data["results"]:
+            self.assertEqual(item["account"], self.account.id)
+            self.assertEqual(item["category"], self.expense_category.id)
+            self.assertEqual(item["type"], TransactionType.EXPENSE)
+            self.assertIn("магазин", item["description"].lower())
+
+        self.assertLessEqual(len(captured_queries), 5)
+
+    def test_transaction_detail_uses_related_account_and_category_without_extra_queries(self):
+        self.authenticate()
+
+        transaction = self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            type=TransactionType.EXPENSE,
+            amount="1245.00",
+            description="Покупка продуктов",
+            operation_date=self.today,
+        )
+
+        with CaptureQueriesContext(connection) as captured_queries:
+            response = self.client.get(
+                reverse("finance:transaction-detail", kwargs={"pk": transaction.id})
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], transaction.id)
+        self.assertEqual(response.data["account_name"], self.account.name)
+        self.assertEqual(response.data["category_name"], self.expense_category.name)
+
+        self.assertLessEqual(len(captured_queries), 4)
+
     def test_transaction_filters_by_type_category_account(self):
         self.authenticate()
 
