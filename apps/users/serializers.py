@@ -565,13 +565,23 @@ class ResetPasswordSerializer(serializers.Serializer):
         return request.META.get("REMOTE_ADDR")
 
 
+class LoginUserSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    username = serializers.CharField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    first_name = serializers.CharField(read_only=True, allow_blank=True)
+    last_name = serializers.CharField(read_only=True, allow_blank=True)
+    role = serializers.CharField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+
+
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField(write_only=True)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     access = serializers.CharField(read_only=True)
     refresh = serializers.CharField(read_only=True)
-    user = serializers.DictField(read_only=True)
+    user = LoginUserSerializer(read_only=True)
 
     default_error_messages = {
         "invalid_credentials": "Неверный email или пароль.",

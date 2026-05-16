@@ -1,5 +1,6 @@
 from django.db.models import Count, Q
 from drf_spectacular.utils import (
+    OpenApiExample,
     OpenApiParameter,
     OpenApiTypes,
     extend_schema,
@@ -43,6 +44,12 @@ MAX_TRANSACTION_SEARCH_LENGTH = 100
     list=extend_schema(
         tags=["finance"],
         summary="Получить список категорий",
+        description=(
+            "Возвращает категории текущего пользователя с пагинацией. "
+            "Поддерживает фильтрацию по типу, родителю, активности, архиву, "
+            "избранному и поиску по названию. Используется для таблиц, списков "
+            "и форм выбора категории на фронте."
+        ),
         parameters=[
             OpenApiParameter(
                 "type",
@@ -104,26 +111,115 @@ MAX_TRANSACTION_SEARCH_LENGTH = 100
                 ),
             ),
         ],
+        responses={200: CategorySerializer(many=True)},
+        examples=[
+            OpenApiExample(
+                "Список активных расходных категорий",
+                value={
+                    "count": 2,
+                    "next": None,
+                    "previous": None,
+                    "results": [
+                        {
+                            "id": 1,
+                            "parent": None,
+                            "name": "Продукты",
+                            "type": "expense",
+                            "icon": "shopping-cart",
+                            "color": "#10B981",
+                            "sort_order": 0,
+                            "is_favorite": True,
+                            "is_archived": False,
+                            "is_active": True,
+                            "children_count": 1,
+                            "budgets_count": 1,
+                            "active_budgets_count": 1,
+                            "is_available_for_budget": True,
+                            "created_at": "2026-05-15T12:00:00+0300",
+                            "updated_at": "2026-05-15T12:00:00+0300",
+                        }
+                    ],
+                },
+                response_only=True,
+            )
+        ],
     ),
     create=extend_schema(
         tags=["finance"],
         summary="Создать категорию",
+        description=(
+            "Создаёт категорию доходов или расходов для текущего пользователя. "
+            "Категория может быть корневой или дочерней. Родительская категория "
+            "должна принадлежать тому же пользователю и иметь тот же тип."
+        ),
+        request=CategorySerializer,
+        responses={201: CategorySerializer},
+        examples=[
+            OpenApiExample(
+                "Создание категории расходов",
+                value={
+                    "parent": None,
+                    "name": "Кафе и рестораны",
+                    "type": "expense",
+                    "icon": "utensils",
+                    "color": "#F59E0B",
+                    "sort_order": 10,
+                    "is_favorite": False,
+                    "is_archived": False,
+                    "is_active": True,
+                },
+                request_only=True,
+            )
+        ],
     ),
     retrieve=extend_schema(
         tags=["finance"],
         summary="Получить категорию",
+        description="Возвращает одну категорию текущего пользователя по ID.",
+        responses={200: CategorySerializer},
     ),
     update=extend_schema(
         tags=["finance"],
         summary="Полностью обновить категорию",
+        description=(
+            "Полностью обновляет категорию текущего пользователя. "
+            "При изменении родителя проверяется владелец, тип категории "
+            "и отсутствие циклов в иерархии."
+        ),
+        request=CategorySerializer,
+        responses={200: CategorySerializer},
     ),
     partial_update=extend_schema(
         tags=["finance"],
         summary="Частично обновить категорию",
+        description=(
+            "Частично обновляет категорию текущего пользователя. "
+            "Подходит для изменения названия, иконки, цвета, родителя, "
+            "активности и порядка сортировки."
+        ),
+        request=CategorySerializer,
+        responses={200: CategorySerializer},
+        examples=[
+            OpenApiExample(
+                "Обновление категории",
+                value={
+                    "name": "Кафе, рестораны и доставка",
+                    "icon": "coffee",
+                    "color": "#EF4444",
+                    "parent": None,
+                },
+                request_only=True,
+            )
+        ],
     ),
     destroy=extend_schema(
         tags=["finance"],
         summary="Удалить категорию",
+        description=(
+            "Удаляет категорию текущего пользователя. Удаление запрещено, "
+            "если у категории есть дочерние категории, операции или бюджеты. "
+            "В таких случаях API возвращает 409 Conflict."
+        ),
     ),
 )
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -244,6 +340,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["finance"],
         summary="Получить дерево категорий",
+        description=(
+            "Возвращает дерево категорий текущего пользователя. "
+            "В ответ попадают только корневые категории, а дочерние категории "
+            "возвращаются во вложенном поле children. Endpoint используется "
+            "для древовидного отображения категорий на фронте."
+        ),
         parameters=[
             OpenApiParameter(
                 "type",
@@ -284,6 +386,51 @@ class CategoryViewSet(viewsets.ModelViewSet):
             ),
         ],
         responses={200: CategoryTreeSerializer(many=True)},
+        examples=[
+            OpenApiExample(
+                "Дерево категорий расходов",
+                value=[
+                    {
+                        "id": 1,
+                        "parent": None,
+                        "name": "Продукты",
+                        "type": "expense",
+                        "icon": "shopping-cart",
+                        "color": "#10B981",
+                        "sort_order": 0,
+                        "is_favorite": True,
+                        "is_archived": False,
+                        "is_active": True,
+                        "budgets_count": 1,
+                        "active_budgets_count": 1,
+                        "is_available_for_budget": True,
+                        "children": [
+                            {
+                                "id": 2,
+                                "parent": 1,
+                                "name": "Супермаркеты",
+                                "type": "expense",
+                                "icon": "store",
+                                "color": "#4F46E5",
+                                "sort_order": 0,
+                                "is_favorite": False,
+                                "is_archived": False,
+                                "is_active": True,
+                                "budgets_count": 0,
+                                "active_budgets_count": 0,
+                                "is_available_for_budget": True,
+                                "children": [],
+                                "created_at": "2026-05-15T12:00:00+0300",
+                                "updated_at": "2026-05-15T12:00:00+0300",
+                            }
+                        ],
+                        "created_at": "2026-05-15T12:00:00+0300",
+                        "updated_at": "2026-05-15T12:00:00+0300",
+                    }
+                ],
+                response_only=True,
+            )
+        ],
     )
     @action(detail=False, methods=["get"], url_path="tree")
     def tree(self, request):
@@ -302,8 +449,30 @@ class CategoryViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["finance"],
         summary="Изменить признак избранной категории",
+        description=(
+            "Добавляет категорию в избранное или удаляет её из избранного. "
+            "Используется для быстрого доступа к часто используемым категориям."
+        ),
         request=CategoryFavoriteSerializer,
         responses={200: CategoryFavoriteSerializer},
+        examples=[
+            OpenApiExample(
+                "Добавить категорию в избранное",
+                value={
+                    "favorite": True,
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "id": 1,
+                    "is_favorite": True,
+                    "detail": "Категория добавлена в избранное.",
+                },
+                response_only=True,
+            ),
+        ],
     )
     @action(detail=True, methods=["patch"], url_path="favorite")
     def favorite(self, request, pk=None):
@@ -322,11 +491,42 @@ class CategoryViewSet(viewsets.ModelViewSet):
         tags=["finance"],
         summary="Архивировать или восстановить категорию",
         description=(
+            "Архивирует категорию или восстанавливает её из архива. "
+            "При архивировании категория также становится неактивной. "
+            "Архивные категории не предлагаются для новых операций и бюджетов. "
             "Если тело запроса пустое, категория архивируется. "
             "Для восстановления передайте archived=false."
         ),
         request=CategoryArchiveSerializer,
         responses={200: CategoryArchiveSerializer},
+        examples=[
+            OpenApiExample(
+                "Архивировать категорию",
+                value={
+                    "archived": True,
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Восстановить категорию",
+                value={
+                    "archived": False,
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "id": 1,
+                    "is_archived": True,
+                    "is_active": False,
+                    "budgets_count": 1,
+                    "active_budgets_count": 1,
+                    "detail": "Категория отправлена в архив.",
+                },
+                response_only=True,
+            ),
+        ],
     )
     @action(detail=True, methods=["post"], url_path="archive")
     def archive(self, request, pk=None):
@@ -345,12 +545,42 @@ class CategoryViewSet(viewsets.ModelViewSet):
         tags=["finance"],
         summary="Изменить порядок и иерархию категорий",
         description=(
-            "Endpoint используется после drag & drop. "
-            "Можно передавать backend-поля parent/sort_order или фронтовые "
-            "поля parentId/position."
+            "Endpoint используется после drag and drop на фронте. "
+            "Поддерживает backend-формат parent/sort_order и frontend-формат "
+            "parentId/position. Все категории в order должны принадлежать "
+            "текущему пользователю и иметь один тип."
         ),
         request=CategoryReorderSerializer,
         responses={200: CategoryReorderSerializer},
+        examples=[
+            OpenApiExample(
+                "Frontend-формат reorder",
+                value={
+                    "kind": "expense",
+                    "order": [
+                        {
+                            "id": 1,
+                            "parentId": None,
+                            "position": 0,
+                        },
+                        {
+                            "id": 2,
+                            "parentId": 1,
+                            "position": 0,
+                        },
+                    ],
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "detail": "Порядок категорий обновлён.",
+                    "updated_count": 2,
+                },
+                response_only=True,
+            ),
+        ],
     )
     @action(detail=False, methods=["put"], url_path="reorder")
     def reorder(self, request):
@@ -370,10 +600,53 @@ class CategoryViewSet(viewsets.ModelViewSet):
             "Интеграционная точка для smart categorization. "
             "Endpoint использует простой rule-based алгоритм по названию "
             "категории и ключевым словам. Возвращаются только активные "
-            "и неархивные категории текущего пользователя."
+            "и неархивные категории текущего пользователя. Можно передавать "
+            "type или frontend-поле kind."
         ),
         request=CategorySuggestSerializer,
         responses={200: CategorySuggestSerializer},
+        examples=[
+            OpenApiExample(
+                "Подбор категории по описанию",
+                value={
+                    "description": "Покупка продуктов в пятерочке",
+                    "type": "expense",
+                    "limit": 3,
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Frontend-вариант с kind",
+                value={
+                    "description": "Такси до университета",
+                    "kind": "expense",
+                    "limit": 3,
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "suggestions": [
+                        {
+                            "id": 1,
+                            "category": 1,
+                            "parent": None,
+                            "name": "Продукты",
+                            "type": "expense",
+                            "icon": "shopping-cart",
+                            "color": "#10B981",
+                            "confidence": 0.92,
+                            "reason": (
+                                "Найдено совпадение по ключевому слову: продукт."
+                            ),
+                            "matched_keyword": "продукт",
+                        }
+                    ]
+                },
+                response_only=True,
+            ),
+        ],
     )
     @action(detail=False, methods=["post"], url_path="suggest")
     def suggest(self, request):
@@ -429,6 +702,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
     list=extend_schema(
         tags=["finance"],
         summary="Получить список операций",
+        description=(
+            "Возвращает операции текущего пользователя с пагинацией. "
+            "Поддерживает фильтры по счёту, категории, типу, периоду, сумме, "
+            "поиску по описанию и сортировке."
+        ),
         parameters=[
             OpenApiParameter(
                 "page",
@@ -442,7 +720,11 @@ class CategoryViewSet(viewsets.ModelViewSet):
             ),
             OpenApiParameter("account", OpenApiTypes.INT),
             OpenApiParameter("category", OpenApiTypes.INT),
-            OpenApiParameter("type", OpenApiTypes.STR),
+            OpenApiParameter(
+                "type",
+                OpenApiTypes.STR,
+                description="Тип операции: income или expense.",
+            ),
             OpenApiParameter("date_from", OpenApiTypes.DATE),
             OpenApiParameter("date_to", OpenApiTypes.DATE),
             OpenApiParameter(
@@ -474,22 +756,63 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 ),
             ),
         ],
+        responses={200: TransactionSerializer(many=True)},
     ),
     create=extend_schema(
         tags=["finance"],
         summary="Создать операцию",
+        description=(
+            "Создаёт финансовую операцию текущего пользователя. "
+            "Счёт и категория должны принадлежать текущему пользователю. "
+            "Тип категории должен совпадать с типом операции."
+        ),
+        request=TransactionSerializer,
+        responses={201: TransactionSerializer},
+        examples=[
+            OpenApiExample(
+                "Создание расходной операции",
+                value={
+                    "account": 1,
+                    "category": 2,
+                    "type": "expense",
+                    "amount": "1500.00",
+                    "description": "Покупка продуктов",
+                    "operation_date": "2026-05-15",
+                },
+                request_only=True,
+            )
+        ],
     ),
     retrieve=extend_schema(
         tags=["finance"],
         summary="Получить операцию",
+        description="Возвращает одну финансовую операцию текущего пользователя по ID.",
+        responses={200: TransactionSerializer},
     ),
     partial_update=extend_schema(
         tags=["finance"],
         summary="Частично обновить операцию",
+        description=(
+            "Частично обновляет финансовую операцию. "
+            "При смене счёта или категории повторно проверяется владелец, "
+            "активность сущностей и соответствие типа категории типу операции."
+        ),
+        request=TransactionSerializer,
+        responses={200: TransactionSerializer},
+        examples=[
+            OpenApiExample(
+                "Обновление описания операции",
+                value={
+                    "description": "Покупка продуктов и бытовых товаров",
+                },
+                request_only=True,
+            )
+        ],
     ),
     destroy=extend_schema(
         tags=["finance"],
         summary="Удалить операцию",
+        description="Удаляет финансовую операцию текущего пользователя.",
     ),
 )
 class TransactionViewSet(viewsets.ModelViewSet):

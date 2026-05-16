@@ -654,12 +654,12 @@ class CategoryReorderItemSerializer(serializers.Serializer):
 
 class CategoryReorderSerializer(serializers.Serializer):
     type = serializers.ChoiceField(
-        choices=TransactionType.values,
+        choices=TransactionType.choices,
         required=False,
         write_only=True,
     )
     kind = serializers.ChoiceField(
-        choices=TransactionType.values,
+        choices=TransactionType.choices,
         required=False,
         write_only=True,
     )
@@ -872,12 +872,12 @@ class CategorySuggestSerializer(serializers.Serializer):
         max_length=MAX_CATEGORY_SUGGEST_DESCRIPTION_LENGTH,
     )
     type = serializers.ChoiceField(
-        choices=TransactionType.values,
+        choices=TransactionType.choices,
         required=False,
         write_only=True,
     )
     kind = serializers.ChoiceField(
-        choices=TransactionType.values,
+        choices=TransactionType.choices,
         required=False,
         write_only=True,
     )

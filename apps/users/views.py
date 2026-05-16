@@ -17,17 +17,17 @@ from rest_framework.views import APIView
 from apps.common.validation import get_bool_query_param, validate_ordering
 from apps.users.serializers import (
     CurrentUserSerializer,
+    ForgotPasswordSerializer,
     LoginSerializer,
     RegisterSerializer,
+    ResetPasswordSerializer,
     UserSerializer,
     VerifyEmailSerializer,
-    ForgotPasswordSerializer,
-    ResetPasswordSerializer,
 )
 from apps.users.throttles import (
-    LoginRateThrottle,
     ForgotPasswordEmailThrottle,
     ForgotPasswordIPThrottle,
+    LoginRateThrottle,
 )
 
 
@@ -287,7 +287,28 @@ class CurrentUserView(GenericAPIView):
         tags=["users"],
         operation_id="users_me_retrieve",
         summary="Получить данные текущего пользователя",
+        description=(
+            "Возвращает профиль авторизованного пользователя. "
+            "Endpoint используется фронтом для получения данных текущей сессии "
+            "после входа, обновления страницы или проверки access token."
+        ),
         responses={200: CurrentUserSerializer},
+        examples=[
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "id": 1,
+                    "username": "timofey",
+                    "email": "timofey@example.com",
+                    "first_name": "Timofey",
+                    "last_name": "Demo",
+                    "role": "user",
+                    "is_active": True,
+                    "date_joined": "2026-05-15T12:00:00+0300",
+                },
+                response_only=True,
+            )
+        ],
     )
     def get(self, request):
         serializer = self.get_serializer(request.user)
@@ -297,8 +318,37 @@ class CurrentUserView(GenericAPIView):
         tags=["users"],
         operation_id="users_me_partial_update",
         summary="Частично обновить данные текущего пользователя",
+        description=(
+            "Частично обновляет профиль текущего пользователя. "
+            "Подходит для изменения имени, фамилии и других разрешённых "
+            "пользовательских полей."
+        ),
         request=CurrentUserSerializer,
         responses={200: CurrentUserSerializer},
+        examples=[
+            OpenApiExample(
+                "Обновление профиля",
+                value={
+                    "first_name": "Timofey",
+                    "last_name": "Backend",
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "id": 1,
+                    "username": "timofey",
+                    "email": "timofey@example.com",
+                    "first_name": "Timofey",
+                    "last_name": "Backend",
+                    "role": "user",
+                    "is_active": True,
+                    "date_joined": "2026-05-15T12:00:00+0300",
+                },
+                response_only=True,
+            ),
+        ],
     )
     def patch(self, request):
         serializer = self.get_serializer(
@@ -315,21 +365,132 @@ class CurrentUserView(GenericAPIView):
     list=extend_schema(
         tags=["users"],
         summary="Получить список пользователей",
+        description=(
+            "Возвращает список пользователей с фильтрацией и сортировкой. "
+            "Endpoint доступен только администраторам."
+        ),
         parameters=[
-            OpenApiParameter("is_active", OpenApiTypes.BOOL),
-            OpenApiParameter("is_staff", OpenApiTypes.BOOL),
-            OpenApiParameter("is_superuser", OpenApiTypes.BOOL),
-            OpenApiParameter("search", OpenApiTypes.STR),
-            OpenApiParameter("ordering", OpenApiTypes.STR),
+            OpenApiParameter(
+                "is_active",
+                OpenApiTypes.BOOL,
+                description="Фильтр по активности пользователя.",
+            ),
+            OpenApiParameter(
+                "is_staff",
+                OpenApiTypes.BOOL,
+                description="Фильтр по признаку staff-пользователя.",
+            ),
+            OpenApiParameter(
+                "is_superuser",
+                OpenApiTypes.BOOL,
+                description="Фильтр по признаку superuser.",
+            ),
+            OpenApiParameter(
+                "search",
+                OpenApiTypes.STR,
+                description="Поиск по username или email.",
+            ),
+            OpenApiParameter(
+                "ordering",
+                OpenApiTypes.STR,
+                description=(
+                    "Сортировка. Поддерживаются поля: id, username, email, "
+                    "date_joined. Для сортировки по убыванию используйте префикс '-'."
+                ),
+            ),
+        ],
+        responses={200: UserSerializer(many=True)},
+        examples=[
+            OpenApiExample(
+                "Список пользователей",
+                value={
+                    "count": 1,
+                    "next": None,
+                    "previous": None,
+                    "results": [
+                        {
+                            "id": 1,
+                            "username": "admin",
+                            "email": "admin@example.com",
+                            "first_name": "Timofey",
+                            "last_name": "Admin",
+                            "role": "admin",
+                            "is_active": True,
+                            "is_staff": True,
+                            "is_superuser": True,
+                            "date_joined": "2026-05-15T12:00:00+0300",
+                        }
+                    ],
+                },
+                response_only=True,
+            )
         ],
     ),
-    create=extend_schema(tags=["users"], summary="Создать пользователя"),
-    retrieve=extend_schema(tags=["users"], summary="Получить пользователя"),
+    create=extend_schema(
+        tags=["users"],
+        summary="Создать пользователя",
+        description=(
+            "Создаёт пользователя через административный endpoint. "
+            "Endpoint доступен только администраторам."
+        ),
+        request=UserSerializer,
+        responses={201: UserSerializer},
+        examples=[
+            OpenApiExample(
+                "Создание пользователя",
+                value={
+                    "username": "demo",
+                    "email": "demo@example.com",
+                    "first_name": "Demo",
+                    "last_name": "User",
+                    "role": "user",
+                    "is_active": True,
+                    "is_staff": False,
+                    "is_superuser": False,
+                },
+                request_only=True,
+            )
+        ],
+    ),
+    retrieve=extend_schema(
+        tags=["users"],
+        summary="Получить пользователя",
+        description=(
+            "Возвращает данные пользователя по ID. "
+            "Endpoint доступен только администраторам."
+        ),
+        responses={200: UserSerializer},
+    ),
     partial_update=extend_schema(
         tags=["users"],
         summary="Частично обновить пользователя",
+        description=(
+            "Частично обновляет пользователя через административный endpoint. "
+            "Endpoint доступен только администраторам."
+        ),
+        request=UserSerializer,
+        responses={200: UserSerializer},
+        examples=[
+            OpenApiExample(
+                "Обновление пользователя",
+                value={
+                    "first_name": "Updated",
+                    "is_active": True,
+                },
+                request_only=True,
+            )
+        ],
     ),
-    destroy=extend_schema(tags=["users"], summary="Деактивировать пользователя"),
+    destroy=extend_schema(
+        tags=["users"],
+        summary="Деактивировать пользователя",
+        description=(
+            "Не удаляет пользователя физически, а переводит его в is_active=false. "
+            "Администратор не может деактивировать собственную учётную запись "
+            "через этот endpoint."
+        ),
+        responses={204: None},
+    ),
 )
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer

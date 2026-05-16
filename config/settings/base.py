@@ -218,32 +218,153 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "BudgetWiseBackend API",
     "DESCRIPTION": (
-        "OpenAPI-документация backend-части прогрессивного веб-приложения "
-        "для управления личными финансами."
+        "OpenAPI-документация серверной части прогрессивного веб-приложения "
+        "для управления личными финансами.\n\n"
+        "API предоставляет endpoints для регистрации и аутентификации пользователей, "
+        "управления профилем, финансовыми категориями, операциями, бюджетами, "
+        "целями и служебного мониторинга.\n\n"
+        "Авторизация защищённых endpoints выполняется через JWT Bearer token. "
+        "Для ручной проверки в Swagger UI сначала выполните login-запрос, "
+        "получите access token и передайте его в Authorize в формате: "
+        "Bearer <access_token>."
     ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": r"/api/v1",
+    "ENUM_NAME_OVERRIDES": {
+        "TransactionTypeEnum": [
+            ("income", "Доход"),
+            ("expense", "Расход"),
+        ],
+        "GoalStatusEnum": [
+            ("active", "Активна"),
+            ("completed", "Достигнута"),
+            ("cancelled", "Отменена"),
+        ],
+    },
     "SWAGGER_UI_SETTINGS": {
         "deepLinking": True,
         "persistAuthorization": True,
         "displayOperationId": True,
         "filter": True,
+        "docExpansion": "none",
+        "defaultModelsExpandDepth": 1,
+        "defaultModelExpandDepth": 2,
+        "operationsSorter": "alpha",
+        "tagsSorter": "alpha",
+        "tryItOutEnabled": True,
+    },
+    "REDOC_UI_SETTINGS": {
+        "hideDownloadButton": False,
+        "expandResponses": "200,201",
+        "pathInMiddlePanel": True,
     },
     "TAGS": [
+        {
+            "name": "auth",
+            "description": (
+                "Регистрация, вход, обновление JWT-токена, подтверждение email "
+                "и восстановление пароля."
+            ),
+        },
+        {
+            "name": "users",
+            "description": (
+                "Endpoints профиля пользователя и административного управления "
+                "пользователями."
+            ),
+        },
+        {
+            "name": "finance",
+            "description": (
+                "Финансовый модуль: категории, дерево категорий, избранное, "
+                "архивирование, изменение порядка, подсказки категорий и операции."
+            ),
+        },
         {
             "name": "health",
             "description": "Служебные endpoints состояния backend-сервиса.",
         },
         {
-            "name": "users",
-            "description": "Endpoints профиля пользователя и администрирования пользователей.",
-        },
-        {
-            "name": "finance",
-            "description": "Endpoints финансового модуля: категории и операции.",
+            "name": "monitoring",
+            "description": "Endpoints мониторинга и метрик backend-сервиса.",
         },
     ],
+    "CONTACT": {
+        "name": "BudgetWiseBackend",
+        "email": "noreply@budgetwise.local",
+    },
+    "LICENSE": {
+        "name": "Educational project",
+    },
+    "APPEND_COMPONENTS": {
+        "schemas": {
+            "ApiErrorDetail": {
+                "type": "object",
+                "description": "Детальная информация об ошибке API.",
+                "properties": {
+                    "status_code": {
+                        "type": "integer",
+                        "example": 400,
+                    },
+                    "code": {
+                        "type": "string",
+                        "example": "invalid",
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "Некорректные данные запроса.",
+                    },
+                    "field_errors": {
+                        "type": "object",
+                        "nullable": True,
+                        "additionalProperties": True,
+                        "example": {
+                            "email": ["Введите корректный адрес электронной почты."]
+                        },
+                    },
+                    "detail": {
+                        "nullable": True,
+                        "oneOf": [
+                            {
+                                "type": "string",
+                            },
+                            {
+                                "type": "object",
+                                "additionalProperties": True,
+                            },
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                },
+                            },
+                        ],
+                        "example": "Ошибка валидации.",
+                    },
+                    "trace_id": {
+                        "type": "string",
+                        "nullable": True,
+                        "example": "test-trace-id-123",
+                    },
+                },
+            },
+            "ApiErrorResponse": {
+                "type": "object",
+                "description": "Единый формат ответа API при ошибке.",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "example": False,
+                    },
+                    "error": {
+                        "$ref": "#/components/schemas/ApiErrorDetail",
+                    },
+                },
+            },
+        },
+    },
 }
 
 
