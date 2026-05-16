@@ -14,6 +14,9 @@ from apps.finance.models import (
 
 class CategorySerializer(serializers.ModelSerializer):
     children_count = serializers.SerializerMethodField(read_only=True)
+    budgets_count = serializers.SerializerMethodField(read_only=True)
+    active_budgets_count = serializers.SerializerMethodField(read_only=True)
+    is_available_for_budget = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Category
@@ -29,12 +32,18 @@ class CategorySerializer(serializers.ModelSerializer):
             "is_archived",
             "is_active",
             "children_count",
+            "budgets_count",
+            "active_budgets_count",
+            "is_available_for_budget",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "id",
             "children_count",
+            "budgets_count",
+            "active_budgets_count",
+            "is_available_for_budget",
             "created_at",
             "updated_at",
         ]
@@ -42,6 +51,32 @@ class CategorySerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.INT)
     def get_children_count(self, obj) -> int:
         return obj.children.count()
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_budgets_count(self, obj) -> int:
+        annotated_value = getattr(obj, "budget_count", None)
+
+        if annotated_value is not None:
+            return annotated_value
+
+        return obj.budgets.count()
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_active_budgets_count(self, obj) -> int:
+        annotated_value = getattr(obj, "active_budget_count", None)
+
+        if annotated_value is not None:
+            return annotated_value
+
+        return obj.budgets.filter(is_active=True).count()
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_is_available_for_budget(self, obj) -> bool:
+        return (
+            obj.type == TransactionType.EXPENSE
+            and obj.is_active
+            and not obj.is_archived
+        )
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -247,6 +282,8 @@ class CategoryArchiveSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     is_archived = serializers.BooleanField(read_only=True)
     is_active = serializers.BooleanField(read_only=True)
+    budgets_count = serializers.IntegerField(read_only=True)
+    active_budgets_count = serializers.IntegerField(read_only=True)
     detail = serializers.CharField(read_only=True)
 
     def update(self, instance: Category, validated_data):
@@ -266,6 +303,8 @@ class CategoryArchiveSerializer(serializers.Serializer):
             "id": instance.id,
             "is_archived": instance.is_archived,
             "is_active": instance.is_active,
+            "budgets_count": instance.budgets.count(),
+            "active_budgets_count": instance.budgets.filter(is_active=True).count(),
             "detail": (
                 "Категория отправлена в архив."
                 if instance.is_archived
@@ -504,6 +543,9 @@ class CategoryReorderSerializer(serializers.Serializer):
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
+    budgets_count = serializers.SerializerMethodField(read_only=True)
+    active_budgets_count = serializers.SerializerMethodField(read_only=True)
+    is_available_for_budget = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Category
@@ -518,10 +560,39 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
             "is_favorite",
             "is_archived",
             "is_active",
+            "budgets_count",
+            "active_budgets_count",
+            "is_available_for_budget",
             "children",
             "created_at",
             "updated_at",
         ]
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_budgets_count(self, obj) -> int:
+        annotated_value = getattr(obj, "budget_count", None)
+
+        if annotated_value is not None:
+            return annotated_value
+
+        return obj.budgets.count()
+
+    @extend_schema_field(OpenApiTypes.INT)
+    def get_active_budgets_count(self, obj) -> int:
+        annotated_value = getattr(obj, "active_budget_count", None)
+
+        if annotated_value is not None:
+            return annotated_value
+
+        return obj.budgets.filter(is_active=True).count()
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_is_available_for_budget(self, obj) -> bool:
+        return (
+            obj.type == TransactionType.EXPENSE
+            and obj.is_active
+            and not obj.is_archived
+        )
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_children(self, obj):

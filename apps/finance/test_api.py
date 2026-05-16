@@ -827,6 +827,223 @@ class FinanceAPITests(TestCase):
         with self.assertRaises(ValidationError):
             budget.full_clean()
 
+    def test_category_detail_returns_budget_metadata(self):
+        self.authenticate()
+
+        Budget.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=self.today,
+            period_end=self.today + timezone.timedelta(days=30),
+            is_active=True,
+        )
+        Budget.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("5000.00"),
+            period_start=self.today + timezone.timedelta(days=31),
+            period_end=self.today + timezone.timedelta(days=60),
+            is_active=False,
+        )
+
+        response = self.client.get(
+            reverse(
+                "finance:category-detail",
+                kwargs={"pk": self.expense_category.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["budgets_count"], 2)
+        self.assertEqual(response.data["active_budgets_count"], 1)
+        self.assertTrue(response.data["is_available_for_budget"])
+
+    def test_category_tree_returns_budget_metadata_for_budget_forms(self):
+        self.authenticate()
+
+        Budget.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=self.today,
+            period_end=self.today + timezone.timedelta(days=30),
+            is_active=True,
+        )
+
+        response = self.client.get(
+            reverse("finance:category-tree"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "is_active": "true",
+                "is_archived": "false",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        category_node = next(
+            item for item in response.data if item["id"] == self.expense_category.id
+        )
+
+        self.assertEqual(category_node["budgets_count"], 1)
+        self.assertEqual(category_node["active_budgets_count"], 1)
+        self.assertTrue(category_node["is_available_for_budget"])
+
+    def test_category_list_for_budget_form_returns_only_available_expense_categories(self):
+        self.authenticate()
+
+        self.transport_category.is_archived = True
+        self.transport_category.is_active = False
+        self.transport_category.save(update_fields=["is_archived", "is_active"])
+
+        inactive_expense_category = Category.objects.create(
+            user=self.user,
+            name="Неактивная расходная категория",
+            type=TransactionType.EXPENSE,
+            is_active=False,
+            is_archived=False,
+        )
+
+        response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "is_active": "true",
+                "is_archived": "false",
+                "page_size": 50,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        category_ids = [
+            item["id"]
+            for item in response.data["results"]
+        ]
+
+        self.assertIn(self.expense_category.id, category_ids)
+        self.assertNotIn(self.transport_category.id, category_ids)
+        self.assertNotIn(inactive_expense_category.id, category_ids)
+        self.assertNotIn(self.income_category.id, category_ids)
+
+        for item in response.data["results"]:
+            self.assertEqual(item["type"], TransactionType.EXPENSE)
+            self.assertTrue(item["is_active"])
+            self.assertFalse(item["is_archived"])
+            self.assertTrue(item["is_available_for_budget"])
+
+    def test_category_rename_keeps_existing_budget_relation(self):
+        self.authenticate()
+
+        budget = Budget.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=self.today,
+            period_end=self.today + timezone.timedelta(days=30),
+        )
+
+        response = self.client.patch(
+            reverse(
+                "finance:category-detail",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={
+                "name": "Продукты и супермаркеты",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Продукты и супермаркеты")
+        self.assertEqual(response.data["budgets_count"], 1)
+        self.assertEqual(response.data["active_budgets_count"], 1)
+
+        budget.refresh_from_db()
+        self.expense_category.refresh_from_db()
+
+        self.assertEqual(budget.category_id, self.expense_category.id)
+        self.assertEqual(self.expense_category.name, "Продукты и супермаркеты")
+
+    def test_category_parent_change_keeps_existing_budget_relation(self):
+        self.authenticate()
+
+        parent = Category.objects.create(
+            user=self.user,
+            name="Родитель для бюджета",
+            type=TransactionType.EXPENSE,
+            sort_order=10,
+        )
+        budget = Budget.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=self.today,
+            period_end=self.today + timezone.timedelta(days=30),
+        )
+
+        response = self.client.patch(
+            reverse(
+                "finance:category-detail",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={
+                "parent": parent.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["parent"], parent.id)
+        self.assertEqual(response.data["budgets_count"], 1)
+
+        budget.refresh_from_db()
+        self.expense_category.refresh_from_db()
+
+        self.assertEqual(budget.category_id, self.expense_category.id)
+        self.assertEqual(self.expense_category.parent_id, parent.id)
+
+    def test_category_archive_response_includes_budget_metadata(self):
+        self.authenticate()
+
+        Budget.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=self.today,
+            period_end=self.today + timezone.timedelta(days=30),
+            is_active=True,
+        )
+        Budget.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("5000.00"),
+            period_start=self.today + timezone.timedelta(days=31),
+            period_end=self.today + timezone.timedelta(days=60),
+            is_active=False,
+        )
+
+        response = self.client.post(
+            reverse(
+                "finance:category-archive",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_archived"])
+        self.assertFalse(response.data["is_active"])
+        self.assertEqual(response.data["budgets_count"], 2)
+        self.assertEqual(response.data["active_budgets_count"], 1)
+
+        self.expense_category.refresh_from_db()
+
+        self.assertTrue(self.expense_category.is_archived)
+        self.assertFalse(self.expense_category.is_active)
+
     def test_category_favorite_endpoint_sets_category_as_favorite(self):
         self.authenticate()
 

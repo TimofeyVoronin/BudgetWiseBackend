@@ -224,6 +224,67 @@ class FinanceIntegrityConstraintsTests(TestCase):
         with self.assertRaises(ValidationError):
             budget.full_clean()
 
+    def test_budget_category_must_belong_to_same_user(self):
+        budget = Budget(
+            user=self.user,
+            category=self.other_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=timezone.localdate(),
+            period_end=timezone.localdate(),
+        )
+
+        with self.assertRaises(ValidationError):
+            budget.full_clean()
+
+    def test_budget_category_must_be_active(self):
+        self.expense_category.is_active = False
+        self.expense_category.save(update_fields=["is_active"])
+
+        budget = Budget(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=timezone.localdate(),
+            period_end=timezone.localdate(),
+        )
+
+        with self.assertRaises(ValidationError):
+            budget.full_clean()
+
+    def test_budget_category_must_not_be_archived(self):
+        self.expense_category.is_archived = True
+        self.expense_category.is_active = False
+        self.expense_category.save(update_fields=["is_archived", "is_active"])
+
+        budget = Budget(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=timezone.localdate(),
+            period_end=timezone.localdate(),
+        )
+
+        with self.assertRaises(ValidationError):
+            budget.full_clean()
+
+    def test_category_rename_keeps_budget_relation(self):
+        budget = Budget.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=timezone.localdate(),
+            period_end=timezone.localdate(),
+        )
+
+        self.expense_category.name = "Продукты и супермаркеты"
+        self.expense_category.save(update_fields=["name"])
+
+        budget.refresh_from_db()
+        self.expense_category.refresh_from_db()
+
+        self.assertEqual(budget.category_id, self.expense_category.id)
+        self.assertEqual(self.expense_category.name, "Продукты и супермаркеты")
+
     def test_goal_target_amount_must_be_positive(self):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():

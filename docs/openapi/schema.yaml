@@ -1134,6 +1134,15 @@ components:
         children_count:
           type: integer
           readOnly: true
+        budgets_count:
+          type: integer
+          readOnly: true
+        active_budgets_count:
+          type: integer
+          readOnly: true
+        is_available_for_budget:
+          type: boolean
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -1145,9 +1154,12 @@ components:
           readOnly: true
           title: Дата обновления
       required:
+      - active_budgets_count
+      - budgets_count
       - children_count
       - created_at
       - id
+      - is_available_for_budget
       - name
       - type
       - updated_at
@@ -1163,10 +1175,18 @@ components:
         is_active:
           type: boolean
           readOnly: true
+        budgets_count:
+          type: integer
+          readOnly: true
+        active_budgets_count:
+          type: integer
+          readOnly: true
         detail:
           type: string
           readOnly: true
       required:
+      - active_budgets_count
+      - budgets_count
       - detail
       - id
       - is_active
@@ -1343,6 +1363,15 @@ components:
         is_active:
           type: boolean
           title: Активна
+        budgets_count:
+          type: integer
+          readOnly: true
+        active_budgets_count:
+          type: integer
+          readOnly: true
+        is_available_for_budget:
+          type: boolean
+          readOnly: true
         children:
           type: object
           additionalProperties: {}
@@ -1358,9 +1387,12 @@ components:
           readOnly: true
           title: Дата обновления
       required:
+      - active_budgets_count
+      - budgets_count
       - children
       - created_at
       - id
+      - is_available_for_budget
       - name
       - type
       - updated_at

@@ -1,3 +1,4 @@
+from django.db.models import Count, Q
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiTypes,
@@ -144,7 +145,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
         queryset = (
             Category.objects
             .filter(user=self.request.user)
-            .order_by("type", "parent_id", "sort_order", "name", "id")
+            .annotate(
+                budget_count=Count("budgets", distinct=True),
+                active_budget_count=Count(
+                    "budgets",
+                    filter=Q(budgets__is_active=True),
+                    distinct=True,
+                ),
+            )
         )
 
         category_type = validate_choice_query_param(
@@ -221,6 +229,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
         if ordering:
             queryset = queryset.order_by(ordering)
+        else:
+            queryset = queryset.order_by(
+                "type",
+                "parent_id",
+                "sort_order",
+                "name",
+                "id",
+            )
 
         return queryset
 
