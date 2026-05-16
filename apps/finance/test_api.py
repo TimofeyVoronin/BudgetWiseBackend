@@ -2219,6 +2219,259 @@ class FinanceAPITests(TestCase):
         self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Transaction.objects.filter(pk=transaction_id).exists())
 
+    def test_transaction_put_full_update_success(self):
+        self.authenticate()
+
+        transaction = self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            type=TransactionType.EXPENSE,
+            amount="1000.00",
+            description="До полного обновления",
+            operation_date=self.today,
+        )
+
+        response = self.client.put(
+            reverse("finance:transaction-detail", kwargs={"pk": transaction.id}),
+            data={
+                "account": self.cash_account.id,
+                "category": self.transport_category.id,
+                "type": TransactionType.EXPENSE,
+                "amount": "350.00",
+                "description": "Такси после полного обновления",
+                "operation_date": str(self.today - timezone.timedelta(days=1)),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], transaction.id)
+        self.assertEqual(response.data["account"], self.cash_account.id)
+        self.assertEqual(response.data["account_name"], self.cash_account.name)
+        self.assertEqual(response.data["category"], self.transport_category.id)
+        self.assertEqual(response.data["category_name"], self.transport_category.name)
+        self.assertEqual(response.data["type"], TransactionType.EXPENSE)
+        self.assertEqual(response.data["kind"], TransactionType.EXPENSE)
+        self.assertEqual(response.data["amount"], "350.00")
+        self.assertEqual(response.data["amount_abs"], "350.00")
+        self.assertEqual(response.data["signed_amount"], "-350.00")
+        self.assertEqual(response.data["description"], "Такси после полного обновления")
+        self.assertEqual(
+            response.data["operation_date"],
+            str(self.today - timezone.timedelta(days=1)),
+        )
+
+        transaction.refresh_from_db()
+
+        self.assertEqual(transaction.account_id, self.cash_account.id)
+        self.assertEqual(transaction.category_id, self.transport_category.id)
+        self.assertEqual(transaction.amount, Decimal("350.00"))
+        self.assertEqual(transaction.description, "Такси после полного обновления")
+        self.assertEqual(
+            transaction.operation_date,
+            self.today - timezone.timedelta(days=1),
+        )
+
+    def test_transaction_put_full_update_does_not_allow_foreign_transaction(self):
+        self.authenticate()
+
+        foreign_transaction = self.create_transaction(
+            user=self.other_user,
+            account=self.other_account,
+            category=self.other_category,
+            type=TransactionType.EXPENSE,
+            amount="999.00",
+            description="Чужая операция до PUT",
+            operation_date=self.today,
+        )
+
+        response = self.client.put(
+            reverse(
+                "finance:transaction-detail",
+                kwargs={"pk": foreign_transaction.id},
+            ),
+            data={
+                "account": self.account.id,
+                "category": self.expense_category.id,
+                "type": TransactionType.EXPENSE,
+                "amount": "100.00",
+                "description": "Попытка изменить чужую операцию",
+                "operation_date": str(self.today),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(response.data["success"])
+
+        foreign_transaction.refresh_from_db()
+
+        self.assertEqual(foreign_transaction.amount, Decimal("999.00"))
+        self.assertEqual(foreign_transaction.description, "Чужая операция до PUT")
+
+    def test_transaction_patch_does_not_allow_foreign_transaction(self):
+        self.authenticate()
+
+        foreign_transaction = self.create_transaction(
+            user=self.other_user,
+            account=self.other_account,
+            category=self.other_category,
+            type=TransactionType.EXPENSE,
+            amount="999.00",
+            description="Чужая операция до PATCH",
+            operation_date=self.today,
+        )
+
+        response = self.client.patch(
+            reverse(
+                "finance:transaction-detail",
+                kwargs={"pk": foreign_transaction.id},
+            ),
+            data={
+                "description": "Попытка изменить чужую операцию",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(response.data["success"])
+
+        foreign_transaction.refresh_from_db()
+
+        self.assertEqual(foreign_transaction.description, "Чужая операция до PATCH")
+
+    def test_transaction_delete_does_not_allow_foreign_transaction(self):
+        self.authenticate()
+
+        foreign_transaction = self.create_transaction(
+            user=self.other_user,
+            account=self.other_account,
+            category=self.other_category,
+            type=TransactionType.EXPENSE,
+            amount="999.00",
+            description="Чужая операция для удаления",
+            operation_date=self.today,
+        )
+
+        response = self.client.delete(
+            reverse(
+                "finance:transaction-detail",
+                kwargs={"pk": foreign_transaction.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(response.data["success"])
+        self.assertTrue(Transaction.objects.filter(pk=foreign_transaction.id).exists())
+
+    def test_transaction_detail_does_not_return_foreign_transaction(self):
+        self.authenticate()
+
+        foreign_transaction = self.create_transaction(
+            user=self.other_user,
+            account=self.other_account,
+            category=self.other_category,
+            type=TransactionType.EXPENSE,
+            amount="999.00",
+            description="Чужая операция",
+            operation_date=self.today,
+        )
+
+        response = self.client.get(
+            reverse(
+                "finance:transaction-detail",
+                kwargs={"pk": foreign_transaction.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(response.data["success"])
+
+    def test_transaction_patch_rejects_foreign_account(self):
+        self.authenticate()
+
+        transaction = self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            type=TransactionType.EXPENSE,
+            amount="100.00",
+            description="До смены счёта",
+            operation_date=self.today,
+        )
+
+        response = self.client.patch(
+            reverse("finance:transaction-detail", kwargs={"pk": transaction.id}),
+            data={
+                "account": self.other_account.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("account", response.data["error"]["field_errors"])
+
+        transaction.refresh_from_db()
+
+        self.assertEqual(transaction.account_id, self.account.id)
+
+    def test_transaction_patch_rejects_foreign_category(self):
+        self.authenticate()
+
+        transaction = self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            type=TransactionType.EXPENSE,
+            amount="100.00",
+            description="До смены категории",
+            operation_date=self.today,
+        )
+
+        response = self.client.patch(
+            reverse("finance:transaction-detail", kwargs={"pk": transaction.id}),
+            data={
+                "category": self.other_category.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("category", response.data["error"]["field_errors"])
+
+        transaction.refresh_from_db()
+
+        self.assertEqual(transaction.category_id, self.expense_category.id)
+
+    def test_transaction_patch_rejects_category_type_mismatch(self):
+        self.authenticate()
+
+        transaction = self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            type=TransactionType.EXPENSE,
+            amount="100.00",
+            description="До некорректной категории",
+            operation_date=self.today,
+        )
+
+        response = self.client.patch(
+            reverse("finance:transaction-detail", kwargs={"pk": transaction.id}),
+            data={
+                "category": self.income_category.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("category", response.data["error"]["field_errors"])
+
+        transaction.refresh_from_db()
+
+        self.assertEqual(transaction.category_id, self.expense_category.id)
+        self.assertEqual(transaction.type, TransactionType.EXPENSE)
+
     def test_transaction_rejects_foreign_account(self):
         self.authenticate()
 

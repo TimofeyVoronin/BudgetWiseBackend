@@ -170,7 +170,7 @@ def get_transaction_ordering_fields(query_params):
         "-created_at",
         "-id",
     ]
-    
+
 
 @extend_schema_view(
     list=extend_schema(
@@ -1044,6 +1044,32 @@ class CategoryViewSet(viewsets.ModelViewSet):
         description="Возвращает одну финансовую операцию текущего пользователя по ID.",
         responses={200: TransactionSerializer},
     ),
+    update=extend_schema(
+        tags=["finance"],
+        summary="Полностью обновить операцию",
+        description=(
+            "Полностью обновляет финансовую операцию текущего пользователя. "
+            "Endpoint принимает полный набор обязательных полей операции. "
+            "Счёт и категория должны принадлежать текущему пользователю, "
+            "а тип категории должен совпадать с типом операции."
+        ),
+        request=TransactionSerializer,
+        responses={200: TransactionSerializer},
+        examples=[
+            OpenApiExample(
+                "Полное обновление операции",
+                value={
+                    "account": 1,
+                    "category": 2,
+                    "type": "expense",
+                    "amount": "1245.00",
+                    "description": "Покупка в супермаркете",
+                    "operation_date": "2026-05-15",
+                },
+                request_only=True,
+            )
+        ],
+    ),
     partial_update=extend_schema(
         tags=["finance"],
         summary="Частично обновить операцию",
@@ -1074,7 +1100,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated, IsObjectOwner]
     pagination_class = StandardResultsSetPagination
-    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    http_method_names = [
+        "get",
+        "post",
+        "put",
+        "patch",
+        "delete",
+        "head",
+        "options",
+    ]
 
     def get_queryset(self):
         if not self.request.user.is_authenticated:

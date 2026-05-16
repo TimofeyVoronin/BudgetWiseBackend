@@ -1110,6 +1110,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/Transaction'
           description: ''
+    put:
+      operationId: finance_transactions_update
+      description: Полностью обновляет финансовую операцию текущего пользователя.
+        Endpoint принимает полный набор обязательных полей операции. Счёт и категория
+        должны принадлежать текущему пользователю, а тип категории должен совпадать
+        с типом операции.
+      summary: Полностью обновить операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Операция.
+        required: true
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+            examples:
+              ПолноеОбновлениеОперации:
+                value:
+                  account: 1
+                  category: 2
+                  type: expense
+                  amount: '1245.00'
+                  description: Покупка в супермаркете
+                  operation_date: '2026-05-15'
+                summary: Полное обновление операции
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+          description: ''
     patch:
       operationId: finance_transactions_partial_update
       description: Частично обновляет финансовую операцию. При смене счёта или категории
