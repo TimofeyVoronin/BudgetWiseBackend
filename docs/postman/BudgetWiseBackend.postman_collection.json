@@ -1323,12 +1323,22 @@
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
+                  "pm.test(\"Status code is 200\", function () {",
                   "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is paginated\", function () {",
+                  "    const json = pm.response.json();",
+                  "",
+                  "    pm.expect(json).to.have.property(\"count\");",
+                  "    pm.expect(json).to.have.property(\"results\");",
+                  "    pm.expect(json.results).to.be.an(\"array\");",
                   "});"
-                ]
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -1346,7 +1356,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/finance/categories/?type=expense&is_active=true",
+              "raw": "{{base_url}}/api/v1/finance/categories/?type=expense&is_active=true&is_archived=false&page_size=50",
               "host": [
                 "{{base_url}}"
               ],
@@ -1365,6 +1375,14 @@
                 {
                   "key": "is_active",
                   "value": "true"
+                },
+                {
+                  "key": "is_archived",
+                  "value": "false"
+                },
+                {
+                  "key": "page_size",
+                  "value": "50"
                 }
               ]
             },
@@ -1378,17 +1396,19 @@
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
+                  "pm.test(\"Status code is 200\", function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "pm.test('Response is array', function () {",
+                  "pm.test(\"Response is array\", function () {",
                   "    const json = pm.response.json();",
-                  "    pm.expect(json).to.be.an('array');",
+                  "    pm.expect(json).to.be.an(\"array\");",
                   "});"
-                ]
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -1406,7 +1426,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/v1/finance/categories/tree/",
+              "raw": "{{base_url}}/api/v1/finance/categories/tree/?type=expense&is_active=true&is_archived=false",
               "host": [
                 "{{base_url}}"
               ],
@@ -1417,6 +1437,20 @@
                 "categories",
                 "tree",
                 ""
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "expense"
+                },
+                {
+                  "key": "is_active",
+                  "value": "true"
+                },
+                {
+                  "key": "is_archived",
+                  "value": "false"
+                }
               ]
             },
             "description": "Returns categories as a hierarchy tree."
@@ -1429,17 +1463,29 @@
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 201', function () {",
+                  "pm.test(\"Status code is 201\", function () {",
                   "    pm.response.to.have.status(201);",
                   "});",
                   "",
                   "const json = pm.response.json();",
+                  "",
+                  "pm.test(\"Category response is valid\", function () {",
+                  "    pm.expect(json).to.have.property(\"id\");",
+                  "    pm.expect(json).to.have.property(\"name\");",
+                  "    pm.expect(json.type).to.eql(\"expense\");",
+                  "    pm.expect(json).to.have.property(\"icon\");",
+                  "    pm.expect(json).to.have.property(\"color\");",
+                  "    pm.expect(json).to.have.property(\"sort_order\");",
+                  "});",
+                  "",
                   "if (json.id) {",
-                  "    pm.environment.set('category_id', json.id);",
+                  "    pm.environment.set(\"category_id\", json.id);",
                   "}"
-                ]
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -1463,7 +1509,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"parent\": null,\n  \"name\": \"Postman Test {{$timestamp}}\",\n  \"type\": \"expense\",\n  \"is_active\": true\n}"
+              "raw": "{\n  \"parent\": null,\n  \"name\": \"Postman Category {{$timestamp}}\",\n  \"type\": \"expense\",\n  \"icon\": \"folder\",\n  \"color\": \"#4F46E5\",\n  \"sort_order\": 10,\n  \"is_favorite\": false,\n  \"is_archived\": false,\n  \"is_active\": true\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/finance/categories/",
@@ -1488,17 +1534,25 @@
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 201', function () {",
+                  "pm.test(\"Status code is 201\", function () {",
                   "    pm.response.to.have.status(201);",
                   "});",
                   "",
                   "const json = pm.response.json();",
+                  "",
+                  "pm.test(\"Child category response is valid\", function () {",
+                  "    pm.expect(json).to.have.property(\"id\");",
+                  "    pm.expect(json.parent).to.eql(Number(pm.environment.get(\"category_id\")));",
+                  "});",
+                  "",
                   "if (json.id) {",
-                  "    pm.environment.set('child_category_id', json.id);",
+                  "    pm.environment.set(\"child_category_id\", json.id);",
                   "}"
-                ]
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -1522,7 +1576,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"parent\": {{category_id}},\n  \"name\": \"Postman Child {{$timestamp}}\",\n  \"type\": \"expense\",\n  \"is_active\": true\n}"
+              "raw": "{\n  \"parent\": {{category_id}},\n  \"name\": \"Postman Child {{$timestamp}}\",\n  \"type\": \"expense\",\n  \"icon\": \"tag\",\n  \"color\": \"#10B981\",\n  \"sort_order\": 0,\n  \"is_favorite\": false,\n  \"is_archived\": false,\n  \"is_active\": true\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/finance/categories/",
@@ -1593,12 +1647,22 @@
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
+                  "pm.test(\"Status code is 200\", function () {",
                   "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Category was updated\", function () {",
+                  "    const json = pm.response.json();",
+                  "",
+                  "    pm.expect(json.id).to.eql(Number(pm.environment.get(\"category_id\")));",
+                  "    pm.expect(json.icon).to.eql(\"coffee\");",
+                  "    pm.expect(json.color).to.eql(\"#EF4444\");",
                   "});"
-                ]
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -1622,7 +1686,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Postman Updated {{$timestamp}}\"\n}"
+              "raw": "{\n  \"name\": \"Postman Updated {{$timestamp}}\",\n  \"icon\": \"coffee\",\n  \"color\": \"#EF4444\",\n  \"parent\": null\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/finance/categories/{{category_id}}/",
@@ -1643,17 +1707,381 @@
           "response": []
         },
         {
+          "name": "Favorite category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Category favorite flag is updated\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json.id).to.eql(Number(pm.environment.get(\"category_id\")));\r",
+                  "    pm.expect(json.is_favorite).to.eql(true);\r",
+                  "    pm.expect(json).to.have.property(\"detail\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"favorite\": true\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/categories/{{category_id}}/favorite/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "categories",
+                "{{category_id}}",
+                "favorite",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Archive category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Category is archived\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json.id).to.eql(Number(pm.environment.get(\"category_id\")));\r",
+                  "    pm.expect(json.is_archived).to.eql(true);\r",
+                  "    pm.expect(json.is_active).to.eql(false);\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"archived\": true\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/categories/{{category_id}}/archive/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "categories",
+                "{{category_id}}",
+                "archive",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Restore category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Category is archived\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json.id).to.eql(Number(pm.environment.get(\"category_id\")));\r",
+                  "    pm.expect(json.is_archived).to.eql(true);\r",
+                  "    pm.expect(json.is_active).to.eql(false);\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"archived\": false\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/categories/{{category_id}}/archive/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "categories",
+                "{{category_id}}",
+                "archive",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reorder categories",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Reorder response is valid\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json).to.have.property(\"detail\");\r",
+                  "    pm.expect(json).to.have.property(\"updated_count\");\r",
+                  "    pm.expect(json.updated_count).to.be.at.least(1);\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"kind\": \"expense\",\r\n  \"order\": [\r\n    {\r\n      \"id\": {{category_id}},\r\n      \"parentId\": null,\r\n      \"position\": 0\r\n    },\r\n    {\r\n      \"id\": {{child_category_id}},\r\n      \"parentId\": {{category_id}},\r\n      \"position\": 0\r\n    }\r\n  ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/categories/reorder/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "categories",
+                "reorder",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Suggest category",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Suggest response is valid\", function () {\r",
+                  "    const json = pm.response.json();\r",
+                  "\r",
+                  "    pm.expect(json).to.have.property(\"suggestions\");\r",
+                  "    pm.expect(json.suggestions).to.be.an(\"array\");\r",
+                  "\r",
+                  "    if (json.suggestions.length > 0) {\r",
+                  "        const item = json.suggestions[0];\r",
+                  "\r",
+                  "        pm.expect(item).to.have.property(\"category\");\r",
+                  "        pm.expect(item).to.have.property(\"name\");\r",
+                  "        pm.expect(item).to.have.property(\"type\");\r",
+                  "        pm.expect(item).to.have.property(\"confidence\");\r",
+                  "        pm.expect(item).to.have.property(\"reason\");\r",
+                  "    }\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"description\": \"Покупка продуктов в пятерочке\",\r\n  \"type\": \"expense\",\r\n  \"limit\": 3\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/categories/suggest/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "categories",
+                "suggest",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Delete child category",
           "event": [
             {
               "listen": "test",
               "script": {
-                "type": "text/javascript",
                 "exec": [
                   "pm.test('Status code is 204', function () {",
                   "    pm.response.to.have.status(204);",
                   "});"
-                ]
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
               }
             }
           ],
@@ -1684,7 +2112,7 @@
                 ""
               ]
             },
-            "description": "Deletes or deactivates child category."
+            "description": "Deletes child category by child_category_id. Run after Create child category and before deleting parent category."
           },
           "response": []
         }

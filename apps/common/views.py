@@ -39,6 +39,11 @@ class APIRootResponseSerializer(serializers.Serializer):
     tags=["health"],
     operation_id="health_check",
     summary="Проверка состояния backend-сервиса и зависимостей",
+    description=(
+        "Возвращает состояние backend-сервиса и базовых зависимостей. "
+        "Endpoint доступен без авторизации и может использоваться для "
+        "health-check в Docker Compose, мониторинге и внешних проверках."
+    ),
     auth=[],
     responses={
         200: HealthCheckResponseSerializer,
@@ -116,12 +121,13 @@ def health_check(request):
 
 
 @extend_schema(
-    tags=["health"],
+    tags=["monitoring"],
     operation_id="metrics",
-    summary="Prometheus-compatible metrics endpoint",
+    summary="Получить Prometheus-метрики backend-сервиса",
     description=(
         "Возвращает метрики backend API в Prometheus text format. "
-        "Endpoint защищён заголовком X-Metrics-Token."
+        "Endpoint защищён заголовком X-Metrics-Token. "
+        "Значение токена задаётся через переменную окружения METRICS_ACCESS_TOKEN."
     ),
     auth=[],
     parameters=[
@@ -137,6 +143,17 @@ def health_check(request):
         200: OpenApiTypes.STR,
         403: OpenApiTypes.OBJECT,
     },
+    examples=[
+        OpenApiExample(
+            "Фрагмент успешного ответа",
+            value=(
+                "# HELP django_http_requests_total_by_method_total "
+                "Count of requests by method.\n"
+                "# TYPE django_http_requests_total_by_method_total counter\n"
+            ),
+            response_only=True,
+        )
+    ],
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -161,6 +178,10 @@ def metrics_view(request):
         tags=["health"],
         operation_id="api_root",
         summary="Корневой endpoint API версии v1",
+        description=(
+            "Возвращает основные группы endpoints backend API и ссылки "
+            "на OpenAPI-документацию."
+        ),
         auth=[],
         responses={200: APIRootResponseSerializer},
         examples=[
@@ -170,11 +191,14 @@ def metrics_view(request):
                     "service": "BudgetWiseBackend API",
                     "version": "v1",
                     "endpoints": {
+                        "auth": "/api/v1/auth/",
                         "users": "/api/v1/users/",
                         "finance": "/api/v1/finance/",
                         "schema": "/api/schema/",
                         "docs": "/api/docs/",
+                        "redoc": "/api/redoc/",
                         "health": "/health/",
+                        "metrics": "/metrics/",
                     },
                 },
                 response_only=True,
@@ -192,11 +216,14 @@ class APIRootView(GenericAPIView):
                 "service": "BudgetWiseBackend API",
                 "version": "v1",
                 "endpoints": {
+                    "auth": "/api/v1/auth/",
                     "users": "/api/v1/users/",
                     "finance": "/api/v1/finance/",
                     "schema": "/api/schema/",
                     "docs": "/api/docs/",
+                    "redoc": "/api/redoc/",
                     "health": "/health/",
+                    "metrics": "/metrics/",
                 },
             }
         )

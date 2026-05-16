@@ -19,6 +19,12 @@ class GoalStatus(models.TextChoices):
     CANCELLED = "cancelled", "Отменена"
 
 
+hex_color_validator = RegexValidator(
+    regex=r"^#[0-9A-Fa-f]{6}$",
+    message="Цвет должен быть указан в HEX-формате, например #4F46E5.",
+)
+
+
 class Account(TimeStampedModel):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -100,6 +106,29 @@ class Category(TimeStampedModel):
         choices=TransactionType.choices,
         verbose_name="Тип категории",
     )
+    icon = models.CharField(
+        max_length=50,
+        default="folder",
+        verbose_name="Иконка",
+    )
+    color = models.CharField(
+        max_length=7,
+        default="#64748B",
+        validators=[hex_color_validator],
+        verbose_name="Цвет",
+    )
+    sort_order = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Порядок сортировки",
+    )
+    is_favorite = models.BooleanField(
+        default=False,
+        verbose_name="Избранная",
+    )
+    is_archived = models.BooleanField(
+        default=False,
+        verbose_name="Архивная",
+    )
     is_active = models.BooleanField(
         default=True,
         verbose_name="Активна",
@@ -108,7 +137,7 @@ class Category(TimeStampedModel):
     class Meta:
         verbose_name = "Категория"
         verbose_name_plural = "Категории"
-        ordering = ["type", "name"]
+        ordering = ["type", "parent_id", "sort_order", "name"]
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "name", "type"],
@@ -125,15 +154,45 @@ class Category(TimeStampedModel):
                 ),
                 name="category_parent_not_self",
             ),
+            models.CheckConstraint(
+                condition=models.Q(color__regex=r"^#[0-9A-Fa-f]{6}$"),
+                name="category_color_hex_format",
+            ),
         ]
         indexes = [
             models.Index(fields=["user"], name="idx_category_user"),
             models.Index(fields=["user", "type"], name="idx_category_user_type"),
             models.Index(fields=["user", "parent"], name="idx_category_user_parent"),
             models.Index(fields=["user", "is_active"], name="idx_category_user_active"),
+            models.Index(fields=["user", "is_archived"], name="idx_cat_user_archived"),
+            models.Index(fields=["user", "is_favorite"], name="idx_cat_user_favorite"),
             models.Index(
                 fields=["user", "name", "type"],
                 name="idx_category_user_name_type",
+            ),
+            models.Index(
+                fields=["user", "type", "name"],
+                name="idx_cat_user_type_name",
+            ),
+            models.Index(
+                fields=["user", "type", "is_active", "is_archived", "is_favorite"],
+                name="idx_cat_user_type_flags",
+            ),
+            models.Index(
+                fields=[
+                    "user",
+                    "type",
+                    "parent",
+                    "is_active",
+                    "is_archived",
+                    "is_favorite",
+                    "sort_order",
+                ],
+                name="idx_cat_tree_flags_order",
+            ),
+            models.Index(
+                fields=["user", "type", "parent", "sort_order"],
+                name="idx_cat_user_type_parent_order",
             ),
         ]
 
@@ -356,6 +415,12 @@ class Budget(TimeStampedModel):
             errors["category"] = (
                 "Бюджет можно создавать только для категории расходов."
             )
+
+        if self.category_id and not self.category.is_active:
+            errors["category"] = "Нельзя использовать неактивную категорию в бюджете."
+
+        if self.category_id and self.category.is_archived:
+            errors["category"] = "Нельзя использовать архивную категорию в бюджете."
 
         if errors:
             raise ValidationError(errors)

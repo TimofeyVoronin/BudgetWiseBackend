@@ -2,12 +2,22 @@ openapi: 3.0.3
 info:
   title: BudgetWiseBackend API
   version: 1.0.0
-  description: OpenAPI-документация backend-части прогрессивного веб-приложения для
-    управления личными финансами.
+  description: |-
+    OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
+
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми категориями, операциями, бюджетами, целями и служебного мониторинга.
+
+    Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
+  contact:
+    name: BudgetWiseBackend
+    email: noreply@budgetwise.local
+  license:
+    name: Educational project
 paths:
   /api/v1/:
     get:
       operationId: api_root
+      description: Возвращает основные группы endpoints backend API и ссылки на OpenAPI-документацию.
       summary: Корневой endpoint API версии v1
       tags:
       - health
@@ -23,16 +33,19 @@ paths:
                     service: BudgetWiseBackend API
                     version: v1
                     endpoints:
+                      auth: /api/v1/auth/
                       users: /api/v1/users/
                       finance: /api/v1/finance/
                       schema: /api/schema/
                       docs: /api/docs/
+                      redoc: /api/redoc/
                       health: /health/
+                      metrics: /metrics/
                   summary: Успешный ответ
           description: ''
   /api/v1/auth/forgot-password/check/:
     post:
-      operationId: api_v1_auth_forgot_password_check_create
+      operationId: auth_forgot_password_check_create
       description: Принимает email и, если активный пользователь с таким email существует,
         отправляет письмо со ссылкой восстановления пароля. Ответ всегда одинаковый
         для существующего и несуществующего email.
@@ -74,7 +87,7 @@ paths:
           description: ''
   /api/v1/auth/login/:
     post:
-      operationId: api_v1_auth_login_create
+      operationId: auth_login_create
       description: Аутентифицирует пользователя по email и password. При успешном
         входе возвращает access token, refresh token и краткие данные пользователя.
       summary: Войти в систему
@@ -124,7 +137,7 @@ paths:
           description: ''
   /api/v1/auth/register/:
     post:
-      operationId: api_v1_auth_register_create
+      operationId: auth_register_create
       description: Создаёт нового неактивного пользователя по email и password. После
         регистрации backend отправляет письмо со ссылкой подтверждения email.
       summary: Зарегистрировать пользователя
@@ -171,7 +184,7 @@ paths:
           description: ''
   /api/v1/auth/reset-password/:
     post:
-      operationId: api_v1_auth_reset_password_create
+      operationId: auth_reset_password_create
       description: Принимает token восстановления пароля и новый пароль. Проверяет,
         что token существует, не истёк и не был использован. После успешной смены
         пароля token помечается использованным.
@@ -214,12 +227,12 @@ paths:
           description: ''
   /api/v1/auth/token/refresh/:
     post:
-      operationId: api_v1_auth_token_refresh_create
+      operationId: auth_token_refresh_create
       description: |-
         Takes a refresh type JSON web token and returns an access type JSON web
         token if the refresh token is valid.
       tags:
-      - api
+      - auth
       requestBody:
         content:
           application/json:
@@ -241,7 +254,7 @@ paths:
           description: ''
   /api/v1/auth/verify-email/:
     post:
-      operationId: api_v1_auth_verify_email_create
+      operationId: auth_verify_email_create
       description: Проверяет token подтверждения email. Если token действителен, активирует
         аккаунт пользователя. Повторное использование token после активации запрещено.
       summary: Подтвердить email пользователя
@@ -284,17 +297,36 @@ paths:
           description: ''
   /api/v1/finance/categories/:
     get:
-      operationId: api_v1_finance_categories_list
+      operationId: finance_categories_list
+      description: Возвращает категории текущего пользователя с пагинацией. Поддерживает
+        фильтрацию по типу, родителю, активности, архиву, избранному и поиску по названию.
+        Используется для таблиц, списков и форм выбора категории на фронте.
       summary: Получить список категорий
       parameters:
       - in: query
         name: is_active
         schema:
           type: boolean
+        description: Фильтр по активности категории. true - только активные, false
+          - только неактивные.
+      - in: query
+        name: is_archived
+        schema:
+          type: boolean
+        description: Фильтр по архивному состоянию категории. true - только архивные,
+          false - только неархивные.
+      - in: query
+        name: is_favorite
+        schema:
+          type: boolean
+        description: Фильтр по избранным категориям. true - только избранные, false
+          - только не избранные.
       - in: query
         name: ordering
         schema:
           type: string
+        description: 'Сортировка категорий. Поддерживаются поля: name, type, sort_order,
+          created_at, updated_at. Для сортировки по убыванию используйте префикс ''-''.'
       - name: page
         required: false
         in: query
@@ -311,10 +343,23 @@ paths:
         name: parent
         schema:
           type: integer
+        description: ID родительской категории.
+      - in: query
+        name: root
+        schema:
+          type: boolean
+        description: Фильтр по уровню иерархии. true - только корневые категории,
+          false - только дочерние.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию категории. Максимальная длина 100 символов.
       - in: query
         name: type
         schema:
           type: string
+        description: 'Тип категории: income или expense.'
       tags:
       - finance
       security:
@@ -325,9 +370,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedCategoryList'
+              examples:
+                СписокАктивныхРасходныхКатегорий:
+                  value:
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - count: 2
+                      next: null
+                      previous: null
+                      results:
+                      - id: 1
+                        parent: null
+                        name: Продукты
+                        type: expense
+                        icon: shopping-cart
+                        color: '#10B981'
+                        sort_order: 0
+                        is_favorite: true
+                        is_archived: false
+                        is_active: true
+                        children_count: 1
+                        budgets_count: 1
+                        active_budgets_count: 1
+                        is_available_for_budget: true
+                        created_at: 2026-05-15T12:00:00+0300
+                        updated_at: 2026-05-15T12:00:00+0300
+                  summary: Список активных расходных категорий
           description: ''
     post:
-      operationId: api_v1_finance_categories_create
+      operationId: finance_categories_create
+      description: Создаёт категорию доходов или расходов для текущего пользователя.
+        Категория может быть корневой или дочерней. Родительская категория должна
+        принадлежать тому же пользователю и иметь тот же тип.
       summary: Создать категорию
       tags:
       - finance
@@ -336,6 +412,19 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CategoryRequest'
+            examples:
+              СозданиеКатегорииРасходов:
+                value:
+                  parent: null
+                  name: Кафе и рестораны
+                  type: expense
+                  icon: utensils
+                  color: '#F59E0B'
+                  sort_order: 10
+                  is_favorite: false
+                  is_archived: false
+                  is_active: true
+                summary: Создание категории расходов
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/CategoryRequest'
@@ -354,7 +443,8 @@ paths:
           description: ''
   /api/v1/finance/categories/{id}/:
     get:
-      operationId: api_v1_finance_categories_retrieve
+      operationId: finance_categories_retrieve
+      description: Возвращает одну категорию текущего пользователя по ID.
       summary: Получить категорию
       parameters:
       - in: path
@@ -374,8 +464,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/Category'
           description: ''
+    put:
+      operationId: finance_categories_update
+      description: Полностью обновляет категорию текущего пользователя. При изменении
+        родителя проверяется владелец, тип категории и отсутствие циклов в иерархии.
+      summary: Полностью обновить категорию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Категория.
+        required: true
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+          description: ''
     patch:
-      operationId: api_v1_finance_categories_partial_update
+      operationId: finance_categories_partial_update
+      description: Частично обновляет категорию текущего пользователя. Подходит для
+        изменения названия, иконки, цвета, родителя, активности и порядка сортировки.
       summary: Частично обновить категорию
       parameters:
       - in: path
@@ -391,6 +518,14 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PatchedCategoryRequest'
+            examples:
+              ОбновлениеКатегории:
+                value:
+                  name: Кафе, рестораны и доставка
+                  icon: coffee
+                  color: '#EF4444'
+                  parent: null
+                summary: Обновление категории
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/PatchedCategoryRequest'
@@ -407,7 +542,10 @@ paths:
                 $ref: '#/components/schemas/Category'
           description: ''
     delete:
-      operationId: api_v1_finance_categories_destroy
+      operationId: finance_categories_destroy
+      description: Удаляет категорию текущего пользователя. Удаление запрещено, если
+        у категории есть дочерние категории, операции или бюджеты. В таких случаях
+        API возвращает 409 Conflict.
       summary: Удалить категорию
       parameters:
       - in: path
@@ -423,15 +561,243 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/finance/categories/{id}/archive/:
+    post:
+      operationId: finance_categories_archive_create
+      description: Архивирует категорию или восстанавливает её из архива. При архивировании
+        категория также становится неактивной. Архивные категории не предлагаются
+        для новых операций и бюджетов. Если тело запроса пустое, категория архивируется.
+        Для восстановления передайте archived=false.
+      summary: Архивировать или восстановить категорию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Категория.
+        required: true
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryArchiveRequest'
+            examples:
+              АрхивироватьКатегорию:
+                value:
+                  archived: true
+                summary: Архивировать категорию
+              ВосстановитьКатегорию:
+                value:
+                  archived: false
+                summary: Восстановить категорию
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategoryArchiveRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategoryArchiveRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryArchive'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    id: 1
+                    is_archived: true
+                    is_active: false
+                    budgets_count: 1
+                    active_budgets_count: 1
+                    detail: Категория отправлена в архив.
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/finance/categories/{id}/favorite/:
+    patch:
+      operationId: finance_categories_favorite_partial_update
+      description: Добавляет категорию в избранное или удаляет её из избранного. Используется
+        для быстрого доступа к часто используемым категориям.
+      summary: Изменить признак избранной категории
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this Категория.
+        required: true
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCategoryFavoriteRequest'
+            examples:
+              ДобавитьКатегориюВИзбранное:
+                value:
+                  favorite: true
+                summary: Добавить категорию в избранное
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCategoryFavoriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCategoryFavoriteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryFavorite'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    id: 1
+                    is_favorite: true
+                    detail: Категория добавлена в избранное.
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/finance/categories/reorder/:
+    put:
+      operationId: finance_categories_reorder_update
+      description: Endpoint используется после drag and drop на фронте. Поддерживает
+        backend-формат parent/sort_order и frontend-формат parentId/position. Все
+        категории в order должны принадлежать текущему пользователю и иметь один тип.
+      summary: Изменить порядок и иерархию категорий
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryReorderRequest'
+            examples:
+              Frontend-форматReorder:
+                value:
+                  kind: expense
+                  order:
+                  - id: 1
+                    parentId: null
+                    position: 0
+                  - id: 2
+                    parentId: 1
+                    position: 0
+                summary: Frontend-формат reorder
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategoryReorderRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategoryReorderRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryReorder'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Порядок категорий обновлён.
+                    updated_count: 2
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/finance/categories/suggest/:
+    post:
+      operationId: finance_categories_suggest_create
+      description: Интеграционная точка для smart categorization. Endpoint использует
+        простой rule-based алгоритм по названию категории и ключевым словам. Возвращаются
+        только активные и неархивные категории текущего пользователя. Можно передавать
+        type или frontend-поле kind.
+      summary: Получить подсказки категорий по описанию операции
+      tags:
+      - finance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategorySuggestRequest'
+            examples:
+              ПодборКатегорииПоОписанию:
+                value:
+                  description: Покупка продуктов в пятерочке
+                  type: expense
+                  limit: 3
+                summary: Подбор категории по описанию
+              Frontend-вариантСKind:
+                value:
+                  description: Такси до университета
+                  kind: expense
+                  limit: 3
+                summary: Frontend-вариант с kind
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CategorySuggestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CategorySuggestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategorySuggest'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    suggestions:
+                    - id: 1
+                      category: 1
+                      parent: null
+                      name: Продукты
+                      type: expense
+                      icon: shopping-cart
+                      color: '#10B981'
+                      confidence: 0.92
+                      reason: 'Найдено совпадение по ключевому слову: продукт.'
+                      matched_keyword: продукт
+                  summary: Успешный ответ
+          description: ''
   /api/v1/finance/categories/tree/:
     get:
-      operationId: api_v1_finance_categories_tree_list
+      operationId: finance_categories_tree_list
+      description: Возвращает дерево категорий текущего пользователя. В ответ попадают
+        только корневые категории, а дочерние категории возвращаются во вложенном
+        поле children. Endpoint используется для древовидного отображения категорий
+        на фронте.
       summary: Получить дерево категорий
       parameters:
       - in: query
         name: is_active
         schema:
           type: boolean
+        description: Фильтр по активности категории. true - только активные, false
+          - только неактивные.
+      - in: query
+        name: is_archived
+        schema:
+          type: boolean
+        description: Фильтр по архивному состоянию категории. true - только архивные,
+          false - только неархивные.
+      - in: query
+        name: is_favorite
+        schema:
+          type: boolean
+        description: Фильтр по избранным категориям. true - только избранные, false
+          - только не избранные.
       - name: page
         required: false
         in: query
@@ -445,9 +811,16 @@ paths:
         schema:
           type: integer
       - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию корневой категории. Максимальная длина 100
+          символов.
+      - in: query
         name: type
         schema:
           type: string
+        description: 'Тип категории: income или expense.'
       tags:
       - finance
       security:
@@ -458,10 +831,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedCategoryTreeList'
+              examples:
+                ДеревоКатегорийРасходов:
+                  value:
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - - id: 1
+                        parent: null
+                        name: Продукты
+                        type: expense
+                        icon: shopping-cart
+                        color: '#10B981'
+                        sort_order: 0
+                        is_favorite: true
+                        is_archived: false
+                        is_active: true
+                        budgets_count: 1
+                        active_budgets_count: 1
+                        is_available_for_budget: true
+                        children:
+                        - id: 2
+                          parent: 1
+                          name: Супермаркеты
+                          type: expense
+                          icon: store
+                          color: '#4F46E5'
+                          sort_order: 0
+                          is_favorite: false
+                          is_archived: false
+                          is_active: true
+                          budgets_count: 0
+                          active_budgets_count: 0
+                          is_available_for_budget: true
+                          children: []
+                          created_at: 2026-05-15T12:00:00+0300
+                          updated_at: 2026-05-15T12:00:00+0300
+                        created_at: 2026-05-15T12:00:00+0300
+                        updated_at: 2026-05-15T12:00:00+0300
+                  summary: Дерево категорий расходов
           description: ''
   /api/v1/finance/transactions/:
     get:
-      operationId: api_v1_finance_transactions_list
+      operationId: finance_transactions_list
+      description: Возвращает операции текущего пользователя с пагинацией. Поддерживает
+        фильтры по счёту, категории, типу, периоду, сумме, поиску по описанию и сортировке.
       summary: Получить список операций
       parameters:
       - in: query
@@ -518,6 +933,7 @@ paths:
         name: type
         schema:
           type: string
+        description: 'Тип операции: income или expense.'
       tags:
       - finance
       security:
@@ -530,7 +946,10 @@ paths:
                 $ref: '#/components/schemas/PaginatedTransactionList'
           description: ''
     post:
-      operationId: api_v1_finance_transactions_create
+      operationId: finance_transactions_create
+      description: Создаёт финансовую операцию текущего пользователя. Счёт и категория
+        должны принадлежать текущему пользователю. Тип категории должен совпадать
+        с типом операции.
       summary: Создать операцию
       tags:
       - finance
@@ -539,6 +958,16 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TransactionRequest'
+            examples:
+              СозданиеРасходнойОперации:
+                value:
+                  account: 1
+                  category: 2
+                  type: expense
+                  amount: '1500.00'
+                  description: Покупка продуктов
+                  operation_date: '2026-05-15'
+                summary: Создание расходной операции
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/TransactionRequest'
@@ -557,7 +986,8 @@ paths:
           description: ''
   /api/v1/finance/transactions/{id}/:
     get:
-      operationId: api_v1_finance_transactions_retrieve
+      operationId: finance_transactions_retrieve
+      description: Возвращает одну финансовую операцию текущего пользователя по ID.
       summary: Получить операцию
       parameters:
       - in: path
@@ -578,7 +1008,10 @@ paths:
                 $ref: '#/components/schemas/Transaction'
           description: ''
     patch:
-      operationId: api_v1_finance_transactions_partial_update
+      operationId: finance_transactions_partial_update
+      description: Частично обновляет финансовую операцию. При смене счёта или категории
+        повторно проверяется владелец, активность сущностей и соответствие типа категории
+        типу операции.
       summary: Частично обновить операцию
       parameters:
       - in: path
@@ -594,6 +1027,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PatchedTransactionRequest'
+            examples:
+              ОбновлениеОписанияОперации:
+                value:
+                  description: Покупка продуктов и бытовых товаров
+                summary: Обновление описания операции
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/PatchedTransactionRequest'
@@ -610,7 +1048,8 @@ paths:
                 $ref: '#/components/schemas/Transaction'
           description: ''
     delete:
-      operationId: api_v1_finance_transactions_destroy
+      operationId: finance_transactions_destroy
+      description: Удаляет финансовую операцию текущего пользователя.
       summary: Удалить операцию
       parameters:
       - in: path
@@ -628,25 +1067,32 @@ paths:
           description: No response body
   /api/v1/users/:
     get:
-      operationId: api_v1_users_list
+      operationId: users_list
+      description: Возвращает список пользователей с фильтрацией и сортировкой. Endpoint
+        доступен только администраторам.
       summary: Получить список пользователей
       parameters:
       - in: query
         name: is_active
         schema:
           type: boolean
+        description: Фильтр по активности пользователя.
       - in: query
         name: is_staff
         schema:
           type: boolean
+        description: Фильтр по признаку staff-пользователя.
       - in: query
         name: is_superuser
         schema:
           type: boolean
+        description: Фильтр по признаку superuser.
       - in: query
         name: ordering
         schema:
           type: string
+        description: 'Сортировка. Поддерживаются поля: id, username, email, date_joined.
+          Для сортировки по убыванию используйте префикс ''-''.'
       - name: page
         required: false
         in: query
@@ -663,6 +1109,7 @@ paths:
         name: search
         schema:
           type: string
+        description: Поиск по username или email.
       tags:
       - users
       security:
@@ -673,9 +1120,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedUserList'
+              examples:
+                СписокПользователей:
+                  value:
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - count: 1
+                      next: null
+                      previous: null
+                      results:
+                      - id: 1
+                        username: admin
+                        email: admin@example.com
+                        first_name: Timofey
+                        last_name: Admin
+                        role: admin
+                        is_active: true
+                        is_staff: true
+                        is_superuser: true
+                        date_joined: 2026-05-15T12:00:00+0300
+                  summary: Список пользователей
           description: ''
     post:
-      operationId: api_v1_users_create
+      operationId: users_create
+      description: Создаёт пользователя через административный endpoint. Endpoint
+        доступен только администраторам.
       summary: Создать пользователя
       tags:
       - users
@@ -684,6 +1155,18 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UserRequest'
+            examples:
+              СозданиеПользователя:
+                value:
+                  username: demo
+                  email: demo@example.com
+                  first_name: Demo
+                  last_name: User
+                  role: user
+                  is_active: true
+                  is_staff: false
+                  is_superuser: false
+                summary: Создание пользователя
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/UserRequest'
@@ -702,7 +1185,9 @@ paths:
           description: ''
   /api/v1/users/{id}/:
     get:
-      operationId: api_v1_users_retrieve
+      operationId: users_retrieve
+      description: Возвращает данные пользователя по ID. Endpoint доступен только
+        администраторам.
       summary: Получить пользователя
       parameters:
       - in: path
@@ -723,7 +1208,9 @@ paths:
                 $ref: '#/components/schemas/User'
           description: ''
     patch:
-      operationId: api_v1_users_partial_update
+      operationId: users_partial_update
+      description: Частично обновляет пользователя через административный endpoint.
+        Endpoint доступен только администраторам.
       summary: Частично обновить пользователя
       parameters:
       - in: path
@@ -739,6 +1226,12 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PatchedUserRequest'
+            examples:
+              ОбновлениеПользователя:
+                value:
+                  first_name: Updated
+                  is_active: true
+                summary: Обновление пользователя
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/PatchedUserRequest'
@@ -755,7 +1248,10 @@ paths:
                 $ref: '#/components/schemas/User'
           description: ''
     delete:
-      operationId: api_v1_users_destroy
+      operationId: users_destroy
+      description: Не удаляет пользователя физически, а переводит его в is_active=false.
+        Администратор не может деактивировать собственную учётную запись через этот
+        endpoint.
       summary: Деактивировать пользователя
       parameters:
       - in: path
@@ -774,6 +1270,9 @@ paths:
   /api/v1/users/me/:
     get:
       operationId: users_me_retrieve
+      description: Возвращает профиль авторизованного пользователя. Endpoint используется
+        фронтом для получения данных текущей сессии после входа, обновления страницы
+        или проверки access token.
       summary: Получить данные текущего пользователя
       tags:
       - users
@@ -785,9 +1284,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CurrentUser'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    id: 1
+                    username: timofey
+                    email: timofey@example.com
+                    first_name: Timofey
+                    last_name: Demo
+                    role: user
+                    is_active: true
+                    date_joined: 2026-05-15T12:00:00+0300
+                  summary: Успешный ответ
           description: ''
     patch:
       operationId: users_me_partial_update
+      description: Частично обновляет профиль текущего пользователя. Подходит для
+        изменения имени, фамилии и других разрешённых пользовательских полей.
       summary: Частично обновить данные текущего пользователя
       tags:
       - users
@@ -796,6 +1309,12 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PatchedCurrentUserRequest'
+            examples:
+              ОбновлениеПрофиля:
+                value:
+                  first_name: Timofey
+                  last_name: Backend
+                summary: Обновление профиля
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/PatchedCurrentUserRequest'
@@ -810,10 +1329,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CurrentUser'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    id: 1
+                    username: timofey
+                    email: timofey@example.com
+                    first_name: Timofey
+                    last_name: Backend
+                    role: user
+                    is_active: true
+                    date_joined: 2026-05-15T12:00:00+0300
+                  summary: Успешный ответ
           description: ''
   /health/:
     get:
       operationId: health_check
+      description: Возвращает состояние backend-сервиса и базовых зависимостей. Endpoint
+        доступен без авторизации и может использоваться для health-check в Docker
+        Compose, мониторинге и внешних проверках.
       summary: Проверка состояния backend-сервиса и зависимостей
       tags:
       - health
@@ -868,8 +1402,9 @@ paths:
     get:
       operationId: metrics
       description: Возвращает метрики backend API в Prometheus text format. Endpoint
-        защищён заголовком X-Metrics-Token.
-      summary: Prometheus-compatible metrics endpoint
+        защищён заголовком X-Metrics-Token. Значение токена задаётся через переменную
+        окружения METRICS_ACCESS_TOKEN.
+      summary: Получить Prometheus-метрики backend-сервиса
       parameters:
       - in: header
         name: X-Metrics-Token
@@ -878,13 +1413,19 @@ paths:
         description: Token for accessing metrics endpoint.
         required: true
       tags:
-      - health
+      - monitoring
       responses:
         '200':
           content:
             application/json:
               schema:
                 type: string
+              examples:
+                ФрагментУспешногоОтвета:
+                  value: |
+                    # HELP django_http_requests_total_by_method_total Count of requests by method.
+                    # TYPE django_http_requests_total_by_method_total counter
+                  summary: Фрагмент успешного ответа
           description: ''
         '403':
           content:
@@ -910,6 +1451,49 @@ components:
       - endpoints
       - service
       - version
+    ApiErrorDetail:
+      type: object
+      description: Детальная информация об ошибке API.
+      properties:
+        status_code:
+          type: integer
+          example: 400
+        code:
+          type: string
+          example: invalid
+        message:
+          type: string
+          example: Некорректные данные запроса.
+        field_errors:
+          type: object
+          nullable: true
+          additionalProperties: true
+          example:
+            email:
+            - Введите корректный адрес электронной почты.
+        detail:
+          nullable: true
+          oneOf:
+          - type: string
+          - type: object
+            additionalProperties: true
+          - type: array
+            items:
+              type: string
+          example: Ошибка валидации.
+        trace_id:
+          type: string
+          nullable: true
+          example: test-trace-id-123
+    ApiErrorResponse:
+      type: object
+      description: Единый формат ответа API при ошибке.
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          $ref: '#/components/schemas/ApiErrorDetail'
     Category:
       type: object
       properties:
@@ -926,13 +1510,42 @@ components:
           maxLength: 100
         type:
           allOf:
-          - $ref: '#/components/schemas/TypeEnum'
+          - $ref: '#/components/schemas/TransactionTypeEnum'
           title: Тип категории
+        icon:
+          type: string
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок сортировки
+        is_favorite:
+          type: boolean
+          title: Избранная
+        is_archived:
+          type: boolean
+          title: Архивная
         is_active:
           type: boolean
           title: Активна
         children_count:
           type: integer
+          readOnly: true
+        budgets_count:
+          type: integer
+          readOnly: true
+        active_budgets_count:
+          type: integer
+          readOnly: true
+        is_available_for_budget:
+          type: boolean
           readOnly: true
         created_at:
           type: string
@@ -945,12 +1558,130 @@ components:
           readOnly: true
           title: Дата обновления
       required:
+      - active_budgets_count
+      - budgets_count
       - children_count
       - created_at
       - id
+      - is_available_for_budget
       - name
       - type
       - updated_at
+    CategoryArchive:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        is_archived:
+          type: boolean
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        budgets_count:
+          type: integer
+          readOnly: true
+        active_budgets_count:
+          type: integer
+          readOnly: true
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - active_budgets_count
+      - budgets_count
+      - detail
+      - id
+      - is_active
+      - is_archived
+    CategoryArchiveRequest:
+      type: object
+      properties:
+        archived:
+          type: boolean
+          writeOnly: true
+          default: true
+    CategoryFavorite:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        is_favorite:
+          type: boolean
+          readOnly: true
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+      - id
+      - is_favorite
+    CategoryReorder:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+        updated_count:
+          type: integer
+          readOnly: true
+      required:
+      - detail
+      - updated_count
+    CategoryReorderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        parent:
+          type: integer
+          nullable: true
+        sort_order:
+          type: integer
+          minimum: 0
+      required:
+      - id
+    CategoryReorderItemRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+        parent:
+          type: integer
+          nullable: true
+        parentId:
+          type: integer
+          writeOnly: true
+          nullable: true
+        sort_order:
+          type: integer
+          minimum: 0
+        position:
+          type: integer
+          minimum: 0
+          writeOnly: true
+      required:
+      - id
+    CategoryReorderRequest:
+      type: object
+      properties:
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          writeOnly: true
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          writeOnly: true
+        order:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryReorderItemRequest'
+          writeOnly: true
+      required:
+      - order
     CategoryRequest:
       type: object
       properties:
@@ -965,13 +1696,116 @@ components:
           maxLength: 100
         type:
           allOf:
-          - $ref: '#/components/schemas/TypeEnum'
+          - $ref: '#/components/schemas/TransactionTypeEnum'
           title: Тип категории
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок сортировки
+        is_favorite:
+          type: boolean
+          title: Избранная
+        is_archived:
+          type: boolean
+          title: Архивная
         is_active:
           type: boolean
           title: Активна
       required:
       - name
+      - type
+    CategorySuggest:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategorySuggestion'
+          readOnly: true
+      required:
+      - suggestions
+    CategorySuggestRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          writeOnly: true
+          minLength: 2
+          maxLength: 300
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          writeOnly: true
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          writeOnly: true
+        limit:
+          type: integer
+          maximum: 10
+          minimum: 1
+          writeOnly: true
+          default: 3
+      required:
+      - description
+    CategorySuggestion:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        category:
+          type: integer
+          readOnly: true
+        parent:
+          type: integer
+          readOnly: true
+          nullable: true
+        name:
+          type: string
+          readOnly: true
+        type:
+          type: string
+          readOnly: true
+        icon:
+          type: string
+          readOnly: true
+        color:
+          type: string
+          readOnly: true
+        confidence:
+          type: number
+          format: double
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        matched_keyword:
+          type: string
+          readOnly: true
+          nullable: true
+      required:
+      - category
+      - color
+      - confidence
+      - icon
+      - id
+      - matched_keyword
+      - name
+      - parent
+      - reason
       - type
     CategoryTree:
       type: object
@@ -989,11 +1823,40 @@ components:
           maxLength: 100
         type:
           allOf:
-          - $ref: '#/components/schemas/TypeEnum'
+          - $ref: '#/components/schemas/TransactionTypeEnum'
           title: Тип категории
+        icon:
+          type: string
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок сортировки
+        is_favorite:
+          type: boolean
+          title: Избранная
+        is_archived:
+          type: boolean
+          title: Архивная
         is_active:
           type: boolean
           title: Активна
+        budgets_count:
+          type: integer
+          readOnly: true
+        active_budgets_count:
+          type: integer
+          readOnly: true
+        is_available_for_budget:
+          type: boolean
+          readOnly: true
         children:
           type: object
           additionalProperties: {}
@@ -1009,9 +1872,12 @@ components:
           readOnly: true
           title: Дата обновления
       required:
+      - active_budgets_count
+      - budgets_count
       - children
       - created_at
       - id
+      - is_available_for_budget
       - name
       - type
       - updated_at
@@ -1223,6 +2089,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/User'
+    PatchedCategoryFavoriteRequest:
+      type: object
+      properties:
+        favorite:
+          type: boolean
+          writeOnly: true
     PatchedCategoryRequest:
       type: object
       properties:
@@ -1237,8 +2109,30 @@ components:
           maxLength: 100
         type:
           allOf:
-          - $ref: '#/components/schemas/TypeEnum'
+          - $ref: '#/components/schemas/TransactionTypeEnum'
           title: Тип категории
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок сортировки
+        is_favorite:
+          type: boolean
+          title: Избранная
+        is_archived:
+          type: boolean
+          title: Архивная
         is_active:
           type: boolean
           title: Активна
@@ -1264,7 +2158,7 @@ components:
           title: Категория
         type:
           allOf:
-          - $ref: '#/components/schemas/TypeEnum'
+          - $ref: '#/components/schemas/TransactionTypeEnum'
           title: Тип операции
         amount:
           type: string
@@ -1420,7 +2314,7 @@ components:
           title: Категория
         type:
           allOf:
-          - $ref: '#/components/schemas/TypeEnum'
+          - $ref: '#/components/schemas/TransactionTypeEnum'
           title: Тип операции
         amount:
           type: string
@@ -1464,7 +2358,7 @@ components:
           title: Категория
         type:
           allOf:
-          - $ref: '#/components/schemas/TypeEnum'
+          - $ref: '#/components/schemas/TransactionTypeEnum'
           title: Тип операции
         amount:
           type: string
@@ -1484,7 +2378,7 @@ components:
       - category
       - operation_date
       - type
-    TypeEnum:
+    TransactionTypeEnum:
       enum:
       - income
       - expense
@@ -1633,9 +2527,15 @@ components:
       scheme: bearer
       bearerFormat: JWT
 tags:
+- name: auth
+  description: Регистрация, вход, обновление JWT-токена, подтверждение email и восстановление
+    пароля.
+- name: users
+  description: Endpoints профиля пользователя и административного управления пользователями.
+- name: finance
+  description: 'Финансовый модуль: категории, дерево категорий, избранное, архивирование,
+    изменение порядка, подсказки категорий и операции.'
 - name: health
   description: Служебные endpoints состояния backend-сервиса.
-- name: users
-  description: Endpoints профиля пользователя и администрирования пользователей.
-- name: finance
-  description: 'Endpoints финансового модуля: категории и операции.'
+- name: monitoring
+  description: Endpoints мониторинга и метрик backend-сервиса.
