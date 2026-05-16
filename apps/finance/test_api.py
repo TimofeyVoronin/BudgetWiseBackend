@@ -113,6 +113,235 @@ class FinanceAPITests(TestCase):
         self.assertFalse(response.data["success"])
         self.assertEqual(response.data["error"]["status_code"], 401)
 
+    def test_category_detail_does_not_return_foreign_category(self):
+        self.authenticate()
+
+        response = self.client.get(
+            reverse("finance:category-detail", kwargs={"pk": self.other_category.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(response.data["success"])
+
+    def test_category_update_does_not_allow_foreign_category(self):
+        self.authenticate()
+
+        response = self.client.patch(
+            reverse("finance:category-detail", kwargs={"pk": self.other_category.id}),
+            data={
+                "name": "Попытка изменить чужую категорию",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(response.data["success"])
+
+        self.other_category.refresh_from_db()
+        self.assertEqual(self.other_category.name, "Чужая категория")
+
+    def test_category_delete_does_not_allow_foreign_category(self):
+        self.authenticate()
+
+        response = self.client.delete(
+            reverse("finance:category-detail", kwargs={"pk": self.other_category.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(response.data["success"])
+        self.assertTrue(Category.objects.filter(pk=self.other_category.id).exists())
+
+    def test_category_list_does_not_include_foreign_categories(self):
+        self.authenticate()
+
+        response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "page_size": 50,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        category_ids = [
+            item["id"]
+            for item in response.data["results"]
+        ]
+
+        self.assertIn(self.expense_category.id, category_ids)
+        self.assertIn(self.transport_category.id, category_ids)
+        self.assertIn(self.income_category.id, category_ids)
+        self.assertNotIn(self.other_category.id, category_ids)
+
+    def test_category_tree_does_not_include_foreign_categories(self):
+        self.authenticate()
+
+        response = self.client.get(reverse("finance:category-tree"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        category_ids = [
+            item["id"]
+            for item in response.data
+        ]
+
+        self.assertIn(self.expense_category.id, category_ids)
+        self.assertIn(self.transport_category.id, category_ids)
+        self.assertIn(self.income_category.id, category_ids)
+        self.assertNotIn(self.other_category.id, category_ids)
+
+    def test_category_search_does_not_return_foreign_categories(self):
+        self.authenticate()
+
+        Category.objects.create(
+            user=self.other_user,
+            name="Кафе и рестораны",
+            type=TransactionType.EXPENSE,
+            icon="utensils",
+            color="#10B981",
+            is_active=True,
+            is_archived=False,
+        )
+
+        response = self.client.get(
+            reverse("finance:category-list"),
+            data={
+                "search": "кафе",
+                "page_size": 50,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_category_create_duplicate_name_and_type_returns_bad_request(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("finance:category-list"),
+            data={
+                "parent": None,
+                "name": "Продукты",
+                "type": TransactionType.EXPENSE,
+                "icon": "cart",
+                "color": "#4F46E5",
+                "is_active": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("name", response.data["error"]["field_errors"])
+
+    def test_category_create_allows_same_name_for_different_type(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("finance:category-list"),
+            data={
+                "parent": None,
+                "name": "Продукты",
+                "type": TransactionType.INCOME,
+                "icon": "wallet",
+                "color": "#10B981",
+                "is_active": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["name"], "Продукты")
+        self.assertEqual(response.data["type"], TransactionType.INCOME)
+
+    def test_category_create_invalid_type_returns_bad_request(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("finance:category-list"),
+            data={
+                "parent": None,
+                "name": "Некорректный тип",
+                "type": "wrong",
+                "icon": "folder",
+                "color": "#4F46E5",
+                "is_active": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("type", response.data["error"]["field_errors"])
+
+    def test_category_create_invalid_color_returns_bad_request(self):
+        self.authenticate()
+
+        response = self.client.post(
+            reverse("finance:category-list"),
+            data={
+                "parent": None,
+                "name": "Некорректный цвет",
+                "type": TransactionType.EXPENSE,
+                "icon": "folder",
+                "color": "blue",
+                "is_active": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("color", response.data["error"]["field_errors"])
+
+    def test_category_archive_requires_authentication(self):
+        response = self.client.post(
+            reverse(
+                "finance:category-archive",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertFalse(response.data["success"])
+
+    def test_category_favorite_requires_authentication(self):
+        response = self.client.patch(
+            reverse(
+                "finance:category-favorite",
+                kwargs={"pk": self.expense_category.id},
+            ),
+            data={
+                "favorite": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertFalse(response.data["success"])
+
+    def test_category_reorder_requires_authentication(self):
+        response = self.client.put(
+            reverse("finance:category-reorder"),
+            data={
+                "type": TransactionType.EXPENSE,
+                "order": [
+                    {
+                        "id": self.expense_category.id,
+                        "parent": None,
+                        "sort_order": 0,
+                    },
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertFalse(response.data["success"])
+
     def test_category_crud_success_flow(self):
         self.authenticate()
 

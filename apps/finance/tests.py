@@ -113,6 +113,96 @@ class FinanceIntegrityConstraintsTests(TestCase):
 
         self.assertNotEqual(category.id, another_category.id)
 
+    def test_category_parent_must_belong_to_same_user(self):
+        category = Category(
+            user=self.user,
+            parent=self.other_category,
+            name="Некорректная дочерняя категория",
+            type=TransactionType.EXPENSE,
+        )
+
+        with self.assertRaises(ValidationError):
+            category.full_clean()
+
+    def test_category_parent_must_have_same_type(self):
+        category = Category(
+            user=self.user,
+            parent=self.income_category,
+            name="Расход с родителем-доходом",
+            type=TransactionType.EXPENSE,
+        )
+
+        with self.assertRaises(ValidationError):
+            category.full_clean()
+
+    def test_category_cannot_be_parent_of_itself(self):
+        category = Category.objects.create(
+            user=self.user,
+            name="Сам себе родитель",
+            type=TransactionType.EXPENSE,
+        )
+
+        category.parent = category
+
+        with self.assertRaises(ValidationError):
+            category.full_clean()
+
+    def test_category_hierarchy_cycle_is_rejected(self):
+        root = Category.objects.create(
+            user=self.user,
+            name="Корневая категория",
+            type=TransactionType.EXPENSE,
+        )
+        child = Category.objects.create(
+            user=self.user,
+            parent=root,
+            name="Дочерняя категория",
+            type=TransactionType.EXPENSE,
+        )
+        grandchild = Category.objects.create(
+            user=self.user,
+            parent=child,
+            name="Вложенная категория",
+            type=TransactionType.EXPENSE,
+        )
+
+        root.parent = grandchild
+
+        with self.assertRaises(ValidationError):
+            root.full_clean()
+
+    def test_category_color_must_be_valid_hex(self):
+        category = Category(
+            user=self.user,
+            name="Некорректный цвет",
+            type=TransactionType.EXPENSE,
+            color="blue",
+        )
+
+        with self.assertRaises(ValidationError):
+            category.full_clean()
+
+    def test_category_type_must_be_valid(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Category.objects.create(
+                    user=self.user,
+                    name="Некорректный тип",
+                    type="wrong",
+                )
+
+    def test_category_with_budgets_is_protected_from_delete(self):
+        Budget.objects.create(
+            user=self.user,
+            category=self.expense_category,
+            amount_limit=Decimal("10000.00"),
+            period_start=timezone.localdate(),
+            period_end=timezone.localdate(),
+        )
+
+        with self.assertRaises(ProtectedError):
+            self.expense_category.delete()
+
     def test_transaction_amount_must_be_positive(self):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
