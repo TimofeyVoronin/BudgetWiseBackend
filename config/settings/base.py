@@ -212,6 +212,7 @@ REST_FRAMEWORK = {
         "forgot_password_ip": FORGOT_PASSWORD_IP_THROTTLE_RATE,
         "forgot_password_email": FORGOT_PASSWORD_EMAIL_THROTTLE_RATE,
     },
+    "URL_FORMAT_OVERRIDE": None,
 }
 
 

@@ -1096,8 +1096,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: integer
-        description: A unique integer value identifying this Операция.
+          type: string
+          pattern: ^\d+$
         required: true
       tags:
       - finance
@@ -1121,8 +1121,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: integer
-        description: A unique integer value identifying this Операция.
+          type: string
+          pattern: ^\d+$
         required: true
       tags:
       - finance
@@ -1167,8 +1167,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: integer
-        description: A unique integer value identifying this Операция.
+          type: string
+          pattern: ^\d+$
         required: true
       tags:
       - finance
@@ -1205,8 +1205,8 @@ paths:
       - in: path
         name: id
         schema:
-          type: integer
-        description: A unique integer value identifying this Операция.
+          type: string
+          pattern: ^\d+$
         required: true
       tags:
       - finance
@@ -1215,6 +1215,123 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/finance/transactions/export/:
+    get:
+      operationId: finance_transactions_export_retrieve
+      description: Экспортирует операции текущего пользователя с учётом тех же фильтров,
+        которые используются в списке операций. Поддерживаются форматы CSV, XLSX и
+        PDF. Для защиты от слишком тяжёлых выгрузок действует лимит 5000 операций.
+      summary: Экспортировать список операций
+      parameters:
+      - in: query
+        name: account
+        schema:
+          type: integer
+      - in: query
+        name: accountId
+        schema:
+          type: integer
+      - in: query
+        name: amountMax
+        schema:
+          type: number
+      - in: query
+        name: amountMin
+        schema:
+          type: number
+      - in: query
+        name: amount_max
+        schema:
+          type: number
+      - in: query
+        name: amount_min
+        schema:
+          type: number
+      - in: query
+        name: category
+        schema:
+          type: integer
+      - in: query
+        name: categoryId
+        schema:
+          type: integer
+      - in: query
+        name: dateFrom
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: dateTo
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: format
+        schema:
+          type: string
+        description: 'Формат экспорта: csv, xlsx или pdf.'
+        required: true
+      - in: query
+        name: kind
+        schema:
+          type: string
+      - in: query
+        name: onlyWithComment
+        schema:
+          type: boolean
+      - in: query
+        name: only_with_comment
+        schema:
+          type: boolean
+      - in: query
+        name: ordering
+        schema:
+          type: string
+      - in: query
+        name: search
+        schema:
+          type: string
+      - in: query
+        name: sortBy
+        schema:
+          type: string
+      - in: query
+        name: sortDir
+        schema:
+          type: string
+      - in: query
+        name: type
+        schema:
+          type: string
+      tags:
+      - finance
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/v1/users/:
     get:
       operationId: users_list

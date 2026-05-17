@@ -1,4 +1,5 @@
 from django.db.models import Count, Q
+from django.http import HttpResponse
 from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiParameter,
@@ -11,6 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.common.exceptions import ConflictError
 from apps.common.pagination import StandardResultsSetPagination
@@ -22,6 +24,10 @@ from apps.common.validation import (
     validate_choice_query_param,
     validate_ordering,
     validate_ordering_fields,
+)
+from apps.finance.exporters import (
+    TRANSACTION_EXPORT_FORMATS,
+    build_transaction_export,
 )
 from apps.finance.models import Category, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
@@ -38,6 +44,7 @@ from apps.finance.serializers import (
 
 MAX_CATEGORY_SEARCH_LENGTH = 100
 MAX_TRANSACTION_SEARCH_LENGTH = 100
+MAX_TRANSACTION_EXPORT_ROWS = 5000
 
 TRANSACTION_SORT_FIELDS = {
     "date": "operation_date",
@@ -830,6 +837,216 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
+def get_transaction_queryset_for_request(request):
+    if not request.user.is_authenticated:
+        return Transaction.objects.none()
+
+    queryset = (
+        Transaction.objects
+        .filter(user=request.user)
+        .select_related("account", "category")
+    )
+
+    query_params = request.query_params
+
+    account_id = get_aliased_int_query_param(
+        query_params,
+        "account",
+        "accountId",
+        "account_id",
+    )
+    category_id = get_aliased_int_query_param(
+        query_params,
+        "category",
+        "categoryId",
+        "category_id",
+    )
+    transaction_type = get_transaction_type_query_param(query_params)
+    date_from = get_aliased_date_query_param(
+        query_params,
+        "date_from",
+        "dateFrom",
+    )
+    date_to = get_aliased_date_query_param(
+        query_params,
+        "date_to",
+        "dateTo",
+    )
+    amount_min = get_aliased_decimal_query_param(
+        query_params,
+        "amount_min",
+        "amountMin",
+    )
+    amount_max = get_aliased_decimal_query_param(
+        query_params,
+        "amount_max",
+        "amountMax",
+    )
+    only_with_comment = get_aliased_bool_query_param(
+        query_params,
+        "only_with_comment",
+        "onlyWithComment",
+    )
+    search = query_params.get("search")
+    ordering_fields = get_transaction_ordering_fields(query_params)
+
+    if (
+        amount_min is not None
+        and amount_max is not None
+        and amount_min > amount_max
+    ):
+        raise ValidationError(
+            {
+                "amount_min": [
+                    "Параметр amount_min не может быть больше amount_max."
+                ]
+            }
+        )
+
+    if account_id is not None:
+        queryset = queryset.filter(account_id=account_id)
+
+    if category_id is not None:
+        queryset = queryset.filter(category_id=category_id)
+
+    if transaction_type:
+        queryset = queryset.filter(type=transaction_type)
+
+    if date_from:
+        queryset = queryset.filter(operation_date__gte=date_from)
+
+    if date_to:
+        queryset = queryset.filter(operation_date__lte=date_to)
+
+    if amount_min is not None:
+        queryset = queryset.filter(amount__gte=amount_min)
+
+    if amount_max is not None:
+        queryset = queryset.filter(amount__lte=amount_max)
+
+    if only_with_comment is True:
+        queryset = queryset.exclude(description="")
+
+    if only_with_comment is False:
+        queryset = queryset.filter(description="")
+
+    if search:
+        search_value = search.strip()
+
+        if len(search_value) > MAX_TRANSACTION_SEARCH_LENGTH:
+            raise ValidationError(
+                {
+                    "search": [
+                        (
+                            "Параметр search не может быть длиннее "
+                            f"{MAX_TRANSACTION_SEARCH_LENGTH} символов."
+                        )
+                    ]
+                }
+            )
+
+        if search_value:
+            queryset = queryset.filter(
+                Q(description__icontains=search_value)
+                | Q(category__name__icontains=search_value)
+                | Q(account__name__icontains=search_value)
+            )
+
+    if ordering_fields:
+        queryset = queryset.order_by(*ordering_fields)
+    else:
+        queryset = queryset.order_by("-operation_date", "-created_at", "-id")
+
+    return queryset
+
+
+class TransactionExportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance"],
+        summary="Экспортировать список операций",
+        description=(
+            "Экспортирует операции текущего пользователя с учётом тех же фильтров, "
+            "которые используются в списке операций. Поддерживаются форматы CSV, "
+            "XLSX и PDF. Для защиты от слишком тяжёлых выгрузок действует лимит "
+            f"{MAX_TRANSACTION_EXPORT_ROWS} операций."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "format",
+                OpenApiTypes.STR,
+                description="Формат экспорта: csv, xlsx или pdf.",
+                required=True,
+            ),
+            OpenApiParameter("type", OpenApiTypes.STR),
+            OpenApiParameter("kind", OpenApiTypes.STR),
+            OpenApiParameter("date_from", OpenApiTypes.DATE),
+            OpenApiParameter("dateFrom", OpenApiTypes.DATE),
+            OpenApiParameter("date_to", OpenApiTypes.DATE),
+            OpenApiParameter("dateTo", OpenApiTypes.DATE),
+            OpenApiParameter("account", OpenApiTypes.INT),
+            OpenApiParameter("accountId", OpenApiTypes.INT),
+            OpenApiParameter("category", OpenApiTypes.INT),
+            OpenApiParameter("categoryId", OpenApiTypes.INT),
+            OpenApiParameter("amount_min", OpenApiTypes.NUMBER),
+            OpenApiParameter("amountMin", OpenApiTypes.NUMBER),
+            OpenApiParameter("amount_max", OpenApiTypes.NUMBER),
+            OpenApiParameter("amountMax", OpenApiTypes.NUMBER),
+            OpenApiParameter("search", OpenApiTypes.STR),
+            OpenApiParameter("only_with_comment", OpenApiTypes.BOOL),
+            OpenApiParameter("onlyWithComment", OpenApiTypes.BOOL),
+            OpenApiParameter("ordering", OpenApiTypes.STR),
+            OpenApiParameter("sortBy", OpenApiTypes.STR),
+            OpenApiParameter("sortDir", OpenApiTypes.STR),
+        ],
+        responses={
+            200: OpenApiTypes.BINARY,
+            400: OpenApiTypes.OBJECT,
+        },
+    )
+    def get(self, request):
+        export_format = request.query_params.get("format", "csv").lower()
+
+        if export_format not in TRANSACTION_EXPORT_FORMATS:
+            raise ValidationError(
+                {
+                    "format": [
+                        "Формат экспорта должен быть csv, xlsx или pdf."
+                    ]
+                }
+            )
+
+        queryset = get_transaction_queryset_for_request(request)
+        total_count = queryset.count()
+
+        if total_count > MAX_TRANSACTION_EXPORT_ROWS:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "Экспорт ограничен "
+                        f"{MAX_TRANSACTION_EXPORT_ROWS} операциями. "
+                        "Уточните фильтры."
+                    )
+                }
+            )
+
+        export_result = build_transaction_export(
+            transactions=queryset,
+            export_format=export_format,
+        )
+
+        response = HttpResponse(
+            export_result.content,
+            content_type=export_result.content_type,
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="{export_result.filename}"'
+        )
+
+        return response
+
+
 @extend_schema_view(
     list=extend_schema(
         tags=["finance"],
@@ -1100,6 +1317,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated, IsObjectOwner]
     pagination_class = StandardResultsSetPagination
+    lookup_value_regex = r"\d+"
     http_method_names = [
         "get",
         "post",
@@ -1111,123 +1329,4 @@ class TransactionViewSet(viewsets.ModelViewSet):
     ]
 
     def get_queryset(self):
-        if not self.request.user.is_authenticated:
-            return Transaction.objects.none()
-
-        queryset = (
-            Transaction.objects
-            .filter(user=self.request.user)
-            .select_related("account", "category")
-        )
-
-        query_params = self.request.query_params
-
-        account_id = get_aliased_int_query_param(
-            query_params,
-            "account",
-            "accountId",
-            "account_id",
-        )
-        category_id = get_aliased_int_query_param(
-            query_params,
-            "category",
-            "categoryId",
-            "category_id",
-        )
-        transaction_type = get_transaction_type_query_param(query_params)
-        date_from = get_aliased_date_query_param(
-            query_params,
-            "date_from",
-            "dateFrom",
-        )
-        date_to = get_aliased_date_query_param(
-            query_params,
-            "date_to",
-            "dateTo",
-        )
-        amount_min = get_aliased_decimal_query_param(
-            query_params,
-            "amount_min",
-            "amountMin",
-        )
-        amount_max = get_aliased_decimal_query_param(
-            query_params,
-            "amount_max",
-            "amountMax",
-        )
-        only_with_comment = get_aliased_bool_query_param(
-            query_params,
-            "only_with_comment",
-            "onlyWithComment",
-        )
-        search = query_params.get("search")
-        ordering_fields = get_transaction_ordering_fields(query_params)
-
-        if (
-            amount_min is not None
-            and amount_max is not None
-            and amount_min > amount_max
-        ):
-            raise ValidationError(
-                {
-                    "amount_min": [
-                        "Параметр amount_min не может быть больше amount_max."
-                    ]
-                }
-            )
-
-        if account_id is not None:
-            queryset = queryset.filter(account_id=account_id)
-
-        if category_id is not None:
-            queryset = queryset.filter(category_id=category_id)
-
-        if transaction_type:
-            queryset = queryset.filter(type=transaction_type)
-
-        if date_from:
-            queryset = queryset.filter(operation_date__gte=date_from)
-
-        if date_to:
-            queryset = queryset.filter(operation_date__lte=date_to)
-
-        if amount_min is not None:
-            queryset = queryset.filter(amount__gte=amount_min)
-
-        if amount_max is not None:
-            queryset = queryset.filter(amount__lte=amount_max)
-
-        if only_with_comment is True:
-            queryset = queryset.exclude(description="")
-
-        if only_with_comment is False:
-            queryset = queryset.filter(description="")
-
-        if search:
-            search_value = search.strip()
-
-            if len(search_value) > MAX_TRANSACTION_SEARCH_LENGTH:
-                raise ValidationError(
-                    {
-                        "search": [
-                            (
-                                "Параметр search не может быть длиннее "
-                                f"{MAX_TRANSACTION_SEARCH_LENGTH} символов."
-                            )
-                        ]
-                    }
-                )
-
-            if search_value:
-                queryset = queryset.filter(
-                    Q(description__icontains=search_value)
-                    | Q(category__name__icontains=search_value)
-                    | Q(account__name__icontains=search_value)
-                )
-
-        if ordering_fields:
-            queryset = queryset.order_by(*ordering_fields)
-        else:
-            queryset = queryset.order_by("-operation_date", "-created_at", "-id")
-
-        return queryset
+        return get_transaction_queryset_for_request(self.request)
