@@ -3115,6 +3115,412 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "List transactions - frontend aliases",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {\r",
+                      "    pm.response.to.have.status(200);\r",
+                      "});\r",
+                      "\r",
+                      "const json = pm.response.json();\r",
+                      "\r",
+                      "pm.test(\"Response is paginated\", function () {\r",
+                      "    pm.expect(json).to.have.property(\"count\");\r",
+                      "    pm.expect(json).to.have.property(\"results\");\r",
+                      "    pm.expect(json.results).to.be.an(\"array\");\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Frontend aliases are accepted\", function () {\r",
+                      "    pm.expect(json.results.length).to.be.at.most(10);\r",
+                      "\r",
+                      "    if (json.results.length > 0) {\r",
+                      "        const item = json.results[0];\r",
+                      "\r",
+                      "        pm.expect(item).to.have.property(\"id\");\r",
+                      "        pm.expect(item).to.have.property(\"date\");\r",
+                      "        pm.expect(item).to.have.property(\"kind\");\r",
+                      "        pm.expect(item).to.have.property(\"amount_abs\");\r",
+                      "        pm.expect(item).to.have.property(\"signed_amount\");\r",
+                      "        pm.expect(item).to.have.property(\"account_name\");\r",
+                      "        pm.expect(item).to.have.property(\"category_name\");\r",
+                      "    }\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/finance/transactions/?page=1&limit=10&kind=all&dateFrom=2026-01-01&dateTo=2026-12-31&accountId={{account_id}}&amountMin=1&amountMax=100000&sortBy=date&sortDir=desc",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "finance",
+                    "transactions",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    },
+                    {
+                      "key": "kind",
+                      "value": "all"
+                    },
+                    {
+                      "key": "dateFrom",
+                      "value": "2026-01-01"
+                    },
+                    {
+                      "key": "dateTo",
+                      "value": "2026-12-31"
+                    },
+                    {
+                      "key": "accountId",
+                      "value": "{{account_id}}"
+                    },
+                    {
+                      "key": "amountMin",
+                      "value": "1"
+                    },
+                    {
+                      "key": "amountMax",
+                      "value": "100000"
+                    },
+                    {
+                      "key": "sortBy",
+                      "value": "date"
+                    },
+                    {
+                      "key": "sortDir",
+                      "value": "desc"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Export",
+          "item": [
+            {
+              "name": "Export transactions - CSV",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {\r",
+                      "    pm.response.to.have.status(200);\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"CSV content type is valid\", function () {\r",
+                      "    const contentType = pm.response.headers.get(\"Content-Type\");\r",
+                      "    pm.expect(contentType).to.include(\"text/csv\");\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Response is attachment\", function () {\r",
+                      "    const disposition = pm.response.headers.get(\"Content-Disposition\");\r",
+                      "    pm.expect(disposition).to.include(\"attachment\");\r",
+                      "    pm.expect(disposition).to.include(\".csv\");\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/finance/transactions/export/?format=csv&kind=all&sortBy=date&sortDir=desc",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "finance",
+                    "transactions",
+                    "export",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "format",
+                      "value": "csv"
+                    },
+                    {
+                      "key": "kind",
+                      "value": "all"
+                    },
+                    {
+                      "key": "sortBy",
+                      "value": "date"
+                    },
+                    {
+                      "key": "sortDir",
+                      "value": "desc"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Export transactions - XLSX",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {\r",
+                      "    pm.response.to.have.status(200);\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"XLSX content type is valid\", function () {\r",
+                      "    const contentType = pm.response.headers.get(\"Content-Type\");\r",
+                      "    pm.expect(contentType).to.include(\"spreadsheetml.sheet\");\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Response is attachment\", function () {\r",
+                      "    const disposition = pm.response.headers.get(\"Content-Disposition\");\r",
+                      "    pm.expect(disposition).to.include(\"attachment\");\r",
+                      "    pm.expect(disposition).to.include(\".xlsx\");\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/finance/transactions/export/?format=xlsx&kind=all&sortBy=date&sortDir=desc",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "finance",
+                    "transactions",
+                    "export",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "format",
+                      "value": "xlsx"
+                    },
+                    {
+                      "key": "kind",
+                      "value": "all"
+                    },
+                    {
+                      "key": "sortBy",
+                      "value": "date"
+                    },
+                    {
+                      "key": "sortDir",
+                      "value": "desc"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Export transactions - PDF",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {\r",
+                      "    pm.response.to.have.status(200);\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"PDF content type is valid\", function () {\r",
+                      "    const contentType = pm.response.headers.get(\"Content-Type\");\r",
+                      "    pm.expect(contentType).to.include(\"application/pdf\");\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Response is attachment\", function () {\r",
+                      "    const disposition = pm.response.headers.get(\"Content-Disposition\");\r",
+                      "    pm.expect(disposition).to.include(\"attachment\");\r",
+                      "    pm.expect(disposition).to.include(\".pdf\");\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/finance/transactions/export/?format=pdf&kind=all&sortBy=date&sortDir=desc",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "finance",
+                    "transactions",
+                    "export",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "format",
+                      "value": "pdf"
+                    },
+                    {
+                      "key": "kind",
+                      "value": "all"
+                    },
+                    {
+                      "key": "sortBy",
+                      "value": "date"
+                    },
+                    {
+                      "key": "sortDir",
+                      "value": "desc"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Export transactions - invalid format",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 400\", function () {\r",
+                      "    pm.response.to.have.status(400);\r",
+                      "});\r",
+                      "\r",
+                      "pm.test(\"Invalid format error is valid\", function () {\r",
+                      "    const json = pm.response.json();\r",
+                      "\r",
+                      "    pm.expect(json.success).to.eql(false);\r",
+                      "    pm.expect(json.error.status_code).to.eql(400);\r",
+                      "    pm.expect(json.error.field_errors).to.have.property(\"format\");\r",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{access_token}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/finance/transactions/export/?format=xml",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "finance",
+                    "transactions",
+                    "export",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "format",
+                      "value": "xml"
+                    }
+                  ]
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -3381,6 +3787,75 @@
               ]
             },
             "description": "Partially updates transaction description."
+          },
+          "response": []
+        },
+        {
+          "name": "Transaction - full update",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.test(\"Transaction was fully updated\", function () {\r",
+                  "    pm.expect(json.id).to.eql(Number(pm.environment.get(\"transaction_id\")));\r",
+                  "    pm.expect(json.account).to.eql(Number(pm.environment.get(\"account_id\")));\r",
+                  "    pm.expect(json.category).to.eql(Number(pm.environment.get(\"expense_category_id\")));\r",
+                  "    pm.expect(json.type).to.eql(\"expense\");\r",
+                  "    pm.expect(json.amount).to.eql(\"1245.00\");\r",
+                  "    pm.expect(json).to.have.property(\"account_name\");\r",
+                  "    pm.expect(json).to.have.property(\"category_name\");\r",
+                  "    pm.expect(json).to.have.property(\"signed_amount\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"account\": {{account_id}},\r\n  \"category\": {{expense_category_id}},\r\n  \"type\": \"expense\",\r\n  \"amount\": \"1245.00\",\r\n  \"description\": \"Postman full update {{$timestamp}}\",\r\n  \"operation_date\": \"2026-05-17\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/transactions/{{transaction_id}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "transactions",
+                "{{transaction_id}}",
+                ""
+              ]
+            }
           },
           "response": []
         },
