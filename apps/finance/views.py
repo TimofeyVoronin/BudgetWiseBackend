@@ -36,7 +36,7 @@ from apps.finance.dashboard import (
     DEFAULT_DASHBOARD_PERIOD,
     DEFAULT_DASHBOARD_RECENT_LIMIT,
     MAX_DASHBOARD_RECENT_LIMIT,
-    build_dashboard_summary,
+    get_cached_dashboard_summary,
 )
 from apps.finance.models import Category, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
@@ -1077,6 +1077,7 @@ class DashboardSummaryView(APIView):
             "чистый результат, последние операции и топ категорий расходов. "
             "Блок reminders зарезервирован для будущего эпика напоминаний "
             "и пока возвращается с пустым списком rows."
+            "Результат кэшируется на короткое время по пользователю, периоду, диапазону дат, валюте и limit."
         ),
         parameters=[
             OpenApiParameter(
@@ -1180,7 +1181,7 @@ class DashboardSummaryView(APIView):
     )
     def get(self, request):
         query_params = get_dashboard_query_params(request.query_params)
-        dashboard_data = build_dashboard_summary(
+        dashboard_data = get_cached_dashboard_summary(
             user=request.user,
             **query_params,
         )

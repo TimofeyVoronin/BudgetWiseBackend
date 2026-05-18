@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.core.cache import cache
 from django.db.models import Sum
 from django.utils import timezone
 
@@ -26,6 +29,46 @@ DEFAULT_DASHBOARD_CURRENCY = "RUB"
 DEFAULT_DASHBOARD_RECENT_LIMIT = 5
 MAX_DASHBOARD_RECENT_LIMIT = 20
 DASHBOARD_TOP_CATEGORIES_LIMIT = 5
+DASHBOARD_SUMMARY_CACHE_TIMEOUT = 60
+
+
+def get_cached_dashboard_summary(
+    *,
+    user,
+    period_type: str = DEFAULT_DASHBOARD_PERIOD,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    currency: str = DEFAULT_DASHBOARD_CURRENCY,
+    recent_limit: int = DEFAULT_DASHBOARD_RECENT_LIMIT,
+) -> dict:
+    cache_key = build_dashboard_summary_cache_key(
+        user_id=user.id,
+        period_type=period_type,
+        date_from=date_from,
+        date_to=date_to,
+        currency=currency,
+        recent_limit=recent_limit,
+    )
+    cached_value = cache.get(cache_key)
+
+    if cached_value is not None:
+        return cached_value
+
+    dashboard_data = build_dashboard_summary(
+        user=user,
+        period_type=period_type,
+        date_from=date_from,
+        date_to=date_to,
+        currency=currency,
+        recent_limit=recent_limit,
+    )
+    cache.set(
+        cache_key,
+        dashboard_data,
+        timeout=DASHBOARD_SUMMARY_CACHE_TIMEOUT,
+    )
+
+    return dashboard_data
 
 
 def build_dashboard_summary(
@@ -222,3 +265,26 @@ def _get_reserved_reminders_block() -> dict:
 
 def _format_money(value: Decimal) -> str:
     return str(value.quantize(Decimal("0.01")))
+
+
+def build_dashboard_summary_cache_key(
+    *,
+    user_id: int,
+    period_type: str,
+    date_from: date | None,
+    date_to: date | None,
+    currency: str,
+    recent_limit: int,
+) -> str:
+    payload = {
+        "user_id": user_id,
+        "period_type": period_type,
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
+        "currency": currency.upper(),
+        "recent_limit": recent_limit,
+    }
+    raw_key = json.dumps(payload, sort_keys=True, ensure_ascii=True)
+    digest = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+    return f"dashboard:summary:{digest}"

@@ -216,6 +216,15 @@ REST_FRAMEWORK = {
 }
 
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "budgetwise-dashboard-cache",
+        "TIMEOUT": 300,
+    }
+}
+
+
 SPECTACULAR_SETTINGS = {
     "TITLE": "BudgetWiseBackend API",
     "DESCRIPTION": (
