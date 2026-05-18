@@ -1,6 +1,16 @@
 from corsheaders.defaults import default_headers
 
+from datetime import timedelta
+
 from .base import *
+
+
+SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"] = timedelta(
+    minutes=env.int("ACCESS_TOKEN_LIFETIME_MINUTES", default=120)
+)
+SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"] = timedelta(
+    days=env.int("REFRESH_TOKEN_LIFETIME_DAYS", default=7)
+)
 
 
 DEBUG = env.bool("DEBUG", default=True)

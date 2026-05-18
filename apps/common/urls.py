@@ -1,6 +1,7 @@
 from django.urls import path
 
-from apps.common.views import health_check
+from apps.common.health_views import health_check
+
 
 app_name = "common"
 

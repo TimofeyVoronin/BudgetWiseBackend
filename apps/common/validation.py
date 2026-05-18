@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+from datetime import date
+from typing import Iterable
+from decimal import Decimal, InvalidOperation
+
+from django.utils.dateparse import parse_date
+from rest_framework.exceptions import ValidationError
+
+
+TRUE_VALUES = {"true", "True", "1"}
+FALSE_VALUES = {"false", "False", "0"}
+
+
+def get_int_query_param(query_params, name: str) -> int | None:
+    value = query_params.get(name)
+
+    if value in (None, ""):
+        return None
+
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValidationError(
+            {name: "Параметр должен быть целым числом."}
+        ) from exc
+
+
+def get_bool_query_param(query_params, name: str) -> bool | None:
+    value = query_params.get(name)
+
+    if value in (None, ""):
+        return None
+
+    if value in TRUE_VALUES:
+        return True
+
+    if value in FALSE_VALUES:
+        return False
+
+    raise ValidationError(
+        {name: "Параметр должен быть boolean: true или false."}
+    )
+
+
+def get_date_query_param(query_params, name: str) -> date | None:
+    value = query_params.get(name)
+
+    if value in (None, ""):
+        return None
+
+    parsed_value = parse_date(value)
+
+    if parsed_value is None:
+        raise ValidationError(
+            {name: "Дата должна быть в формате YYYY-MM-DD."}
+        )
+
+    return parsed_value
+
+
+def validate_choice_query_param(
+    query_params,
+    name: str,
+    allowed_values: Iterable[str],
+) -> str | None:
+    value = query_params.get(name)
+
+    if value in (None, ""):
+        return None
+
+    allowed_values = set(allowed_values)
+
+    if value not in allowed_values:
+        allowed_as_text = ", ".join(sorted(allowed_values))
+        raise ValidationError(
+            {name: f"Допустимые значения: {allowed_as_text}."}
+        )
+
+    return value
+
+
+def validate_ordering(
+    ordering: str | None,
+    allowed_values: Iterable[str],
+) -> str | None:
+    if ordering in (None, ""):
+        return None
+
+    allowed_values = set(allowed_values)
+
+    if ordering not in allowed_values:
+        allowed_as_text = ", ".join(sorted(allowed_values))
+        raise ValidationError(
+            {"ordering": f"Допустимые значения: {allowed_as_text}."}
+        )
+
+    return ordering
+
+
+def get_decimal_query_param(query_params, param_name: str) -> Decimal | None:
+    value = query_params.get(param_name)
+
+    if value in (None, ""):
+        return None
+
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValidationError(
+            {
+                param_name: [
+                    f"Параметр {param_name} должен быть числом."
+                ]
+            }
+        )
+
+    if decimal_value < 0:
+        raise ValidationError(
+            {
+                param_name: [
+                    f"Параметр {param_name} не может быть отрицательным."
+                ]
+            }
+        )
+
+    return decimal_value
+
+
+def validate_ordering_fields(
+    ordering: str | None,
+    allowed_fields: dict[str, str],
+) -> list[str] | None:
+    if not ordering:
+        return None
+
+    result = []
+
+    for raw_field in ordering.split(","):
+        field = raw_field.strip()
+
+        if not field:
+            continue
+
+        direction = ""
+
+        if field.startswith("-"):
+            direction = "-"
+            field = field[1:]
+
+        if field not in allowed_fields:
+            allowed_values = sorted(
+                list(allowed_fields.keys()) + [
+                    f"-{allowed_field}" for allowed_field in allowed_fields.keys()
+                ]
+            )
+            raise ValidationError(
+                {
+                    "ordering": [
+                        (
+                            "Недопустимое поле сортировки. "
+                            f"Допустимые значения: {', '.join(allowed_values)}."
+                        )
+                    ]
+                }
+            )
+
+        orm_field = allowed_fields[field]
+        result.append(f"{direction}{orm_field}")
+
+    return result or None

@@ -13,6 +13,55 @@ environ.Env.read_env(BASE_DIR / ".env")
 
 SECRET_KEY = env("SECRET_KEY", default="django-insecure-budgetwise-dev-secret-key")
 
+
+METRICS_ACCESS_TOKEN = env("METRICS_ACCESS_TOKEN", default="")
+
+
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
+
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL",
+    default="BudgetWise <noreply@budgetwise.local>",
+)
+
+FRONTEND_EMAIL_VERIFY_URL = env(
+    "FRONTEND_EMAIL_VERIFY_URL",
+    default="http://app.budgetwise.localhost:5173/auth/verify-email",
+)
+
+EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS = env.int(
+    "EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS",
+    default=60 * 60 * 24,
+)
+
+EMAIL_CONFIRMATION_TOKEN_SALT = env(
+    "EMAIL_CONFIRMATION_TOKEN_SALT",
+    default="budgetwise.email-confirmation",
+)
+
+REGISTRATION_REQUIRE_EMAIL_CONFIRMATION = env.bool(
+    "REGISTRATION_REQUIRE_EMAIL_CONFIRMATION",
+    default=False,
+)
+
+FRONTEND_PASSWORD_RESET_URL = env(
+    "FRONTEND_PASSWORD_RESET_URL",
+    default="http://app.budgetwise.localhost:5173/auth/reset-password",
+)
+
+PASSWORD_RESET_TOKEN_TIMEOUT_SECONDS = env.int(
+    "PASSWORD_RESET_TOKEN_TIMEOUT_SECONDS",
+    default=60 * 60,
+)
+
+PASSWORD_RESET_TOKEN_BYTES = env.int(
+    "PASSWORD_RESET_TOKEN_BYTES",
+    default=32,
+)
+
 ALLOWED_HOSTS = env.list(
     "ALLOWED_HOSTS",
     default=["localhost", "127.0.0.1"],
@@ -51,6 +100,7 @@ INSTALLED_APPS = DJANGO_APPS + DRF_APPS + THIRD_PARTY_APPS + PROJECT_APPS
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "apps.common.metrics.PrometheusMetricsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -132,6 +182,17 @@ LOG_DIR.mkdir(exist_ok=True)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+LOGIN_THROTTLE_RATE = env("LOGIN_THROTTLE_RATE", default="5/min")
+
+FORGOT_PASSWORD_IP_THROTTLE_RATE = env(
+    "FORGOT_PASSWORD_IP_THROTTLE_RATE",
+    default="10/min",
+)
+
+FORGOT_PASSWORD_EMAIL_THROTTLE_RATE = env(
+    "FORGOT_PASSWORD_EMAIL_THROTTLE_RATE",
+    default="3/hour",
+)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -146,29 +207,215 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "apps.common.exceptions.custom_exception_handler",
     "DATETIME_FORMAT": "%Y-%m-%dT%H:%M:%S%z",
     "DATE_FORMAT": "%Y-%m-%d",
+    "DEFAULT_THROTTLE_RATES": {
+        "login": LOGIN_THROTTLE_RATE,
+        "forgot_password_ip": FORGOT_PASSWORD_IP_THROTTLE_RATE,
+        "forgot_password_email": FORGOT_PASSWORD_EMAIL_THROTTLE_RATE,
+    },
+    "URL_FORMAT_OVERRIDE": None,
+}
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "budgetwise-dashboard-cache",
+        "TIMEOUT": 300,
+    }
 }
 
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "BudgetWise API",
-    "DESCRIPTION": "API серверной части приложения для управления личными финансами",
+    "TITLE": "BudgetWiseBackend API",
+    "DESCRIPTION": (
+        "OpenAPI-документация серверной части прогрессивного веб-приложения "
+        "для управления личными финансами.\n\n"
+        "API предоставляет endpoints для регистрации и аутентификации пользователей, "
+        "управления профилем, финансовыми категориями, операциями, "
+        "агрегированными данными главного дашборда и служебного мониторинга.\n\n"   
+        "Авторизация защищённых endpoints выполняется через JWT Bearer token. "
+        "Для ручной проверки в Swagger UI сначала выполните login-запрос, "
+        "получите access token и передайте его в Authorize в формате: "
+        "Bearer <access_token>."
+    ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
-    "SECURITY": [
+    "SCHEMA_PATH_PREFIX": r"/api/v1",
+    "ENUM_NAME_OVERRIDES": {
+        "TransactionTypeEnum": [
+            ("income", "Доход"),
+            ("expense", "Расход"),
+        ],
+        "GoalStatusEnum": [
+            ("active", "Активна"),
+            ("completed", "Достигнута"),
+            ("cancelled", "Отменена"),
+        ],
+    },
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": True,
+        "filter": True,
+        "docExpansion": "none",
+        "defaultModelsExpandDepth": 1,
+        "defaultModelExpandDepth": 2,
+        "operationsSorter": "alpha",
+        "tagsSorter": "alpha",
+        "tryItOutEnabled": True,
+    },
+    "REDOC_UI_SETTINGS": {
+        "hideDownloadButton": False,
+        "expandResponses": "200,201",
+        "pathInMiddlePanel": True,
+    },
+    "TAGS": [
         {
-            "bearerAuth": [],
-        }
+            "name": "auth",
+            "description": (
+                "Регистрация, вход, обновление JWT-токена, подтверждение email "
+                "и восстановление пароля."
+            ),
+        },
+        {
+            "name": "users",
+            "description": (
+                "Endpoints профиля пользователя и административного управления "
+                "пользователями."
+            ),
+        },
+        {
+            "name": "finance-categories",
+            "description": (
+                "Финансовые категории: список, создание, дерево категорий, "
+                "избранное, архивирование, drag and drop порядок и подсказки "
+                "категорий по описанию операции."
+            ),
+        },
+        {
+            "name": "finance-transactions",
+            "description": (
+                "Финансовые операции: список, фильтрация, пагинация, создание, "
+                "обновление, удаление и экспорт операций в CSV, XLSX и PDF."
+            ),
+        },
+        {
+            "name": "finance-dashboard",
+            "description": (
+                "Главный дашборд: агрегированные показатели по счетам, доходам, "
+                "расходам, последним операциям и категориям расходов."
+            ),
+        },
+        {
+            "name": "health",
+            "description": "Служебные endpoints состояния backend-сервиса.",
+        },
+        {
+            "name": "monitoring",
+            "description": "Endpoints мониторинга и метрик backend-сервиса.",
+        },
     ],
+    "CONTACT": {
+        "name": "BudgetWiseBackend",
+        "email": "noreply@budgetwise.local",
+    },
+    "LICENSE": {
+        "name": "Educational project",
+    },
+    "APPEND_COMPONENTS": {
+        "schemas": {
+            "ApiErrorDetail": {
+                "type": "object",
+                "description": "Детальная информация об ошибке API.",
+                "properties": {
+                    "status_code": {
+                        "type": "integer",
+                        "example": 400,
+                    },
+                    "code": {
+                        "type": "string",
+                        "example": "invalid",
+                    },
+                    "message": {
+                        "type": "string",
+                        "example": "Некорректные данные запроса.",
+                    },
+                    "field_errors": {
+                        "type": "object",
+                        "nullable": True,
+                        "additionalProperties": True,
+                        "example": {
+                            "email": ["Введите корректный адрес электронной почты."]
+                        },
+                    },
+                    "detail": {
+                        "nullable": True,
+                        "oneOf": [
+                            {
+                                "type": "string",
+                            },
+                            {
+                                "type": "object",
+                                "additionalProperties": True,
+                            },
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                },
+                            },
+                        ],
+                        "example": "Ошибка валидации.",
+                    },
+                    "trace_id": {
+                        "type": "string",
+                        "nullable": True,
+                        "example": "test-trace-id-123",
+                    },
+                },
+            },
+            "ApiErrorResponse": {
+                "type": "object",
+                "description": "Единый формат ответа API при ошибке.",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "example": False,
+                    },
+                    "error": {
+                        "$ref": "#/components/schemas/ApiErrorDetail",
+                    },
+                },
+            },
+        },
+    },
 }
 
 
+ACCESS_TOKEN_LIFETIME_MINUTES = env.int(
+    "ACCESS_TOKEN_LIFETIME_MINUTES",
+    default=15,
+)
+
+REFRESH_TOKEN_LIFETIME_DAYS = env.int(
+    "REFRESH_TOKEN_LIFETIME_DAYS",
+    default=7,
+)
+
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=ACCESS_TOKEN_LIFETIME_MINUTES),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=REFRESH_TOKEN_LIFETIME_DAYS),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
 }
 
 

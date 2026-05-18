@@ -1,6 +1,6 @@
 # API Contract
 
-Документ описывает предварительный контракт REST API backend-части приложения BudgetWise.
+Документ описывает контракт REST API backend-части приложения BudgetWiseBackend.
 
 Текущая версия API:
 
@@ -16,7 +16,7 @@ v1
 
 ## Общие принципы
 
-Backend предоставляет REST API для frontend-приложения. Большинство endpoints требуют JWT-аутентификацию.
+Backend предоставляет REST API для frontend-приложения. Основные endpoints защищены JWT-аутентификацией.
 
 Для защищённых запросов используется заголовок:
 
@@ -30,39 +30,99 @@ Authorization: Bearer <access_token>
 JSON
 ```
 
-Основные HTTP-коды:
+Публичные endpoints:
+
+```text
+GET /health/
+GET /api/v1/
+GET /api/schema/
+GET /api/docs/
+```
+
+Защищённые endpoints:
+
+```text
+/api/v1/users/
+/api/v1/users/me/
+/api/v1/finance/categories/
+/api/v1/finance/transactions/
+```
+
+## Основные HTTP-коды
 
 | Код | Значение |
 |---|---|
 | `200 OK` | Успешный запрос |
 | `201 Created` | Объект успешно создан |
-| `204 No Content` | Объект успешно удалён |
+| `204 No Content` | Объект успешно удалён или деактивирован без тела ответа |
 | `400 Bad Request` | Ошибка валидации или некорректный запрос |
 | `401 Unauthorized` | Пользователь не авторизован |
 | `403 Forbidden` | Недостаточно прав |
 | `404 Not Found` | Объект не найден |
-| `409 Conflict` | Конфликт состояния данных, например попытка удалить объект со связанными записями |
+| `405 Method Not Allowed` | HTTP-метод не разрешён |
+| `409 Conflict` | Конфликт состояния данных |
 | `500 Internal Server Error` | Внутренняя ошибка сервера |
 
-## Формат ошибки
+## Формат ошибки API
 
-Для ошибок используется единый формат ответа:
+Backend использует единый формат ошибок для всех endpoints.
+
+Подробный контракт ошибок, список error codes и примеры ответов описаны в отдельном документе:
+
+```text
+docs/api-errors.md
+```
+
+Базовый формат ошибки:
 
 ```json
 {
   "success": false,
   "error": {
     "status_code": 400,
-    "detail": {
+    "code": "validation_error",
+    "message": "Некорректные данные запроса.",
+    "field_errors": {
       "field": [
-        "Error message"
+        "Описание ошибки."
       ]
-    }
+    },
+    "detail": null,
+    "trace_id": null
   }
 }
 ```
 
-Для ошибок без привязки к конкретному полю поле `detail` может содержать строку или объект.
+Назначение полей:
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `success` | boolean | Для ошибок всегда `false` |
+| `error.status_code` | integer | HTTP-код ответа |
+| `error.code` | string | Машиночитаемый код ошибки |
+| `error.message` | string | Короткое сообщение для frontend или пользователя |
+| `error.field_errors` | object или null | Ошибки конкретных полей |
+| `error.detail` | object, array, string или null | Дополнительная информация |
+| `error.trace_id` | string или null | Идентификатор ошибки для поиска в логах |
+
+Типовые error codes:
+
+| HTTP-код | `error.code` | Назначение |
+|---|---|---|
+| `400` | `validation_error` | Общая ошибка валидации |
+| `400` | `invalid` | Некорректное значение поля или query-параметра |
+| `400` | `unique` | Нарушение уникальности данных |
+| `401` | `not_authenticated` | Access token не передан |
+| `401` | `authentication_failed` | Access token некорректен |
+| `403` | `permission_denied` | Недостаточно прав |
+| `404` | `not_found` | Объект не найден |
+| `405` | `method_not_allowed` | HTTP-метод не разрешён |
+| `409` | `conflict` | Конфликт состояния данных |
+| `409` | `category_has_children` | Категория имеет дочерние категории |
+| `409` | `category_has_transactions` | Категория используется в операциях |
+| `409` | `category_has_budgets` | Категория используется в бюджетах |
+| `409` | `integrity_error` | Нарушено ограничение целостности данных |
+| `500` | `server_error` | Внутренняя ошибка сервера |
 
 Пример ошибки авторизации:
 
@@ -71,70 +131,128 @@ JSON
   "success": false,
   "error": {
     "status_code": 401,
-    "detail": {
-      "detail": "Authentication credentials were not provided."
-    }
+    "code": "not_authenticated",
+    "message": "Пользователь не авторизован.",
+    "field_errors": null,
+    "detail": "Учетные данные не были предоставлены.",
+    "trace_id": null
   }
 }
 ```
 
-Пример ошибки валидации:
+Пример ошибки валидации query-параметра:
 
 ```json
 {
   "success": false,
   "error": {
     "status_code": 400,
-    "detail": {
-      "amount": [
-        "Ensure this value is greater than 0."
-      ]
-    }
+    "code": "invalid",
+    "message": "Некорректные данные запроса.",
+    "field_errors": {
+      "is_staff": "Параметр должен быть boolean: true или false."
+    },
+    "detail": null,
+    "trace_id": null
   }
 }
 ```
 
-## Пагинация
-
-Для списков используется пагинация.
-
-Параметры:
-
-| Параметр | Тип | Обязательный | Описание |
-|---|---|---|---|
-| `page` | integer | Нет | Номер страницы |
-| `page_size` | integer | Нет | Размер страницы, максимум 100 |
-
-Базовый размер страницы:
-
-```text
-20
-```
-
-Ожидаемый формат пагинированного ответа Django REST Framework:
+Пример ошибки конфликта:
 
 ```json
 {
-  "count": 100,
-  "next": "http://127.0.0.1:8000/api/v1/finance/transactions/?page=2",
+  "success": false,
+  "error": {
+    "status_code": 409,
+    "code": "category_has_transactions",
+    "message": "Категорию нельзя удалить, так как она используется в операциях.",
+    "field_errors": null,
+    "detail": null,
+    "trace_id": null
+  }
+}
+```
+
+Пример внутренней ошибки сервера:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 500,
+    "code": "server_error",
+    "message": "Внутренняя ошибка сервера.",
+    "field_errors": null,
+    "detail": null,
+    "trace_id": "6b1d9d5c-1d2a-4e55-9f8d-33c6c9f5f100"
+  }
+}
+```
+
+Для ошибок `500` backend генерирует `trace_id` и пишет stack trace в логи.
+
+## Логирование ошибок
+
+Клиентские ошибки `4xx` логируются на уровне `WARNING`.
+
+В лог попадают:
+
+- `status_code`;
+- `code`;
+- `message`;
+- `trace_id`;
+- HTTP method;
+- path;
+- query params;
+- user id;
+- client ip.
+
+Пример лога:
+
+```text
+API client error. status_code=400 code=invalid message=Некорректные данные запроса. trace_id=None method=GET path=/api/v1/users/ query_params={'is_staff': 'wrong'} user_id=72 client_ip=127.0.0.1
+```
+
+Серверные ошибки `5xx` логируются на уровне `ERROR` со stack trace.
+
+## Pagination
+
+Для списочных endpoint используется page-based pagination.
+
+### Query parameters
+
+| Параметр | Тип | Обязательный | Описание |
+|---|---|---|---|
+| `page` | integer | нет | Номер страницы. По умолчанию используется первая страница. |
+| `page_size` | integer | нет | Размер страницы. По умолчанию `20`, максимальное значение `100`. |
+
+### Response format
+
+```json
+{
+  "count": 125,
+  "next": "http://127.0.0.1:8000/api/v1/finance/transactions/?page=2&page_size=20",
   "previous": null,
   "results": []
 }
-```
+
 
 ## Соответствие API и ORM-моделей
 
 API-контракт синхронизирован с текущими ORM-моделями финансового модуля.
 
-| API resource | ORM model | Назначение |
-|---|---|---|
-| `/api/v1/users/me/` | `User` | Данные текущего пользователя |
-| `/api/v1/finance/accounts/` | `Account` | Счета пользователя |
-| `/api/v1/finance/categories/` | `Category` | Категории доходов и расходов |
-| `/api/v1/finance/transactions/` | `Transaction` | Финансовые операции |
-| `/api/v1/finance/budgets/` | `Budget` | Бюджеты по категориям и периодам |
-| `/api/v1/finance/goals/` | `Goal` | Финансовые цели |
-| `/api/v1/finance/reports/summary/` | `Transaction`, `Account`, `Category` | Расчётная финансовая сводка |
+| API resource | ORM model | Статус | Назначение |
+|---|---|---|---|
+| `/api/v1/users/me/` | `User` | Реализовано | Данные текущего пользователя |
+| `/api/v1/users/` | `User` | Реализовано | Администрирование пользователей |
+| `/api/v1/finance/accounts/` | `Account` | Планируется | Счета пользователя |
+| `/api/v1/finance/categories/` | `Category` | Реализовано | Категории доходов и расходов |
+| `/api/v1/finance/categories/tree/` | `Category` | Реализовано | Дерево категорий |
+| `/api/v1/finance/transactions/` | `Transaction` | Реализовано | Финансовые операции |
+| `/api/v1/finance/budgets/` | `Budget` | Планируется | Бюджеты по категориям и периодам |
+| `/api/v1/finance/goals/` | `Goal` | Планируется | Финансовые цели |
+| `/api/v1/finance/reports/summary/` | `Transaction`, `Account`, `Category` | Планируется | Расчётная финансовая сводка |
 
 Все основные финансовые сущности связаны с пользователем через поле `user`.
 
@@ -149,11 +267,11 @@ API-контракт синхронизирован с текущими ORM-мо
 | `decimal` | `DecimalField(max_digits=14, decimal_places=2)` | `"1200.00"` |
 | `boolean` | `BooleanField` | `true` |
 | `date` | `DateField` | `"2026-05-07"` |
-| `datetime` | `DateTimeField` | `"2026-05-07T10:30:00+00:00"` |
+| `datetime` | `DateTimeField` | `"2026-05-07T10:30:00+0300"` |
 
 Денежные значения передаются строкой, чтобы избежать ошибок округления на стороне клиента.
 
-## Текущие служебные endpoints
+## Служебные endpoints
 
 ### Health-check
 
@@ -165,17 +283,6 @@ API-контракт синхронизирован с текущими ORM-мо
 | Статус | Реализовано |
 
 Назначение: проверка состояния backend-сервиса.
-
-Параметры запроса отсутствуют.
-
-Основные поля ответа:
-
-| Поле | Тип | Описание |
-|---|---|---|
-| `status` | string | Состояние сервиса |
-| `service` | string | Название сервиса |
-| `version` | string | Версия API или приложения |
-| `timestamp` | string | Время ответа сервера в ISO-формате |
 
 Пример запроса:
 
@@ -191,7 +298,7 @@ Host: 127.0.0.1:8000
   "status": "ok",
   "service": "BudgetWiseBackend",
   "version": "1.0.0",
-  "timestamp": "2026-05-06T22:44:44.084816+00:00"
+  "timestamp": "2026-05-09T23:40:27.988851Z"
 }
 ```
 
@@ -213,16 +320,6 @@ Host: 127.0.0.1:8000
 | Статус | Реализовано |
 
 Назначение: корневой endpoint API версии `v1`.
-
-Параметры запроса отсутствуют.
-
-Основные поля ответа:
-
-| Поле | Тип | Описание |
-|---|---|---|
-| `service` | string | Название API |
-| `version` | string | Текущая версия API |
-| `endpoints` | object | Список основных маршрутов |
 
 Пример запроса:
 
@@ -307,7 +404,221 @@ Host: 127.0.0.1:8000
 
 ## Auth endpoints
 
-Endpoints аутентификации будут использовать JWT.
+## Механизм аутентификации
+
+В проекте используется JWT-аутентификация на базе Simple JWT.
+
+Backend возвращает `access` и `refresh` tokens в JSON-ответе. На текущем этапе токены не устанавливаются в cookie. Frontend должен самостоятельно сохранить полученные tokens и передавать access token в защищённые запросы через HTTP-заголовок:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+### Срок жизни токенов
+
+| Token | Lifetime | Назначение |
+|---|---|---|
+| `access` | 15 минут | Используется для доступа к защищённым endpoints |
+| `refresh` | 7 дней | Используется для получения нового access token |
+
+### Обновление refresh token
+
+Для refresh token включены:
+
+| Настройка | Значение | Назначение |
+|---|---|---|
+| `ROTATE_REFRESH_TOKENS` | `true` | При обновлении выдаётся новый refresh token |
+| `BLACKLIST_AFTER_ROTATION` | `true` | Старый refresh token добавляется в blacklist |
+| `UPDATE_LAST_LOGIN` | `true` | При успешном входе обновляется `last_login` пользователя |
+
+### Security notes
+
+На текущем этапе используется схема token return в JSON-ответе. Это проще для разработки REST API и Postman-тестирования.
+
+Для production-окружения можно рассмотреть хранение refresh token в `HttpOnly Secure SameSite` cookie, но это потребует отдельной настройки CSRF, CORS и frontend-логики.
+
+### Ошибки авторизации
+
+Все ошибки авторизации возвращаются в едином формате API:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "code": "authentication_failed",
+    "message": "Пользователь не авторизован.",
+    "field_errors": null,
+    "detail": "Неверные учётные данные.",
+    "trace_id": null
+  }
+}
+```
+
+### Вход пользователя
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/auth/login/` |
+| Метод | `POST` |
+| Доступ | Публичный |
+| Статус | Реализовано |
+
+Назначение: аутентификация пользователя по email и password.
+
+Тело запроса:
+
+| Поле | Тип | Обязательное | Описание |
+|---|---|---|---|
+| `email` | string | Да | Email пользователя |
+| `password` | string | Да | Пароль пользователя |
+
+Пример запроса:
+
+```http
+POST /api/v1/auth/login/ HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Type: application/json
+```
+
+```json
+{
+  "email": "admin@example.com",
+  "password": "admin-password-123"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "access": "jwt-access-token",
+  "refresh": "jwt-refresh-token",
+  "user": {
+    "id": 2,
+    "username": "admin",
+    "email": "admin@example.com",
+    "first_name": "Timofey",
+    "last_name": "Demo",
+    "role": "admin",
+    "is_active": true
+  }
+}
+```
+
+Пример ошибки:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 401,
+    "code": "authentication_failed",
+    "message": "Пользователь не авторизован.",
+    "field_errors": null,
+    "detail": "Неверный email или пароль.",
+    "trace_id": null
+  }
+}
+```
+
+Возможные коды ответа:
+
+| Код | Описание |
+|---|---|
+| `200` | Пользователь успешно вошёл в систему |
+| `400` | Некорректное тело запроса |
+| `401` | Неверный email или пароль, либо пользователь неактивен |
+
+### Rate limiting login endpoint
+
+Для endpoint входа включена базовая защита от brute force.
+
+Ограничение применяется по связке:
+
+```text
+IP address + email
+```
+
+Текущий лимит для dev-окружения:
+
+```text
+5/min
+```
+
+Если количество попыток превышено, backend возвращает:
+
+```http
+429 Too Many Requests
+```
+
+Пример ответа:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 429,
+    "code": "throttled",
+    "message": "Слишком много запросов.",
+    "field_errors": null,
+    "detail": "Request was throttled. Expected available in 60 seconds.",
+    "trace_id": null
+  }
+}
+```
+
+Лимит настраивается через переменную окружения:
+
+```env
+LOGIN_THROTTLE_RATE=5/min
+```
+
+### Email confirmation mechanism
+
+Для подтверждения email используется signed token.
+
+Backend генерирует token, формирует ссылку подтверждения и отправляет письмо пользователю. В dev-окружении используется console email backend, поэтому письмо выводится в терминал, а не отправляется через реальный SMTP-сервер.
+
+Текущая ссылка frontend для подтверждения email:
+
+```text
+http://app.budgetwise.localhost:5173/auth/verify-email?token=<token>
+```
+
+Frontend должен получить `token` из query params и отправить его на backend endpoint подтверждения email.
+
+backend endpoint:
+
+```text
+POST /api/v1/auth/verify-email/
+```
+
+Тело запроса:
+
+```json
+{
+  "token": "<email_confirmation_token>"
+}
+```
+
+Срок жизни token:
+
+```text
+24 часа
+```
+
+Env-настройки:
+
+```env
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+DEFAULT_FROM_EMAIL=BudgetWise <noreply@budgetwise.local>
+FRONTEND_EMAIL_VERIFY_URL=http://app.budgetwise.localhost:5173/auth/verify-email
+EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS=86400
+EMAIL_CONFIRMATION_TOKEN_SALT=budgetwise.email-confirmation
+```
+
+В production-окружении console email backend должен быть заменён на SMTP или другой реальный email provider.
 
 ### Регистрация пользователя
 
@@ -316,7 +627,7 @@ Endpoints аутентификации будут использовать JWT.
 | URL | `/api/v1/auth/register/` |
 | Метод | `POST` |
 | Доступ | Публичный |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: создание нового пользователя.
 
@@ -324,7 +635,6 @@ Endpoints аутентификации будут использовать JWT.
 
 | Поле | Тип | Обязательное | Описание |
 |---|---|---|---|
-| `username` | string | Да | Имя пользователя |
 | `email` | string | Да | Email пользователя |
 | `password` | string | Да | Пароль |
 | `password_confirm` | string | Да | Подтверждение пароля |
@@ -353,25 +663,6 @@ Content-Type: application/json
   "id": 1,
   "username": "timofey",
   "email": "timofey@example.com"
-}
-```
-
-Пример ошибки:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 400,
-    "detail": {
-      "email": [
-        "User with this email already exists."
-      ],
-      "password_confirm": [
-        "Passwords do not match."
-      ]
-    }
-  }
 }
 ```
 
@@ -426,20 +717,6 @@ Content-Type: application/json
 }
 ```
 
-Пример ошибки:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 401,
-    "detail": {
-      "detail": "No active account found with the given credentials"
-    }
-  }
-}
-```
-
 Возможные коды ответа:
 
 | Код | Описание |
@@ -484,23 +761,7 @@ Content-Type: application/json
 
 ```json
 {
-  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_access",
-  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_refresh"
-}
-```
-
-Пример ошибки:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 401,
-    "detail": {
-      "detail": "Token is invalid or expired",
-      "code": "token_not_valid"
-    }
-  }
+  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_access"
 }
 ```
 
@@ -520,11 +781,9 @@ Content-Type: application/json
 | URL | `/api/v1/users/me/` |
 | Метод | `GET` |
 | Доступ | Авторизованный пользователь |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: получение данных текущего пользователя.
-
-Параметры запроса отсутствуют.
 
 Пример запроса:
 
@@ -539,24 +798,13 @@ Authorization: Bearer <access_token>
 ```json
 {
   "id": 1,
-  "username": "timofey",
-  "email": "timofey@example.com",
+  "username": "demo",
+  "email": "demo@example.com",
   "first_name": "Timofey",
-  "last_name": ""
-}
-```
-
-Пример ошибки:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 401,
-    "detail": {
-      "detail": "Authentication credentials were not provided."
-    }
-  }
+  "last_name": "Demo",
+  "role": "user",
+  "is_active": true,
+  "date_joined": "2026-05-07T23:51:53+0300"
 }
 ```
 
@@ -567,18 +815,77 @@ Authorization: Bearer <access_token>
 | `200` | Данные пользователя получены |
 | `401` | Пользователь не авторизован |
 
-## Finance endpoints
+---
 
-### Список счетов
+### Обновление текущего пользователя
 
 | Поле | Значение |
 |---|---|
-| URL | `/api/v1/finance/accounts/` |
-| Метод | `GET` |
+| URL | `/api/v1/users/me/` |
+| Метод | `PATCH` |
 | Доступ | Авторизованный пользователь |
-| Статус | Планируется |
+| Статус | Реализовано |
 
-Назначение: получение списка счетов текущего пользователя.
+Назначение: частичное обновление данных текущего пользователя.
+
+Доступные поля:
+
+| Поле | Тип | Обязательное | Описание |
+|---|---|---|---|
+| `first_name` | string | Нет | Имя |
+| `last_name` | string | Нет | Фамилия |
+
+Пример запроса:
+
+```http
+PATCH /api/v1/users/me/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "first_name": "Timofey",
+  "last_name": "Demo"
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 1,
+  "username": "demo",
+  "email": "demo@example.com",
+  "first_name": "Timofey",
+  "last_name": "Demo",
+  "role": "user",
+  "is_active": true,
+  "date_joined": "2026-05-07T23:51:53+0300"
+}
+```
+
+Возможные коды ответа:
+
+| Код | Описание |
+|---|---|
+| `200` | Данные пользователя обновлены |
+| `400` | Ошибка валидации |
+| `401` | Пользователь не авторизован |
+
+---
+
+### Список пользователей
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/users/` |
+| Метод | `GET` |
+| Доступ | Администратор |
+| Статус | Реализовано |
+
+Назначение: получение списка пользователей.
 
 Query-параметры:
 
@@ -586,14 +893,31 @@ Query-параметры:
 |---|---|---|---|
 | `page` | integer | Нет | Номер страницы |
 | `page_size` | integer | Нет | Размер страницы |
-| `is_active` | boolean | Нет | Фильтр по активности счёта |
+| `is_active` | boolean | Нет | Фильтр по активности |
+| `is_staff` | boolean | Нет | Фильтр по staff-статусу |
+| `is_superuser` | boolean | Нет | Фильтр по superuser-статусу |
+| `search` | string | Нет | Поиск по username или email |
+| `ordering` | string | Нет | Сортировка |
+
+Допустимые значения `ordering`:
+
+```text
+id
+-id
+username
+-username
+email
+-email
+date_joined
+-date_joined
+```
 
 Пример запроса:
 
 ```http
-GET /api/v1/finance/accounts/?page=1&page_size=20&is_active=true HTTP/1.1
+GET /api/v1/users/?is_active=true&ordering=id HTTP/1.1
 Host: 127.0.0.1:8000
-Authorization: Bearer <access_token>
+Authorization: Bearer <admin_access_token>
 ```
 
 Пример успешного ответа:
@@ -606,21 +930,36 @@ Authorization: Bearer <access_token>
   "results": [
     {
       "id": 1,
-      "name": "Основная карта",
-      "balance": "25000.00",
-      "currency": "RUB",
+      "username": "demo",
+      "email": "demo@example.com",
+      "first_name": "",
+      "last_name": "",
+      "role": "user",
       "is_active": true,
-      "created_at": "2026-05-07T10:00:00+00:00"
-    },
-    {
-      "id": 2,
-      "name": "Наличные",
-      "balance": "5000.00",
-      "currency": "RUB",
-      "is_active": true,
-      "created_at": "2026-05-07T10:05:00+00:00"
+      "is_staff": false,
+      "is_superuser": false,
+      "date_joined": "2026-05-07T23:51:53+0300",
+      "last_login": null
     }
   ]
+}
+```
+
+Пример ошибки query-параметра:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 400,
+    "code": "invalid",
+    "message": "Некорректные данные запроса.",
+    "field_errors": {
+      "is_staff": "Параметр должен быть boolean: true или false."
+    },
+    "detail": null,
+    "trace_id": null
+  }
 }
 ```
 
@@ -628,8 +967,162 @@ Authorization: Bearer <access_token>
 
 | Код | Описание |
 |---|---|
-| `200` | Список счетов получен |
+| `200` | Список пользователей получен |
+| `400` | Некорректные query-параметры |
 | `401` | Пользователь не авторизован |
+| `403` | Недостаточно прав |
+
+---
+
+### Создание пользователя администратором
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/users/` |
+| Метод | `POST` |
+| Доступ | Администратор |
+| Статус | Реализовано |
+
+Назначение: создание пользователя администратором.
+
+Тело запроса:
+
+| Поле | Тип | Обязательное | Описание |
+|---|---|---|---|
+| `username` | string | Да | Имя пользователя |
+| `email` | string | Да | Email |
+| `password` | string | Нет | Пароль, минимум 8 символов |
+| `first_name` | string | Нет | Имя |
+| `last_name` | string | Нет | Фамилия |
+| `is_active` | boolean | Нет | Активность пользователя |
+| `is_staff` | boolean | Нет | Staff-статус |
+| `is_superuser` | boolean | Нет | Superuser-статус |
+
+Пример запроса:
+
+```http
+POST /api/v1/users/ HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <admin_access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "username": "created_user",
+  "email": "created_user@example.com",
+  "password": "created-password-123",
+  "first_name": "Created",
+  "last_name": "User",
+  "is_active": true,
+  "is_staff": false,
+  "is_superuser": false
+}
+```
+
+Пример успешного ответа:
+
+```json
+{
+  "id": 3,
+  "username": "created_user",
+  "email": "created_user@example.com",
+  "first_name": "Created",
+  "last_name": "User",
+  "role": "user",
+  "is_active": true,
+  "is_staff": false,
+  "is_superuser": false,
+  "date_joined": "2026-05-10T02:00:00+0300",
+  "last_login": null
+}
+```
+
+Пример ошибки уникальности:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 400,
+    "code": "unique",
+    "message": "Некорректные данные запроса.",
+    "field_errors": {
+      "email": [
+        "Пользователь с таким email уже существует."
+      ]
+    },
+    "detail": null,
+    "trace_id": null
+  }
+}
+```
+
+Возможные коды ответа:
+
+| Код | Описание |
+|---|---|
+| `201` | Пользователь создан |
+| `400` | Ошибка валидации |
+| `401` | Пользователь не авторизован |
+| `403` | Недостаточно прав |
+
+---
+
+### Получение, обновление и деактивация пользователя
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/users/{id}/` |
+| Методы | `GET`, `PATCH`, `DELETE` |
+| Доступ | Администратор |
+| Статус | Реализовано |
+
+Назначение: работа с конкретным пользователем.
+
+Path-параметры:
+
+| Параметр | Тип | Обязательный | Описание |
+|---|---|---|---|
+| `id` | integer | Да | ID пользователя |
+
+`DELETE` не удаляет пользователя физически, а устанавливает:
+
+```json
+{
+  "is_active": false
+}
+```
+
+Администратор не может деактивировать сам себя через этот endpoint.
+
+Возможные коды ответа:
+
+| Код | Описание |
+|---|---|
+| `200` | Пользователь получен или обновлён |
+| `204` | Пользователь деактивирован |
+| `400` | Ошибка валидации или попытка деактивировать себя |
+| `401` | Пользователь не авторизован |
+| `403` | Недостаточно прав |
+| `404` | Пользователь не найден |
+
+## Finance endpoints
+
+## Account endpoints
+
+Endpoints счетов планируются к реализации.
+
+### Список счетов
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/finance/accounts/` |
+| Метод | `GET` |
+| Доступ | Авторизованный пользователь |
+| Статус | Планируется |
+
+Назначение: получение списка счетов текущего пользователя.
 
 ---
 
@@ -644,71 +1137,6 @@ Authorization: Bearer <access_token>
 
 Назначение: создание нового счёта пользователя.
 
-Тело запроса:
-
-| Поле | Тип | Обязательное | Описание |
-|---|---|---|---|
-| `name` | string | Да | Название счёта |
-| `balance` | decimal | Нет | Начальный баланс |
-| `currency` | string | Да | Валюта счёта |
-
-Пример запроса:
-
-```http
-POST /api/v1/finance/accounts/ HTTP/1.1
-Host: 127.0.0.1:8000
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-```json
-{
-  "name": "Основная карта",
-  "balance": "25000.00",
-  "currency": "RUB"
-}
-```
-
-Пример успешного ответа:
-
-```json
-{
-  "id": 1,
-  "name": "Основная карта",
-  "balance": "25000.00",
-  "currency": "RUB",
-  "is_active": true,
-  "created_at": "2026-05-07T10:00:00+00:00"
-}
-```
-
-Пример ошибки:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 400,
-    "detail": {
-      "name": [
-        "This field is required."
-      ],
-      "currency": [
-        "This field is required."
-      ]
-    }
-  }
-}
-```
-
-Возможные коды ответа:
-
-| Код | Описание |
-|---|---|
-| `201` | Счёт создан |
-| `400` | Ошибка валидации |
-| `401` | Пользователь не авторизован |
-
 ---
 
 ### Получение, обновление и удаление счёта
@@ -720,94 +1148,9 @@ Content-Type: application/json
 | Доступ | Авторизованный пользователь |
 | Статус | Планируется |
 
-Назначение: работа с конкретным счётом пользователя.
-
-Path-параметры:
-
-| Параметр | Тип | Обязательный | Описание |
-|---|---|---|---|
-| `id` | integer | Да | ID счёта |
-
-Пример запроса на получение:
-
-```http
-GET /api/v1/finance/accounts/1/ HTTP/1.1
-Host: 127.0.0.1:8000
-Authorization: Bearer <access_token>
-```
-
-Пример успешного ответа:
-
-```json
-{
-  "id": 1,
-  "name": "Основная карта",
-  "balance": "25000.00",
-  "currency": "RUB",
-  "is_active": true,
-  "created_at": "2026-05-07T10:00:00+00:00"
-}
-```
-
-Пример запроса на частичное обновление:
-
-```http
-PATCH /api/v1/finance/accounts/1/ HTTP/1.1
-Host: 127.0.0.1:8000
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-```json
-{
-  "name": "Зарплатная карта"
-}
-```
-
-Пример успешного ответа после обновления:
-
-```json
-{
-  "id": 1,
-  "name": "Зарплатная карта",
-  "balance": "25000.00",
-  "currency": "RUB",
-  "is_active": true,
-  "created_at": "2026-05-07T10:00:00+00:00"
-}
-```
-
-Пример ошибки доступа:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 403,
-    "detail": {
-      "detail": "You do not have permission to perform this action."
-    }
-  }
-}
-```
-
-Возможные коды ответа:
-
-| Код | Описание |
-|---|---|
-| `200` | Счёт получен или обновлён |
-| `204` | Счёт удалён |
-| `400` | Ошибка валидации |
-| `401` | Пользователь не авторизован |
-| `403` | Нет доступа к счёту |
-| `404` | Счёт не найден |
-| `409` | Категория не может быть удалена, так как с ней связаны операции или бюджеты |
-
 Если у счёта есть связанные операции, физическое удаление должно быть запрещено. В таком случае frontend может использовать частичное обновление и передать `is_active=false`, чтобы скрыть счёт без потери истории операций.
 
-Если категория используется в операциях или бюджетах, физическое удаление должно быть запрещено. В таком случае рекомендуется использовать `PATCH` с `is_active=false`, чтобы сохранить историю финансовых данных.
-
----
+## Category endpoints
 
 ### Список категорий
 
@@ -816,7 +1159,7 @@ Content-Type: application/json
 | URL | `/api/v1/finance/categories/` |
 | Метод | `GET` |
 | Доступ | Авторизованный пользователь |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: получение списка категорий доходов и расходов.
 
@@ -827,7 +1170,20 @@ Query-параметры:
 | `page` | integer | Нет | Номер страницы |
 | `page_size` | integer | Нет | Размер страницы |
 | `type` | string | Нет | Тип категории: `income` или `expense` |
+| `parent` | integer | Нет | ID родительской категории |
 | `is_active` | boolean | Нет | Фильтр по активности категории |
+| `ordering` | string | Нет | Сортировка |
+
+Допустимые значения `ordering`:
+
+```text
+name
+-name
+type
+-type
+created_at
+-created_at
+```
 
 Пример запроса:
 
@@ -846,18 +1202,14 @@ Authorization: Bearer <access_token>
   "previous": null,
   "results": [
     {
-      "id": 1,
+      "id": 3,
+      "parent": null,
       "name": "Продукты",
       "type": "expense",
       "is_active": true,
-      "created_at": "2026-05-07T10:10:00+00:00"
-    },
-    {
-      "id": 2,
-      "name": "Транспорт",
-      "type": "expense",
-      "is_active": true,
-      "created_at": "2026-05-07T10:15:00+00:00"
+      "children_count": 1,
+      "created_at": "2026-05-07T23:51:53+0300",
+      "updated_at": "2026-05-08T01:11:32+0300"
     }
   ]
 }
@@ -868,6 +1220,71 @@ Authorization: Bearer <access_token>
 | Код | Описание |
 |---|---|
 | `200` | Список категорий получен |
+| `400` | Некорректные query-параметры |
+| `401` | Пользователь не авторизован |
+
+---
+
+### Дерево категорий
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/finance/categories/tree/` |
+| Метод | `GET` |
+| Доступ | Авторизованный пользователь |
+| Статус | Реализовано |
+
+Назначение: получение категорий в виде дерева.
+
+Query-параметры:
+
+| Параметр | Тип | Обязательный | Описание |
+|---|---|---|---|
+| `type` | string | Нет | Тип категории: `income` или `expense` |
+| `is_active` | boolean | Нет | Фильтр по активности |
+
+Пример запроса:
+
+```http
+GET /api/v1/finance/categories/tree/?type=expense HTTP/1.1
+Host: 127.0.0.1:8000
+Authorization: Bearer <access_token>
+```
+
+Пример успешного ответа:
+
+```json
+[
+  {
+    "id": 3,
+    "parent": null,
+    "name": "Продукты",
+    "type": "expense",
+    "is_active": true,
+    "children": [
+      {
+        "id": 8,
+        "parent": 3,
+        "name": "Супермаркеты",
+        "type": "expense",
+        "is_active": true,
+        "children": [],
+        "created_at": "2026-05-08T01:11:32+0300",
+        "updated_at": "2026-05-08T01:11:32+0300"
+      }
+    ],
+    "created_at": "2026-05-07T23:51:53+0300",
+    "updated_at": "2026-05-07T23:51:53+0300"
+  }
+]
+```
+
+Возможные коды ответа:
+
+| Код | Описание |
+|---|---|
+| `200` | Дерево категорий получено |
+| `400` | Некорректные query-параметры |
 | `401` | Пользователь не авторизован |
 
 ---
@@ -879,7 +1296,7 @@ Authorization: Bearer <access_token>
 | URL | `/api/v1/finance/categories/` |
 | Метод | `POST` |
 | Доступ | Авторизованный пользователь |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: создание категории доходов или расходов.
 
@@ -887,8 +1304,10 @@ Authorization: Bearer <access_token>
 
 | Поле | Тип | Обязательное | Описание |
 |---|---|---|---|
+| `parent` | integer или null | Нет | ID родительской категории |
 | `name` | string | Да | Название категории |
 | `type` | string | Да | Тип категории: `income` или `expense` |
+| `is_active` | boolean | Нет | Активность категории |
 
 Пример запроса:
 
@@ -901,8 +1320,10 @@ Content-Type: application/json
 
 ```json
 {
-  "name": "Продукты",
-  "type": "expense"
+  "parent": 3,
+  "name": "Супермаркеты",
+  "type": "expense",
+  "is_active": true
 }
 ```
 
@@ -910,11 +1331,14 @@ Content-Type: application/json
 
 ```json
 {
-  "id": 1,
-  "name": "Продукты",
+  "id": 8,
+  "parent": 3,
+  "name": "Супермаркеты",
   "type": "expense",
   "is_active": true,
-  "created_at": "2026-05-07T10:10:00+00:00"
+  "children_count": 0,
+  "created_at": "2026-05-08T01:11:32+0300",
+  "updated_at": "2026-05-08T01:11:32+0300"
 }
 ```
 
@@ -925,11 +1349,15 @@ Content-Type: application/json
   "success": false,
   "error": {
     "status_code": 400,
-    "detail": {
-      "type": [
-        "Value must be one of: income, expense."
+    "code": "invalid",
+    "message": "Некорректные данные запроса.",
+    "field_errors": {
+      "parent": [
+        "Родительская категория должна иметь тот же тип."
       ]
-    }
+    },
+    "detail": null,
+    "trace_id": null
   }
 }
 ```
@@ -951,7 +1379,7 @@ Content-Type: application/json
 | URL | `/api/v1/finance/categories/{id}/` |
 | Методы | `GET`, `PATCH`, `DELETE` |
 | Доступ | Авторизованный пользователь |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: работа с конкретной категорией пользователя.
 
@@ -964,7 +1392,7 @@ Path-параметры:
 Пример запроса:
 
 ```http
-GET /api/v1/finance/categories/1/ HTTP/1.1
+GET /api/v1/finance/categories/3/ HTTP/1.1
 Host: 127.0.0.1:8000
 Authorization: Bearer <access_token>
 ```
@@ -973,11 +1401,32 @@ Authorization: Bearer <access_token>
 
 ```json
 {
-  "id": 1,
+  "id": 3,
+  "parent": null,
   "name": "Продукты",
   "type": "expense",
   "is_active": true,
-  "created_at": "2026-05-07T10:10:00+00:00"
+  "children_count": 1,
+  "created_at": "2026-05-07T23:51:53+0300",
+  "updated_at": "2026-05-07T23:51:53+0300"
+}
+```
+
+Удаление категории запрещено, если у неё есть дочерние категории, связанные операции или бюджеты. В таком случае нужно использовать `PATCH` и передать `is_active=false`.
+
+Пример ошибки конфликта:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 409,
+    "code": "category_has_transactions",
+    "message": "Категорию нельзя удалить, так как она используется в операциях.",
+    "field_errors": null,
+    "detail": null,
+    "trace_id": null
+  }
 }
 ```
 
@@ -989,330 +1438,10 @@ Authorization: Bearer <access_token>
 | `204` | Категория удалена |
 | `400` | Ошибка валидации |
 | `401` | Пользователь не авторизован |
-| `403` | Нет доступа к категории |
 | `404` | Категория не найдена |
+| `409` | Категорию нельзя удалить из-за связанных данных |
 
----
-
-## Budget endpoints
-
-### Список бюджетов
-
-| Поле | Значение |
-|---|---|
-| URL | `/api/v1/finance/budgets/` |
-| Метод | `GET` |
-| Доступ | Авторизованный пользователь |
-| Статус | Планируется |
-
-Назначение: получение списка бюджетов текущего пользователя.
-
-Query-параметры:
-
-| Параметр | Тип | Обязательный | Описание |
-|---|---|---|---|
-| `page` | integer | Нет | Номер страницы |
-| `page_size` | integer | Нет | Размер страницы |
-| `category` | integer | Нет | Фильтр по категории |
-| `is_active` | boolean | Нет | Фильтр по активности бюджета |
-| `period_start` | date | Нет | Начало периода |
-| `period_end` | date | Нет | Конец периода |
-
-Пример успешного ответа:
-
-```json
-{
-  "count": 1,
-  "next": null,
-  "previous": null,
-  "results": [
-    {
-      "id": 1,
-      "category": 1,
-      "amount_limit": "25000.00",
-      "period_start": "2026-05-01",
-      "period_end": "2026-05-31",
-      "is_active": true,
-      "created_at": "2026-05-07T10:00:00+00:00",
-      "updated_at": "2026-05-07T10:00:00+00:00"
-    }
-  ]
-}
-```
-
-Возможные коды ответа:
-
-| Код | Описание |
-|---|---|
-| `200` | Список бюджетов получен |
-| `401` | Пользователь не авторизован |
-
----
-
-### Создание бюджета
-
-| Поле | Значение |
-|---|---|
-| URL | `/api/v1/finance/budgets/` |
-| Метод | `POST` |
-| Доступ | Авторизованный пользователь |
-| Статус | Планируется |
-
-Назначение: создание бюджета по категории расходов за период.
-
-Тело запроса:
-
-| Поле | Тип | Обязательное | Описание |
-|---|---|---|---|
-| `category` | integer | Да | ID категории расходов |
-| `amount_limit` | decimal | Да | Лимит бюджета |
-| `period_start` | date | Да | Начало периода |
-| `period_end` | date | Да | Конец периода |
-| `is_active` | boolean | Нет | Активен ли бюджет |
-
-Пример запроса:
-
-```json
-{
-  "category": 1,
-  "amount_limit": "25000.00",
-  "period_start": "2026-05-01",
-  "period_end": "2026-05-31",
-  "is_active": true
-}
-```
-
-Пример успешного ответа:
-
-```json
-{
-  "id": 1,
-  "category": 1,
-  "amount_limit": "25000.00",
-  "period_start": "2026-05-01",
-  "period_end": "2026-05-31",
-  "is_active": true,
-  "created_at": "2026-05-07T10:00:00+00:00",
-  "updated_at": "2026-05-07T10:00:00+00:00"
-}
-```
-
-Пример ошибки:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 400,
-    "detail": {
-      "amount_limit": [
-        "Ensure this value is greater than 0."
-      ],
-      "period_end": [
-        "Дата окончания периода не может быть раньше даты начала."
-      ]
-    }
-  }
-}
-```
-
-Возможные коды ответа:
-
-| Код | Описание |
-|---|---|
-| `201` | Бюджет создан |
-| `400` | Ошибка валидации |
-| `401` | Пользователь не авторизован |
-| `403` | Нет доступа к категории |
-
----
-
-### Получение, обновление и удаление бюджета
-
-| Поле | Значение |
-|---|---|
-| URL | `/api/v1/finance/budgets/{id}/` |
-| Методы | `GET`, `PATCH`, `DELETE` |
-| Доступ | Авторизованный пользователь |
-| Статус | Планируется |
-
-Path-параметры:
-
-| Параметр | Тип | Обязательный | Описание |
-|---|---|---|---|
-| `id` | integer | Да | ID бюджета |
-
-Возможные коды ответа:
-
-| Код | Описание |
-|---|---|
-| `200` | Бюджет получен или обновлён |
-| `204` | Бюджет удалён |
-| `400` | Ошибка валидации |
-| `401` | Пользователь не авторизован |
-| `403` | Нет доступа к бюджету |
-| `404` | Бюджет не найден |
-
-## Goal endpoints
-
-### Список финансовых целей
-
-| Поле | Значение |
-|---|---|
-| URL | `/api/v1/finance/goals/` |
-| Метод | `GET` |
-| Доступ | Авторизованный пользователь |
-| Статус | Планируется |
-
-Назначение: получение списка финансовых целей текущего пользователя.
-
-Query-параметры:
-
-| Параметр | Тип | Обязательный | Описание |
-|---|---|---|---|
-| `page` | integer | Нет | Номер страницы |
-| `page_size` | integer | Нет | Размер страницы |
-| `status` | string | Нет | Статус цели: `active`, `completed`, `cancelled` |
-| `account` | integer | Нет | Фильтр по связанному счёту |
-
-Пример успешного ответа:
-
-```json
-{
-  "count": 1,
-  "next": null,
-  "previous": null,
-  "results": [
-    {
-      "id": 1,
-      "account": 3,
-      "name": "Финансовая подушка",
-      "target_amount": "300000.00",
-      "current_amount": "150000.00",
-      "deadline": null,
-      "status": "active",
-      "created_at": "2026-05-07T10:00:00+00:00",
-      "updated_at": "2026-05-07T10:00:00+00:00"
-    }
-  ]
-}
-```
-
-Возможные коды ответа:
-
-| Код | Описание |
-|---|---|
-| `200` | Список целей получен |
-| `401` | Пользователь не авторизован |
-
----
-
-### Создание финансовой цели
-
-| Поле | Значение |
-|---|---|
-| URL | `/api/v1/finance/goals/` |
-| Метод | `POST` |
-| Доступ | Авторизованный пользователь |
-| Статус | Планируется |
-
-Назначение: создание финансовой цели пользователя.
-
-Тело запроса:
-
-| Поле | Тип | Обязательное | Описание |
-|---|---|---|---|
-| `account` | integer | Нет | ID связанного счёта |
-| `name` | string | Да | Название цели |
-| `target_amount` | decimal | Да | Целевая сумма |
-| `current_amount` | decimal | Нет | Текущая накопленная сумма |
-| `deadline` | date | Нет | Желаемая дата достижения |
-| `status` | string | Нет | Статус цели |
-
-Пример запроса:
-
-```json
-{
-  "account": 3,
-  "name": "Финансовая подушка",
-  "target_amount": "300000.00",
-  "current_amount": "150000.00",
-  "deadline": null,
-  "status": "active"
-}
-```
-
-Пример успешного ответа:
-
-```json
-{
-  "id": 1,
-  "account": 3,
-  "name": "Финансовая подушка",
-  "target_amount": "300000.00",
-  "current_amount": "150000.00",
-  "deadline": null,
-  "status": "active",
-  "created_at": "2026-05-07T10:00:00+00:00",
-  "updated_at": "2026-05-07T10:00:00+00:00"
-}
-```
-
-Пример ошибки:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 400,
-    "detail": {
-      "target_amount": [
-        "Ensure this value is greater than 0."
-      ],
-      "current_amount": [
-        "Ensure this value is greater than or equal to 0."
-      ]
-    }
-  }
-}
-```
-
-Возможные коды ответа:
-
-| Код | Описание |
-|---|---|
-| `201` | Цель создана |
-| `400` | Ошибка валидации |
-| `401` | Пользователь не авторизован |
-| `403` | Нет доступа к связанному счёту |
-
----
-
-### Получение, обновление и удаление финансовой цели
-
-| Поле | Значение |
-|---|---|
-| URL | `/api/v1/finance/goals/{id}/` |
-| Методы | `GET`, `PATCH`, `DELETE` |
-| Доступ | Авторизованный пользователь |
-| Статус | Планируется |
-
-Path-параметры:
-
-| Параметр | Тип | Обязательный | Описание |
-|---|---|---|---|
-| `id` | integer | Да | ID цели |
-
-Возможные коды ответа:
-
-| Код | Описание |
-|---|---|
-| `200` | Цель получена или обновлена |
-| `204` | Цель удалена |
-| `400` | Ошибка валидации |
-| `401` | Пользователь не авторизован |
-| `403` | Нет доступа к цели |
-| `404` | Цель не найдена |
+## Transaction endpoints
 
 ### Список операций
 
@@ -1321,7 +1450,7 @@ Path-параметры:
 | URL | `/api/v1/finance/transactions/` |
 | Метод | `GET` |
 | Доступ | Авторизованный пользователь |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: получение списка финансовых операций пользователя.
 
@@ -1334,9 +1463,20 @@ Query-параметры:
 | `account` | integer | Нет | Фильтр по счёту |
 | `category` | integer | Нет | Фильтр по категории |
 | `type` | string | Нет | Тип операции: `income` или `expense` |
-| `date_from` | string | Нет | Начало периода |
-| `date_to` | string | Нет | Конец периода |
-| `ordering` | string | Нет | Сортировка, например `operation_date` или `-operation_date` |
+| `date_from` | date | Нет | Начало периода |
+| `date_to` | date | Нет | Конец периода |
+| `ordering` | string | Нет | Сортировка |
+
+Допустимые значения `ordering`:
+
+```text
+operation_date
+-operation_date
+amount
+-amount
+created_at
+-created_at
+```
 
 Пример запроса:
 
@@ -1357,14 +1497,33 @@ Authorization: Bearer <access_token>
     {
       "id": 1,
       "account": 1,
-      "category": 1,
+      "category": 3,
       "type": "expense",
-      "amount": "1200.00",
+      "amount": "3200.00",
       "description": "Покупка продуктов",
       "operation_date": "2026-05-07",
-      "created_at": "2026-05-07T10:30:00+00:00"
+      "created_at": "2026-05-07T23:51:53+0300",
+      "updated_at": "2026-05-07T23:51:53+0300"
     }
   ]
+}
+```
+
+Пример ошибки query-параметра:
+
+```json
+{
+  "success": false,
+  "error": {
+    "status_code": 400,
+    "code": "invalid",
+    "message": "Некорректные данные запроса.",
+    "field_errors": {
+      "account": "Параметр должен быть целым числом."
+    },
+    "detail": null,
+    "trace_id": null
+  }
 }
 ```
 
@@ -1385,7 +1544,7 @@ Authorization: Bearer <access_token>
 | URL | `/api/v1/finance/transactions/` |
 | Метод | `POST` |
 | Доступ | Авторизованный пользователь |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: создание новой финансовой операции.
 
@@ -1393,12 +1552,12 @@ Authorization: Bearer <access_token>
 
 | Поле | Тип | Обязательное | Описание |
 |---|---|---|---|
-| `account` | integer | Да | ID счёта |
-| `category` | integer | Да | ID категории |
+| `account` | integer | Да | ID счёта пользователя |
+| `category` | integer | Да | ID категории пользователя |
 | `type` | string | Да | Тип операции: `income` или `expense` |
 | `amount` | decimal | Да | Сумма операции |
 | `description` | string | Нет | Описание операции |
-| `operation_date` | string | Да | Дата операции |
+| `operation_date` | date | Да | Дата операции |
 
 Пример запроса:
 
@@ -1412,7 +1571,7 @@ Content-Type: application/json
 ```json
 {
   "account": 1,
-  "category": 1,
+  "category": 3,
   "type": "expense",
   "amount": "1200.00",
   "description": "Покупка продуктов",
@@ -1426,44 +1585,32 @@ Content-Type: application/json
 {
   "id": 1,
   "account": 1,
-  "category": 1,
+  "category": 3,
   "type": "expense",
   "amount": "1200.00",
   "description": "Покупка продуктов",
   "operation_date": "2026-05-07",
-  "created_at": "2026-05-07T10:30:00+00:00"
+  "created_at": "2026-05-07T10:30:00+0300",
+  "updated_at": "2026-05-07T10:30:00+0300"
 }
 ```
 
-Пример ошибки:
+Пример ошибки несовпадения типа операции и категории:
 
 ```json
 {
   "success": false,
   "error": {
     "status_code": 400,
-    "detail": {
-      "amount": [
-        "Ensure this value is greater than 0."
-      ],
-      "operation_date": [
-        "Date has wrong format. Use YYYY-MM-DD."
+    "code": "invalid",
+    "message": "Некорректные данные запроса.",
+    "field_errors": {
+      "category": [
+        "Тип категории должен совпадать с типом операции."
       ]
-    }
-  }
-}
-```
-
-Пример ошибки доступа:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 403,
-    "detail": {
-      "detail": "You do not have permission to use this account."
-    }
+    },
+    "detail": null,
+    "trace_id": null
   }
 }
 ```
@@ -1475,7 +1622,7 @@ Content-Type: application/json
 | `201` | Операция создана |
 | `400` | Ошибка валидации |
 | `401` | Пользователь не авторизован |
-| `403` | Нет доступа к счёту или категории |
+| `404` | Связанный объект не найден |
 
 ---
 
@@ -1486,7 +1633,7 @@ Content-Type: application/json
 | URL | `/api/v1/finance/transactions/{id}/` |
 | Методы | `GET`, `PATCH`, `DELETE` |
 | Доступ | Авторизованный пользователь |
-| Статус | Планируется |
+| Статус | Реализовано |
 
 Назначение: работа с конкретной финансовой операцией.
 
@@ -1510,12 +1657,13 @@ Authorization: Bearer <access_token>
 {
   "id": 1,
   "account": 1,
-  "category": 1,
+  "category": 3,
   "type": "expense",
   "amount": "1200.00",
   "description": "Покупка продуктов",
   "operation_date": "2026-05-07",
-  "created_at": "2026-05-07T10:30:00+00:00"
+  "created_at": "2026-05-07T10:30:00+0300",
+  "updated_at": "2026-05-07T10:30:00+0300"
 }
 ```
 
@@ -1540,12 +1688,13 @@ Content-Type: application/json
 {
   "id": 1,
   "account": 1,
-  "category": 1,
+  "category": 3,
   "type": "expense",
   "amount": "1200.00",
   "description": "Покупка продуктов и бытовых товаров",
   "operation_date": "2026-05-07",
-  "created_at": "2026-05-07T10:30:00+00:00"
+  "created_at": "2026-05-07T10:30:00+0300",
+  "updated_at": "2026-05-07T10:35:00+0300"
 }
 ```
 
@@ -1557,10 +1706,81 @@ Content-Type: application/json
 | `204` | Операция удалена |
 | `400` | Ошибка валидации |
 | `401` | Пользователь не авторизован |
-| `403` | Нет доступа к операции |
 | `404` | Операция не найдена |
 
+## Budget endpoints
+
+Endpoints бюджетов планируются к реализации.
+
+### Список бюджетов
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/finance/budgets/` |
+| Метод | `GET` |
+| Доступ | Авторизованный пользователь |
+| Статус | Планируется |
+
+Назначение: получение списка бюджетов текущего пользователя.
+
+### Создание бюджета
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/finance/budgets/` |
+| Метод | `POST` |
+| Доступ | Авторизованный пользователь |
+| Статус | Планируется |
+
+Назначение: создание бюджета по категории расходов за период.
+
+### Получение, обновление и удаление бюджета
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/finance/budgets/{id}/` |
+| Методы | `GET`, `PATCH`, `DELETE` |
+| Доступ | Авторизованный пользователь |
+| Статус | Планируется |
+
+## Goal endpoints
+
+Endpoints финансовых целей планируются к реализации.
+
+### Список финансовых целей
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/finance/goals/` |
+| Метод | `GET` |
+| Доступ | Авторизованный пользователь |
+| Статус | Планируется |
+
+Назначение: получение списка финансовых целей текущего пользователя.
+
+### Создание финансовой цели
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/finance/goals/` |
+| Метод | `POST` |
+| Доступ | Авторизованный пользователь |
+| Статус | Планируется |
+
+Назначение: создание финансовой цели пользователя.
+
+### Получение, обновление и удаление финансовой цели
+
+| Поле | Значение |
+|---|---|
+| URL | `/api/v1/finance/goals/{id}/` |
+| Методы | `GET`, `PATCH`, `DELETE` |
+| Доступ | Авторизованный пользователь |
+| Статус | Планируется |
+
 ## Reports endpoints
+
+Endpoints отчётов планируются к реализации.
 
 ### Краткий финансовый отчёт
 
@@ -1577,17 +1797,9 @@ Query-параметры:
 
 | Параметр | Тип | Обязательный | Описание |
 |---|---|---|---|
-| `date_from` | string | Нет | Начало периода |
-| `date_to` | string | Нет | Конец периода |
+| `date_from` | date | Нет | Начало периода |
+| `date_to` | date | Нет | Конец периода |
 | `account` | integer | Нет | Фильтр по счёту |
-
-Пример запроса:
-
-```http
-GET /api/v1/finance/reports/summary/?date_from=2026-05-01&date_to=2026-05-31&account=1 HTTP/1.1
-Host: 127.0.0.1:8000
-Authorization: Bearer <access_token>
-```
 
 Пример успешного ответа:
 
@@ -1599,22 +1811,6 @@ Authorization: Bearer <access_token>
   "period": {
     "date_from": "2026-05-01",
     "date_to": "2026-05-31"
-  }
-}
-```
-
-Пример ошибки:
-
-```json
-{
-  "success": false,
-  "error": {
-    "status_code": 400,
-    "detail": {
-      "date_to": [
-        "date_to must be greater than or equal to date_from."
-      ]
-    }
   }
 }
 ```
