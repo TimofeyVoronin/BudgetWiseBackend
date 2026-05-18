@@ -81,6 +81,11 @@ ACCOUNT_CURRENCY_OPTIONS = [
     },
 ]
 
+ACCOUNT_CURRENCY_VALUES = {
+    item["value"]
+    for item in ACCOUNT_CURRENCY_OPTIONS
+}
+
 
 class AccountSerializer(serializers.ModelSerializer):
     type_label = serializers.CharField(
@@ -159,6 +164,23 @@ class AccountSerializer(serializers.ModelSerializer):
             if alias in mutable_data and field_name not in mutable_data:
                 mutable_data[field_name] = mutable_data[alias]
 
+        text_fields_to_strip = [
+            "name",
+            "bank_name",
+            "comment",
+        ]
+
+        for field_name in text_fields_to_strip:
+            value = mutable_data.get(field_name)
+
+            if isinstance(value, str):
+                mutable_data[field_name] = value.strip()
+
+        currency = mutable_data.get("currency")
+
+        if isinstance(currency, str):
+            mutable_data["currency"] = currency.strip().upper()
+
         return super().to_internal_value(mutable_data)
 
     @extend_schema_field(OpenApiTypes.STR)
@@ -197,16 +219,75 @@ class AccountSerializer(serializers.ModelSerializer):
     def get_operationsCount(self, obj) -> int:
         return self.get_operations_count(obj)
 
+    def validate_name(self, value: str) -> str:
+        name = value.strip()
+
+        if not name:
+            raise serializers.ValidationError(
+                "Название счёта не может быть пустым."
+            )
+
+        return name
+
     def validate_currency(self, value: str) -> str:
-        return value.upper()
+        currency = value.upper()
+
+        if currency not in ACCOUNT_CURRENCY_VALUES:
+            raise serializers.ValidationError(
+                "Валюта должна быть одной из доступных: RUB, USD или EUR."
+            )
+
+        return currency
 
     def validate(self, attrs):
+        request = self.context.get("request")
         account_type = attrs.get("type", getattr(self.instance, "type", None))
         bank_name = attrs.get("bank_name", getattr(self.instance, "bank_name", ""))
+        name = attrs.get("name", getattr(self.instance, "name", None))
+
+        if request and name:
+            duplicate_queryset = Account.objects.filter(
+                user=request.user,
+                name__iexact=name,
+            )
+
+            if self.instance is not None:
+                duplicate_queryset = duplicate_queryset.exclude(pk=self.instance.pk)
+
+            if duplicate_queryset.exists():
+                raise serializers.ValidationError(
+                    {
+                        "name": "Счёт с таким названием уже существует."
+                    }
+                )
 
         if account_type in {AccountType.CARD, AccountType.DEBIT, AccountType.CREDIT}:
             if bank_name is None:
                 attrs["bank_name"] = ""
+
+        balance = getattr(
+            self.instance,
+            "balance",
+            attrs.get("initial_balance", Decimal("0.00")),
+        )
+        blocked_amount = attrs.get(
+            "blocked_amount",
+            getattr(self.instance, "blocked_amount", Decimal("0.00")),
+        )
+        credit_limit = attrs.get(
+            "credit_limit",
+            getattr(self.instance, "credit_limit", Decimal("0.00")),
+        )
+
+        if blocked_amount > balance + credit_limit:
+            raise serializers.ValidationError(
+                {
+                    "blocked_amount": (
+                        "Заблокированная сумма не может быть больше "
+                        "текущего баланса с учётом кредитного лимита."
+                    )
+                }
+            )
 
         return attrs
 
