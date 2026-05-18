@@ -170,6 +170,7 @@ def _get_accounts_balance(*, user, currency: str) -> Decimal:
             user=user,
             currency=currency,
             is_active=True,
+            is_archived=False,
         )
         .aggregate(total=Sum("balance"))
         .get("total")

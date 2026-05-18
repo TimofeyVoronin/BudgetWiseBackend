@@ -19,6 +19,15 @@ class GoalStatus(models.TextChoices):
     CANCELLED = "cancelled", "Отменена"
 
 
+class AccountType(models.TextChoices):
+    CARD = "card", "Банковская карта"
+    DEBIT = "debit", "Дебетовая карта"
+    SAVINGS = "savings", "Накопительный"
+    CASH = "cash", "Наличные"
+    CREDIT = "credit", "Кредитный"
+    OTHER = "other", "Другое"
+
+
 hex_color_validator = RegexValidator(
     regex=r"^#[0-9A-Fa-f]{6}$",
     message="Цвет должен быть указан в HEX-формате, например #4F46E5.",
@@ -36,11 +45,43 @@ class Account(TimeStampedModel):
         max_length=100,
         verbose_name="Название счёта",
     )
+    type = models.CharField(
+        max_length=20,
+        choices=AccountType.choices,
+        default=AccountType.CARD,
+        verbose_name="Тип счёта",
+    )
+    bank_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Банк",
+    )
+    initial_balance = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Начальный баланс",
+    )
     balance = models.DecimalField(
         max_digits=14,
         decimal_places=2,
         default=Decimal("0.00"),
-        verbose_name="Баланс",
+        verbose_name="Текущий баланс",
+    )
+    blocked_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Заблокированная сумма",
+    )
+    credit_limit = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Кредитный лимит",
     )
     currency = models.CharField(
         max_length=3,
@@ -53,30 +94,119 @@ class Account(TimeStampedModel):
         ],
         verbose_name="Валюта",
     )
+    icon = models.CharField(
+        max_length=50,
+        default="card",
+        verbose_name="Иконка",
+    )
+    color = models.CharField(
+        max_length=7,
+        default="#4F46E5",
+        validators=[hex_color_validator],
+        verbose_name="Цвет",
+    )
+    is_default = models.BooleanField(
+        default=False,
+        verbose_name="Счёт по умолчанию",
+    )
+    is_archived = models.BooleanField(
+        default=False,
+        verbose_name="Архивный",
+    )
     is_active = models.BooleanField(
         default=True,
         verbose_name="Активен",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
     )
 
     class Meta:
         verbose_name = "Счёт"
         verbose_name_plural = "Счета"
-        ordering = ["name"]
+        ordering = ["-is_default", "is_archived", "name"]
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "name"],
                 name="unique_account_name_per_user",
             ),
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(is_default=True),
+                name="unique_default_account_per_user",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(type__in=AccountType.values),
+                name="account_type_valid",
+            ),
             models.CheckConstraint(
                 condition=models.Q(currency__regex=r"^[A-Z]{3}$"),
                 name="account_currency_code_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(color__regex=r"^#[0-9A-Fa-f]{6}$"),
+                name="account_color_hex_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(initial_balance__gte=0),
+                name="account_initial_balance_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(blocked_amount__gte=0),
+                name="account_blocked_amount_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(credit_limit__gte=0),
+                name="account_credit_limit_non_negative",
             ),
         ]
         indexes = [
             models.Index(fields=["user"], name="idx_account_user"),
             models.Index(fields=["user", "is_active"], name="idx_account_user_active"),
+            models.Index(fields=["user", "is_archived"], name="idx_account_user_archived"),
+            models.Index(fields=["user", "is_default"], name="idx_account_user_default"),
+            models.Index(fields=["user", "type"], name="idx_account_user_type"),
+            models.Index(fields=["user", "currency"], name="idx_account_user_currency"),
             models.Index(fields=["user", "name"], name="idx_account_user_name"),
+            models.Index(
+                fields=["user", "type", "is_active", "is_archived"],
+                name="idx_account_type_status",
+            ),
         ]
+
+    @property
+    def status(self) -> str:
+        if self.is_archived:
+            return "archived"
+
+        return "active"
+
+    @property
+    def available_balance(self) -> Decimal:
+        return self.balance - self.blocked_amount + self.credit_limit
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.currency:
+            self.currency = self.currency.upper()
+
+        if self.type not in AccountType.values:
+            errors["type"] = "Недопустимый тип счёта."
+
+        if self.is_archived:
+            self.is_active = False
+            self.is_default = False
+
+        if self.blocked_amount < Decimal("0.00"):
+            errors["blocked_amount"] = "Заблокированная сумма не может быть отрицательной."
+
+        if self.credit_limit < Decimal("0.00"):
+            errors["credit_limit"] = "Кредитный лимит не может быть отрицательным."
+
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self) -> str:
         return f"{self.name} ({self.currency})"
