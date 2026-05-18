@@ -1712,7 +1712,8 @@ paths:
           description: ''
     delete:
       operationId: finance_transactions_destroy
-      description: Удаляет финансовую операцию текущего пользователя.
+      description: Удаляет финансовую операцию текущего пользователя. Перед удалением
+        влияние операции на баланс счёта откатывается.
       summary: Удалить операцию
       parameters:
       - in: path

@@ -25,6 +25,11 @@ from apps.finance.exporters import (
     TRANSACTION_EXPORT_FORMATS,
     build_transaction_export,
 )
+from apps.finance.accounting import (
+    create_transaction_with_balance_update,
+    delete_transaction_with_balance_update,
+    update_transaction_with_balance_update,
+)
 from apps.finance.models import Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
 from apps.finance.transaction_serializers import TransactionSerializer
@@ -638,7 +643,10 @@ class TransactionExportView(APIView):
     destroy=extend_schema(
         tags=["finance-transactions"],
         summary="Удалить операцию",
-        description="Удаляет финансовую операцию текущего пользователя.",
+        description=(
+            "Удаляет финансовую операцию текущего пользователя. "
+            "Перед удалением влияние операции на баланс счёта откатывается."
+        ),
     ),
 )
 class TransactionViewSet(viewsets.ModelViewSet):
@@ -658,3 +666,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return get_transaction_queryset_for_request(self.request)
+
+    def perform_create(self, serializer):
+        create_transaction_with_balance_update(serializer)
+
+    def perform_update(self, serializer):
+        update_transaction_with_balance_update(serializer)
+
+    def perform_destroy(self, instance):
+        delete_transaction_with_balance_update(instance)
