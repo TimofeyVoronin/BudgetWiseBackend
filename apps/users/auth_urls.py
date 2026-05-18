@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from apps.users.views import (
+from apps.users.auth_views import (
     ForgotPasswordView,
     LoginView,
     RegisterView,

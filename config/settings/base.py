@@ -231,8 +231,8 @@ SPECTACULAR_SETTINGS = {
         "OpenAPI-документация серверной части прогрессивного веб-приложения "
         "для управления личными финансами.\n\n"
         "API предоставляет endpoints для регистрации и аутентификации пользователей, "
-        "управления профилем, финансовыми категориями, операциями, бюджетами, "
-        "целями и служебного мониторинга.\n\n"
+        "управления профилем, финансовыми категориями, операциями, "
+        "агрегированными данными главного дашборда и служебного мониторинга.\n\n"   
         "Авторизация защищённых endpoints выполняется через JWT Bearer token. "
         "Для ручной проверки в Swagger UI сначала выполните login-запрос, "
         "получите access token и передайте его в Authorize в формате: "
@@ -286,10 +286,25 @@ SPECTACULAR_SETTINGS = {
             ),
         },
         {
-            "name": "finance",
+            "name": "finance-categories",
             "description": (
-                "Финансовый модуль: категории, дерево категорий, избранное, "
-                "архивирование, изменение порядка, подсказки категорий и операции."
+                "Финансовые категории: список, создание, дерево категорий, "
+                "избранное, архивирование, drag and drop порядок и подсказки "
+                "категорий по описанию операции."
+            ),
+        },
+        {
+            "name": "finance-transactions",
+            "description": (
+                "Финансовые операции: список, фильтрация, пагинация, создание, "
+                "обновление, удаление и экспорт операций в CSV, XLSX и PDF."
+            ),
+        },
+        {
+            "name": "finance-dashboard",
+            "description": (
+                "Главный дашборд: агрегированные показатели по счетам, доходам, "
+                "расходам, последним операциям и категориям расходов."
             ),
         },
         {
@@ -378,9 +393,20 @@ SPECTACULAR_SETTINGS = {
 }
 
 
+ACCESS_TOKEN_LIFETIME_MINUTES = env.int(
+    "ACCESS_TOKEN_LIFETIME_MINUTES",
+    default=15,
+)
+
+REFRESH_TOKEN_LIFETIME_DAYS = env.int(
+    "REFRESH_TOKEN_LIFETIME_DAYS",
+    default=7,
+)
+
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=ACCESS_TOKEN_LIFETIME_MINUTES),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=REFRESH_TOKEN_LIFETIME_DAYS),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,

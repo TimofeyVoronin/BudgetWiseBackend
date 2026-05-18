@@ -6,7 +6,7 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
-from apps.common.views import metrics_view
+from apps.common.metrics_views import metrics_view
 
 
 urlpatterns = [

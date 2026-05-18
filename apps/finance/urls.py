@@ -1,9 +1,9 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from apps.finance.views import (
-    CategoryViewSet,
-    DashboardSummaryView,
+from apps.finance.category_views import CategoryViewSet
+from apps.finance.dashboard_views import DashboardSummaryView
+from apps.finance.transaction_views import (
     TransactionExportView,
     TransactionViewSet,
 )

@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми категориями, операциями, бюджетами, целями и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -361,7 +361,7 @@ paths:
           type: string
         description: 'Тип категории: income или expense.'
       tags:
-      - finance
+      - finance-categories
       security:
       - jwtAuth: []
       responses:
@@ -406,7 +406,7 @@ paths:
         принадлежать тому же пользователю и иметь тот же тип.
       summary: Создать категорию
       tags:
-      - finance
+      - finance-categories
       requestBody:
         content:
           application/json:
@@ -454,7 +454,7 @@ paths:
         description: A unique integer value identifying this Категория.
         required: true
       tags:
-      - finance
+      - finance-categories
       security:
       - jwtAuth: []
       responses:
@@ -477,7 +477,7 @@ paths:
         description: A unique integer value identifying this Категория.
         required: true
       tags:
-      - finance
+      - finance-categories
       requestBody:
         content:
           application/json:
@@ -512,7 +512,7 @@ paths:
         description: A unique integer value identifying this Категория.
         required: true
       tags:
-      - finance
+      - finance-categories
       requestBody:
         content:
           application/json:
@@ -555,7 +555,7 @@ paths:
         description: A unique integer value identifying this Категория.
         required: true
       tags:
-      - finance
+      - finance-categories
       security:
       - jwtAuth: []
       responses:
@@ -577,7 +577,7 @@ paths:
         description: A unique integer value identifying this Категория.
         required: true
       tags:
-      - finance
+      - finance-categories
       requestBody:
         content:
           application/json:
@@ -631,7 +631,7 @@ paths:
         description: A unique integer value identifying this Категория.
         required: true
       tags:
-      - finance
+      - finance-categories
       requestBody:
         content:
           application/json:
@@ -672,7 +672,7 @@ paths:
         категории в order должны принадлежать текущему пользователю и иметь один тип.
       summary: Изменить порядок и иерархию категорий
       tags:
-      - finance
+      - finance-categories
       requestBody:
         content:
           application/json:
@@ -721,7 +721,7 @@ paths:
         type или frontend-поле kind.
       summary: Получить подсказки категорий по описанию операции
       tags:
-      - finance
+      - finance-categories
       requestBody:
         content:
           application/json:
@@ -822,7 +822,7 @@ paths:
           type: string
         description: 'Тип категории: income или expense.'
       tags:
-      - finance
+      - finance-categories
       security:
       - jwtAuth: []
       responses:
@@ -878,9 +878,9 @@ paths:
       description: 'Возвращает основные агрегаты для главной страницы: общий баланс
         активных счетов, сумму доходов и расходов за текущий месяц, чистый результат,
         последние операции и топ категорий расходов. Блок reminders зарезервирован
-        для будущего эпика напоминаний и пока возвращается с пустым списком rows.Результат
-        кэшируется на короткое время по пользователю, периоду, диапазону дат, валюте
-        и limit.'
+        для будущего эпика напоминаний и пока возвращается с пустым списком rows.
+        Результат кэшируется на короткое время по пользователю, периоду, диапазону
+        дат, валюте и limit.'
       summary: Получить агрегированные данные главного дашборда
       parameters:
       - in: query
@@ -914,7 +914,7 @@ paths:
         description: 'Период dashboard: week, month, year или custom. По умолчанию
           month.'
       tags:
-      - finance
+      - finance-dashboard
       security:
       - jwtAuth: []
       responses:
@@ -1104,7 +1104,7 @@ paths:
           type: string
         description: 'Тип операции: income или expense.'
       tags:
-      - finance
+      - finance-transactions
       security:
       - jwtAuth: []
       responses:
@@ -1151,7 +1151,7 @@ paths:
         с типом операции.
       summary: Создать операцию
       tags:
-      - finance
+      - finance-transactions
       requestBody:
         content:
           application/json:
@@ -1196,7 +1196,7 @@ paths:
           pattern: ^\d+$
         required: true
       tags:
-      - finance
+      - finance-transactions
       security:
       - jwtAuth: []
       responses:
@@ -1221,7 +1221,7 @@ paths:
           pattern: ^\d+$
         required: true
       tags:
-      - finance
+      - finance-transactions
       requestBody:
         content:
           application/json:
@@ -1267,7 +1267,7 @@ paths:
           pattern: ^\d+$
         required: true
       tags:
-      - finance
+      - finance-transactions
       requestBody:
         content:
           application/json:
@@ -1305,7 +1305,7 @@ paths:
           pattern: ^\d+$
         required: true
       tags:
-      - finance
+      - finance-transactions
       security:
       - jwtAuth: []
       responses:
@@ -1410,7 +1410,7 @@ paths:
         schema:
           type: string
       tags:
-      - finance
+      - finance-transactions
       security:
       - jwtAuth: []
       responses:
@@ -3112,9 +3112,15 @@ tags:
     пароля.
 - name: users
   description: Endpoints профиля пользователя и административного управления пользователями.
-- name: finance
-  description: 'Финансовый модуль: категории, дерево категорий, избранное, архивирование,
-    изменение порядка, подсказки категорий и операции.'
+- name: finance-categories
+  description: 'Финансовые категории: список, создание, дерево категорий, избранное,
+    архивирование, drag and drop порядок и подсказки категорий по описанию операции.'
+- name: finance-transactions
+  description: 'Финансовые операции: список, фильтрация, пагинация, создание, обновление,
+    удаление и экспорт операций в CSV, XLSX и PDF.'
+- name: finance-dashboard
+  description: 'Главный дашборд: агрегированные показатели по счетам, доходам, расходам,
+    последним операциям и категориям расходов.'
 - name: health
   description: Служебные endpoints состояния backend-сервиса.
 - name: monitoring
