@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Sum
@@ -9,6 +9,19 @@ from django.utils import timezone
 from apps.finance.models import Account, Transaction, TransactionType
 
 
+DASHBOARD_PERIOD_WEEK = "week"
+DASHBOARD_PERIOD_MONTH = "month"
+DASHBOARD_PERIOD_YEAR = "year"
+DASHBOARD_PERIOD_CUSTOM = "custom"
+
+DASHBOARD_PERIOD_TYPES = {
+    DASHBOARD_PERIOD_WEEK,
+    DASHBOARD_PERIOD_MONTH,
+    DASHBOARD_PERIOD_YEAR,
+    DASHBOARD_PERIOD_CUSTOM,
+}
+
+DEFAULT_DASHBOARD_PERIOD = DASHBOARD_PERIOD_MONTH
 DEFAULT_DASHBOARD_CURRENCY = "RUB"
 DEFAULT_DASHBOARD_RECENT_LIMIT = 5
 MAX_DASHBOARD_RECENT_LIMIT = 20
@@ -18,38 +31,45 @@ DASHBOARD_TOP_CATEGORIES_LIMIT = 5
 def build_dashboard_summary(
     *,
     user,
+    period_type: str = DEFAULT_DASHBOARD_PERIOD,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    currency: str = DEFAULT_DASHBOARD_CURRENCY,
     recent_limit: int = DEFAULT_DASHBOARD_RECENT_LIMIT,
 ) -> dict:
-    today = timezone.localdate()
-    date_from = _get_month_start(today)
-    date_to = today
-    currency = DEFAULT_DASHBOARD_CURRENCY
+    resolved_date_from, resolved_date_to = resolve_dashboard_period(
+        period_type=period_type,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    normalized_currency = currency.upper()
 
     accounts_balance = _get_accounts_balance(
         user=user,
-        currency=currency,
+        currency=normalized_currency,
     )
     income = _get_period_amount(
         user=user,
-        currency=currency,
+        currency=normalized_currency,
         transaction_type=TransactionType.INCOME,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=resolved_date_from,
+        date_to=resolved_date_to,
     )
     expense = _get_period_amount(
         user=user,
-        currency=currency,
+        currency=normalized_currency,
         transaction_type=TransactionType.EXPENSE,
-        date_from=date_from,
-        date_to=date_to,
+        date_from=resolved_date_from,
+        date_to=resolved_date_to,
     )
 
     return {
         "period": {
-            "date_from": date_from,
-            "date_to": date_to,
+            "type": period_type,
+            "date_from": resolved_date_from,
+            "date_to": resolved_date_to,
         },
-        "currency": currency,
+        "currency": normalized_currency,
         "totals": {
             "accounts_balance": _format_money(accounts_balance),
             "income": _format_money(income),
@@ -58,21 +78,46 @@ def build_dashboard_summary(
         },
         "recent_transactions": _get_recent_transactions(
             user=user,
-            currency=currency,
+            currency=normalized_currency,
             limit=recent_limit,
         ),
         "top_expense_categories": _get_top_expense_categories(
             user=user,
-            currency=currency,
-            date_from=date_from,
-            date_to=date_to,
+            currency=normalized_currency,
+            date_from=resolved_date_from,
+            date_to=resolved_date_to,
         ),
         "reminders": _get_reserved_reminders_block(),
     }
 
 
-def _get_month_start(value: date) -> date:
-    return value.replace(day=1)
+def resolve_dashboard_period(
+    *,
+    period_type: str,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> tuple[date, date]:
+    today = timezone.localdate()
+
+    if period_type == DASHBOARD_PERIOD_WEEK:
+        week_start = today - timedelta(days=today.weekday())
+        return week_start, today
+
+    if period_type == DASHBOARD_PERIOD_MONTH:
+        return today.replace(day=1), today
+
+    if period_type == DASHBOARD_PERIOD_YEAR:
+        return today.replace(month=1, day=1), today
+
+    if period_type == DASHBOARD_PERIOD_CUSTOM:
+        if date_from is None or date_to is None:
+            raise ValueError(
+                "Для периода custom нужно указать date_from и date_to."
+            )
+
+        return date_from, date_to
+
+    raise ValueError("Недопустимый период dashboard.")
 
 
 def _get_accounts_balance(*, user, currency: str) -> Decimal:

@@ -882,11 +882,35 @@ paths:
       summary: Получить агрегированные данные главного дашборда
       parameters:
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта dashboard, например RUB. Конвертация валют не выполняется,
+          данные фильтруются по валюте счёта.
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+        description: Дата начала периода. Обязательна для period=custom.
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+        description: Дата окончания периода. Обязательна для period=custom.
+      - in: query
         name: limit
         schema:
           type: integer
         description: Количество последних операций в блоке recent_transactions. По
           умолчанию 5, максимум 20.
+      - in: query
+        name: period
+        schema:
+          type: string
+        description: 'Период dashboard: week, month, year или custom. По умолчанию
+          month.'
       tags:
       - finance
       security:
@@ -901,6 +925,7 @@ paths:
                 DashboardSummary:
                   value:
                     period:
+                      type: month
                       date_from: '2026-05-01'
                       date_to: '2026-05-17'
                     currency: RUB
@@ -2265,6 +2290,9 @@ components:
     DashboardPeriod:
       type: object
       properties:
+        type:
+          type: string
+          readOnly: true
         date_from:
           type: string
           format: date
@@ -2276,6 +2304,7 @@ components:
       required:
       - date_from
       - date_to
+      - type
     DashboardReminderRow:
       type: object
       properties:

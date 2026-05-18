@@ -1362,6 +1362,7 @@ class TransactionSerializer(serializers.ModelSerializer):
 
 
 class DashboardPeriodSerializer(serializers.Serializer):
+    type = serializers.CharField(read_only=True)
     date_from = serializers.DateField(read_only=True)
     date_to = serializers.DateField(read_only=True)
 

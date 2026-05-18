@@ -30,6 +30,10 @@ from apps.finance.exporters import (
     build_transaction_export,
 )
 from apps.finance.dashboard import (
+    DASHBOARD_PERIOD_CUSTOM,
+    DASHBOARD_PERIOD_TYPES,
+    DEFAULT_DASHBOARD_CURRENCY,
+    DEFAULT_DASHBOARD_PERIOD,
     DEFAULT_DASHBOARD_RECENT_LIMIT,
     MAX_DASHBOARD_RECENT_LIMIT,
     build_dashboard_summary,
@@ -206,6 +210,79 @@ def get_dashboard_recent_limit(query_params) -> int:
         )
 
     return limit
+
+
+def get_dashboard_period_query_param(query_params) -> str:
+    period = query_params.get("period") or DEFAULT_DASHBOARD_PERIOD
+
+    if period not in DASHBOARD_PERIOD_TYPES:
+        raise ValidationError(
+            {
+                "period": [
+                    "Параметр period должен быть week, month, year или custom."
+                ]
+            }
+        )
+
+    return period
+
+
+def get_dashboard_currency_query_param(query_params) -> str:
+    currency = query_params.get("currency") or DEFAULT_DASHBOARD_CURRENCY
+    currency = currency.upper()
+
+    if len(currency) != 3 or not currency.isalpha():
+        raise ValidationError(
+            {
+                "currency": [
+                    "Параметр currency должен быть ISO-кодом из 3 букв, например RUB."
+                ]
+            }
+        )
+
+    return currency
+
+
+def get_dashboard_date_range_query_params(query_params, period: str):
+    date_from = get_date_query_param(query_params, "date_from")
+    date_to = get_date_query_param(query_params, "date_to")
+
+    if period == DASHBOARD_PERIOD_CUSTOM and (date_from is None or date_to is None):
+        raise ValidationError(
+            {
+                "date_from": [
+                    "Для period=custom нужно указать date_from и date_to."
+                ]
+            }
+        )
+
+    if date_from is not None and date_to is not None and date_from > date_to:
+        raise ValidationError(
+            {
+                "date_from": [
+                    "Параметр date_from не может быть позже date_to."
+                ]
+            }
+        )
+
+    return date_from, date_to
+
+
+def get_dashboard_query_params(query_params) -> dict:
+    period = get_dashboard_period_query_param(query_params)
+    date_from, date_to = get_dashboard_date_range_query_params(
+        query_params,
+        period,
+    )
+
+    return {
+        "period_type": period,
+        "date_from": date_from,
+        "date_to": date_to,
+        "currency": get_dashboard_currency_query_param(query_params),
+        "recent_limit": get_dashboard_recent_limit(query_params),
+    }
+
 
 @extend_schema_view(
     list=extend_schema(
@@ -1003,6 +1080,36 @@ class DashboardSummaryView(APIView):
         ),
         parameters=[
             OpenApiParameter(
+                "period",
+                OpenApiTypes.STR,
+                description=(
+                    "Период dashboard: week, month, year или custom. "
+                    "По умолчанию month."
+                ),
+            ),
+            OpenApiParameter(
+                "date_from",
+                OpenApiTypes.DATE,
+                description=(
+                    "Дата начала периода. Обязательна для period=custom."
+                ),
+            ),
+            OpenApiParameter(
+                "date_to",
+                OpenApiTypes.DATE,
+                description=(
+                    "Дата окончания периода. Обязательна для period=custom."
+                ),
+            ),
+            OpenApiParameter(
+                "currency",
+                OpenApiTypes.STR,
+                description=(
+                    "Валюта dashboard, например RUB. Конвертация валют не выполняется, "
+                    "данные фильтруются по валюте счёта."
+                ),
+            ),
+            OpenApiParameter(
                 "limit",
                 OpenApiTypes.INT,
                 description=(
@@ -1018,6 +1125,7 @@ class DashboardSummaryView(APIView):
                 "Dashboard summary",
                 value={
                     "period": {
+                        "type": "month",
                         "date_from": "2026-05-01",
                         "date_to": "2026-05-17",
                     },
@@ -1071,10 +1179,10 @@ class DashboardSummaryView(APIView):
         ],
     )
     def get(self, request):
-        recent_limit = get_dashboard_recent_limit(request.query_params)
+        query_params = get_dashboard_query_params(request.query_params)
         dashboard_data = build_dashboard_summary(
             user=request.user,
-            recent_limit=recent_limit,
+            **query_params,
         )
         serializer = DashboardSummarySerializer(dashboard_data)
 
