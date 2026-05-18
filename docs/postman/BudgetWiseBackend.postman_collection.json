@@ -3908,7 +3908,385 @@
       ]
     },
     {
-      "name": "04 Users",
+      "name": "04 Finance - Dashboard",
+      "item": [
+        {
+          "name": "Dashboard summary - default month",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.test(\"Dashboard response has main blocks\", function () {\r",
+                  "    pm.expect(json).to.have.property(\"period\");\r",
+                  "    pm.expect(json).to.have.property(\"currency\");\r",
+                  "    pm.expect(json).to.have.property(\"totals\");\r",
+                  "    pm.expect(json).to.have.property(\"recent_transactions\");\r",
+                  "    pm.expect(json).to.have.property(\"top_expense_categories\");\r",
+                  "    pm.expect(json).to.have.property(\"reminders\");\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Default period is month\", function () {\r",
+                  "    pm.expect(json.period.type).to.eql(\"month\");\r",
+                  "    pm.expect(json.period).to.have.property(\"date_from\");\r",
+                  "    pm.expect(json.period).to.have.property(\"date_to\");\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Totals block is valid\", function () {\r",
+                  "    pm.expect(json.totals).to.have.property(\"accounts_balance\");\r",
+                  "    pm.expect(json.totals).to.have.property(\"income\");\r",
+                  "    pm.expect(json.totals).to.have.property(\"expense\");\r",
+                  "    pm.expect(json.totals).to.have.property(\"net\");\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Recent transactions is array\", function () {\r",
+                  "    pm.expect(json.recent_transactions).to.be.an(\"array\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/dashboard/summary/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "dashboard",
+                "summary",
+                ""
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard summary - week period",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.test(\"Week period is applied\", function () {\r",
+                  "    pm.expect(json.period.type).to.eql(\"week\");\r",
+                  "    pm.expect(json.currency).to.eql(\"RUB\");\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Limit is applied to recent transactions\", function () {\r",
+                  "    pm.expect(json.recent_transactions).to.be.an(\"array\");\r",
+                  "    pm.expect(json.recent_transactions.length).to.be.at.most(3);\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Reminder block is reserved\", function () {\r",
+                  "    pm.expect(json.reminders.title).to.eql(\"Напоминания\");\r",
+                  "    pm.expect(json.reminders.headerIcon).to.eql(\"bell\");\r",
+                  "    pm.expect(json.reminders.rows).to.be.an(\"array\");\r",
+                  "    pm.expect(json.reminders.footerLinkLabel).to.eql(\"Все напоминания\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/dashboard/summary/?period=week&currency=RUB&limit=3",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "dashboard",
+                "summary",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "week"
+                },
+                {
+                  "key": "currency",
+                  "value": "RUB"
+                },
+                {
+                  "key": "limit",
+                  "value": "3"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard summary - custom period",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\r",
+                  "    pm.response.to.have.status(200);\r",
+                  "});\r",
+                  "\r",
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.test(\"Custom period is applied\", function () {\r",
+                  "    pm.expect(json.period.type).to.eql(\"custom\");\r",
+                  "    pm.expect(json.period.date_from).to.eql(\"2026-05-01\");\r",
+                  "    pm.expect(json.period.date_to).to.eql(\"2026-05-31\");\r",
+                  "    pm.expect(json.currency).to.eql(\"RUB\");\r",
+                  "});\r",
+                  "\r",
+                  "pm.test(\"Top expense categories is array\", function () {\r",
+                  "    pm.expect(json.top_expense_categories).to.be.an(\"array\");\r",
+                  "\r",
+                  "    if (json.top_expense_categories.length > 0) {\r",
+                  "        const item = json.top_expense_categories[0];\r",
+                  "\r",
+                  "        pm.expect(item).to.have.property(\"category\");\r",
+                  "        pm.expect(item).to.have.property(\"category_name\");\r",
+                  "        pm.expect(item).to.have.property(\"category_icon\");\r",
+                  "        pm.expect(item).to.have.property(\"category_color\");\r",
+                  "        pm.expect(item).to.have.property(\"total\");\r",
+                  "    }\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/dashboard/summary/?period=custom&date_from=2026-05-01&date_to=2026-05-31&currency=RUB&limit=5",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "dashboard",
+                "summary",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "custom"
+                },
+                {
+                  "key": "date_from",
+                  "value": "2026-05-01"
+                },
+                {
+                  "key": "date_to",
+                  "value": "2026-05-31"
+                },
+                {
+                  "key": "currency",
+                  "value": "RUB"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard summary - invalid custom period",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {\r",
+                  "    pm.response.to.have.status(400);\r",
+                  "});\r",
+                  "\r",
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.test(\"Invalid custom period error is valid\", function () {\r",
+                  "    pm.expect(json.success).to.eql(false);\r",
+                  "    pm.expect(json.error.status_code).to.eql(400);\r",
+                  "    pm.expect(json.error.field_errors).to.have.property(\"date_from\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/dashboard/summary/?period=custom&currency=RUB",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "dashboard",
+                "summary",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "custom"
+                },
+                {
+                  "key": "currency",
+                  "value": "RUB"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard summary - invalid limit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {\r",
+                  "    pm.response.to.have.status(400);\r",
+                  "});\r",
+                  "\r",
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.test(\"Invalid limit error is valid\", function () {\r",
+                  "    pm.expect(json.success).to.eql(false);\r",
+                  "    pm.expect(json.error.status_code).to.eql(400);\r",
+                  "    pm.expect(json.error.field_errors).to.have.property(\"limit\");\r",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/finance/dashboard/summary/?limit=1000",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "finance",
+                "dashboard",
+                "summary",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1000"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05 Users",
       "item": [
         {
           "name": "Get current user",
@@ -4194,7 +4572,7 @@
       ]
     },
     {
-      "name": "05 Monitoring",
+      "name": "06 Monitoring",
       "item": [
         {
           "name": "Metrics",
