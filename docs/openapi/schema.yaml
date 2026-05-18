@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -294,6 +294,423 @@ paths:
                     is_active: true
                     detail: Email подтверждён. Аккаунт активирован.
                   summary: Успешный ответ
+          description: ''
+  /api/v1/finance/accounts/:
+    get:
+      operationId: finance_accounts_list
+      description: Возвращает счета текущего пользователя с пагинацией, поиском и
+        фильтрацией по статусу, типу и валюте. Архивные счета не удаляются из системы
+        и могут быть показаны через status=archived.
+      summary: Получить список счетов
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO-код валюты, например RUB.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Размер страницы. По умолчанию 20, максимум 100.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию счёта или банку.
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: 'Статус счёта: active, archived или all.'
+      - in: query
+        name: type
+        schema:
+          type: string
+        description: 'Тип счёта: card, debit, savings, cash, credit или other.'
+      tags:
+      - finance-accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAccountList'
+              examples:
+                СписокСчетов:
+                  value:
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - count: 1
+                      next: null
+                      previous: null
+                      results:
+                      - id: 1
+                        name: Текущий
+                        type: card
+                        type_label: Банковская карта
+                        typeLabel: Банковская карта
+                        bank_name: Сбербанк
+                        bankName: Сбербанк
+                        currency: RUB
+                        initial_balance: '10000.00'
+                        initialBalanceRub: '10000.00'
+                        balance: '45230.50'
+                        balanceRub: '45230.50'
+                        blocked_amount: '0.00'
+                        credit_limit: '0.00'
+                        available_balance: '45230.50'
+                        icon: card
+                        color: '#4F46E5'
+                        status: active
+                        is_default: true
+                        isDefault: true
+                        is_active: true
+                        is_archived: false
+                        operations_count: 3
+                        operationsCount: 3
+                        comment: ''
+                  summary: Список счетов
+          description: ''
+    post:
+      operationId: finance_accounts_create
+      description: Создаёт счёт текущего пользователя. Текущий баланс при создании
+        устанавливается равным начальному балансу. Если счёт отмечен как основной,
+        остальные основные счета пользователя сбрасываются.
+      summary: Создать счёт
+      tags:
+      - finance-accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountRequest'
+            examples:
+              СозданиеСчёта:
+                value:
+                  name: Текущий
+                  type: card
+                  bankName: Сбербанк
+                  currency: RUB
+                  initialBalanceRub: '10000.00'
+                  comment: Основная карта
+                  isDefault: true
+                summary: Создание счёта
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AccountRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AccountRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+          description: ''
+  /api/v1/finance/accounts/{id}/:
+    get:
+      operationId: finance_accounts_retrieve
+      description: Возвращает счёт текущего пользователя по ID вместе с количеством
+        операций по этому счёту.
+      summary: Получить счёт
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+          description: ''
+    put:
+      operationId: finance_accounts_update
+      description: Полностью обновляет данные счёта. Текущий баланс не передаётся
+        напрямую через этот endpoint, так как он изменяется операциями.
+      summary: Полностью обновить счёт
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AccountRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AccountRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+          description: ''
+    patch:
+      operationId: finance_accounts_partial_update
+      description: Частично обновляет данные счёта. Поддерживает frontend-friendly
+        поля bankName, initialBalanceRub и isDefault.
+      summary: Частично обновить счёт
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAccountRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAccountRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAccountRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+          description: ''
+    delete:
+      operationId: finance_accounts_destroy
+      description: Удаляет счёт только если по нему нет операций. Если операции есть,
+        возвращает 409 Conflict. Для обычного скрытия счёта используйте archive endpoint.
+      summary: Удалить счёт
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/accounts/{id}/archive/:
+    patch:
+      operationId: finance_accounts_archive_partial_update
+      description: Переводит счёт в архив или восстанавливает его. Архивный счёт не
+        участвует в общем балансе и скрывается из списка активных счетов, но история
+        операций по нему сохраняется.
+      summary: Архивировать или восстановить счёт
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAccountArchiveRequest'
+            examples:
+              ОтправитьСчётВАрхив:
+                value:
+                  archived: true
+                summary: Отправить счёт в архив
+              ВосстановитьСчёт:
+                value:
+                  archived: false
+                summary: Восстановить счёт
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAccountArchiveRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAccountArchiveRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+          description: ''
+  /api/v1/finance/accounts/{id}/history/:
+    get:
+      operationId: finance_accounts_history_list
+      description: Возвращает последние операции текущего пользователя по выбранному
+        счёту. Используется в карточке детального просмотра счёта.
+      summary: Получить историю операций по счёту
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Размер страницы. По умолчанию 20, максимум 100.
+      tags:
+      - finance-accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAccountHistoryRowList'
+          description: ''
+  /api/v1/finance/accounts/meta/:
+    get:
+      operationId: finance_accounts_meta_retrieve
+      description: Возвращает типы счетов, популярные банки и валюты для формы создания
+        или редактирования счёта.
+      summary: Получить справочники для формы счёта
+      tags:
+      - finance-accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountMeta'
+              examples:
+                СправочникиСчетов:
+                  value:
+                    types:
+                    - title: Банковская карта
+                      value: card
+                      icon: card
+                    - title: Дебетовая карта
+                      value: debit
+                      icon: card
+                    - title: Накопительный
+                      value: savings
+                      icon: bank
+                    - title: Наличные
+                      value: cash
+                      icon: cash
+                    - title: Кредитный
+                      value: credit
+                      icon: credit-card
+                    - title: Другое
+                      value: other
+                      icon: wallet
+                    banks:
+                    - title: Сбербанк
+                      value: Сбербанк
+                    - title: Тинькофф
+                      value: Тинькофф
+                    - title: ВТБ
+                      value: ВТБ
+                    - title: Альфа-Банк
+                      value: Альфа-Банк
+                    - title: Газпромбанк
+                      value: Газпромбанк
+                    - title: Другой банк
+                      value: other
+                    currencies:
+                    - title: RUB ₽
+                      value: RUB
+                    - title: USD $
+                      value: USD
+                    - title: EUR €
+                      value: EUR
+                  summary: Справочники счетов
+          description: ''
+  /api/v1/finance/accounts/summary/:
+    get:
+      operationId: finance_accounts_summary_retrieve
+      description: Возвращает общий баланс активных неархивных счетов текущего пользователя,
+        количество активных счетов и количество счетов в архиве. По умолчанию используется
+        валюта RUB.
+      summary: Получить сводку по счетам
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO-код валюты, например RUB. По умолчанию RUB.
+      tags:
+      - finance-accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSummary'
+              examples:
+                СводкаПоСчетам:
+                  value:
+                    total_balance: '127450.50'
+                    totalBalanceRub: '127450.50'
+                    active_count: 4
+                    archived_count: 1
+                    currency: RUB
+                  summary: Сводка по счетам
           description: ''
   /api/v1/finance/categories/:
     get:
@@ -1814,6 +2231,310 @@ components:
       - endpoints
       - service
       - version
+    Account:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название счёта
+          maxLength: 100
+        type:
+          allOf:
+          - $ref: '#/components/schemas/AccountTypeEnum'
+          title: Тип счёта
+        type_label:
+          type: string
+          readOnly: true
+        typeLabel:
+          type: string
+          readOnly: true
+        bank_name:
+          type: string
+          title: Банк
+          maxLength: 100
+        bankName:
+          type: string
+          readOnly: true
+        currency:
+          type: string
+          title: Валюта
+          pattern: ^[A-Z]{3}$
+          maxLength: 3
+        initial_balance:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Начальный баланс
+        initialBalanceRub:
+          type: string
+          readOnly: true
+        balance:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+          title: Текущий баланс
+        balanceRub:
+          type: string
+          readOnly: true
+        blocked_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Заблокированная сумма
+        credit_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Кредитный лимит
+        available_balance:
+          type: string
+          readOnly: true
+        icon:
+          type: string
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        status:
+          type: string
+          readOnly: true
+        is_default:
+          type: boolean
+          title: Счёт по умолчанию
+        isDefault:
+          type: boolean
+          readOnly: true
+        is_active:
+          type: boolean
+          title: Активен
+        is_archived:
+          type: boolean
+          title: Архивный
+        operations_count:
+          type: integer
+          readOnly: true
+        operationsCount:
+          type: integer
+          readOnly: true
+        comment:
+          type: string
+          title: Комментарий
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата создания
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата обновления
+      required:
+      - available_balance
+      - balance
+      - balanceRub
+      - bankName
+      - created_at
+      - id
+      - initialBalanceRub
+      - isDefault
+      - name
+      - operationsCount
+      - operations_count
+      - status
+      - typeLabel
+      - type_label
+      - updated_at
+    AccountBankOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+      required:
+      - title
+      - value
+    AccountCurrencyOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+      required:
+      - title
+      - value
+    AccountHistoryRow:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          format: date
+        description:
+          type: string
+        category_name:
+          type: string
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        signed_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        type:
+          type: string
+      required:
+      - amount
+      - category_name
+      - date
+      - description
+      - id
+      - signed_amount
+      - type
+    AccountMeta:
+      type: object
+      properties:
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountTypeOption'
+        banks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountBankOption'
+        currencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountCurrencyOption'
+      required:
+      - banks
+      - currencies
+      - types
+    AccountRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название счёта
+          maxLength: 100
+        type:
+          allOf:
+          - $ref: '#/components/schemas/AccountTypeEnum'
+          title: Тип счёта
+        bank_name:
+          type: string
+          title: Банк
+          maxLength: 100
+        currency:
+          type: string
+          minLength: 1
+          title: Валюта
+          pattern: ^[A-Z]{3}$
+          maxLength: 3
+        initial_balance:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Начальный баланс
+        blocked_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Заблокированная сумма
+        credit_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Кредитный лимит
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        is_default:
+          type: boolean
+          title: Счёт по умолчанию
+        is_active:
+          type: boolean
+          title: Активен
+        is_archived:
+          type: boolean
+          title: Архивный
+        comment:
+          type: string
+          title: Комментарий
+      required:
+      - name
+    AccountSummary:
+      type: object
+      properties:
+        total_balance:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        active_count:
+          type: integer
+        archived_count:
+          type: integer
+        currency:
+          type: string
+        totalBalanceRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - active_count
+      - archived_count
+      - currency
+      - totalBalanceRub
+      - total_balance
+    AccountTypeEnum:
+      enum:
+      - card
+      - debit
+      - savings
+      - cash
+      - credit
+      - other
+      type: string
+      description: |-
+        * `card` - Банковская карта
+        * `debit` - Дебетовая карта
+        * `savings` - Накопительный
+        * `cash` - Наличные
+        * `credit` - Кредитный
+        * `other` - Другое
+    AccountTypeOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - title
+      - value
     ApiErrorDetail:
       type: object
       description: Детальная информация об ошибке API.
@@ -2540,6 +3261,52 @@ components:
       - last_name
       - role
       - username
+    PaginatedAccountHistoryRowList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountHistoryRow'
+    PaginatedAccountList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
     PaginatedCategoryList:
       type: object
       required:
@@ -2632,6 +3399,73 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/User'
+    PatchedAccountArchiveRequest:
+      type: object
+      properties:
+        archived:
+          type: boolean
+          default: true
+          description: true - отправить счёт в архив, false - восстановить из архива.
+    PatchedAccountRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название счёта
+          maxLength: 100
+        type:
+          allOf:
+          - $ref: '#/components/schemas/AccountTypeEnum'
+          title: Тип счёта
+        bank_name:
+          type: string
+          title: Банк
+          maxLength: 100
+        currency:
+          type: string
+          minLength: 1
+          title: Валюта
+          pattern: ^[A-Z]{3}$
+          maxLength: 3
+        initial_balance:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Начальный баланс
+        blocked_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Заблокированная сумма
+        credit_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Кредитный лимит
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        is_default:
+          type: boolean
+          title: Счёт по умолчанию
+        is_active:
+          type: boolean
+          title: Активен
+        is_archived:
+          type: boolean
+          title: Архивный
+        comment:
+          type: string
+          title: Комментарий
     PatchedCategoryFavoriteRequest:
       type: object
       properties:
@@ -3112,6 +3946,9 @@ tags:
     пароля.
 - name: users
   description: Endpoints профиля пользователя и административного управления пользователями.
+- name: finance-accounts
+  description: 'Финансовые счета: список, создание, редактирование, архивирование,
+    сводка балансов, история операций по счёту и справочники для формы.'
 - name: finance-categories
   description: 'Финансовые категории: список, создание, дерево категорий, избранное,
     архивирование, drag and drop порядок и подсказки категорий по описанию операции.'

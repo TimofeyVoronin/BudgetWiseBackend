@@ -118,10 +118,21 @@ class TransactionSerializer(serializers.ModelSerializer):
         category = attrs.get("category", getattr(self.instance, "category", None))
         transaction_type = attrs.get("type", getattr(self.instance, "type", None))
 
-        if (not self.instance or "account" in attrs) and account and not account.is_active:
+        should_validate_account_status = (
+            not self.instance or "account" in attrs
+        )
+
+        if should_validate_account_status and account and not account.is_active:
             raise serializers.ValidationError(
                 {
                     "account": "Нельзя использовать неактивный счёт."
+                }
+            )
+
+        if should_validate_account_status and account and account.is_archived:
+            raise serializers.ValidationError(
+                {
+                    "account": "Нельзя использовать архивный счёт."
                 }
             )
 
