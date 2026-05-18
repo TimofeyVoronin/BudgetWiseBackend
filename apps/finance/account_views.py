@@ -221,11 +221,16 @@ class AccountViewSet(viewsets.ModelViewSet):
             .annotate(operations_count=Count("transactions"))
         )
 
+        if self.action != "list":
+            return queryset.order_by("-is_default", "is_archived", "name", "id")
+
         query_params = self.request.query_params
 
-        status_value = query_params.get("status", ACCOUNT_STATUS_ACTIVE)
+        raw_status_value = query_params.get("status")
 
-        if status_value:
+        if raw_status_value in (None, ""):
+            status_value = ACCOUNT_STATUS_ACTIVE
+        else:
             status_value = validate_choice_query_param(
                 query_params,
                 "status",
