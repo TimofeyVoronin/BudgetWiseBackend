@@ -872,6 +872,75 @@ paths:
                         updated_at: 2026-05-15T12:00:00+0300
                   summary: Дерево категорий расходов
           description: ''
+  /api/v1/finance/dashboard/summary/:
+    get:
+      operationId: finance_dashboard_summary_retrieve
+      description: 'Возвращает основные агрегаты для главной страницы: общий баланс
+        активных счетов, сумму доходов и расходов за текущий месяц, чистый результат,
+        последние операции и топ категорий расходов. Блок reminders зарезервирован
+        для будущего эпика напоминаний и пока возвращается с пустым списком rows.'
+      summary: Получить агрегированные данные главного дашборда
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Количество последних операций в блоке recent_transactions. По
+          умолчанию 5, максимум 20.
+      tags:
+      - finance
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+              examples:
+                DashboardSummary:
+                  value:
+                    period:
+                      date_from: '2026-05-01'
+                      date_to: '2026-05-17'
+                    currency: RUB
+                    totals:
+                      accounts_balance: '13000.00'
+                      income: '50000.00'
+                      expense: '12450.00'
+                      net: '37550.00'
+                    recent_transactions:
+                    - id: 1
+                      account: 1
+                      account_name: Основная карта
+                      account_currency: RUB
+                      category: 2
+                      category_name: Продукты
+                      category_icon: shopping-cart
+                      category_color: '#10B981'
+                      type: expense
+                      kind: expense
+                      amount: '1245.00'
+                      amount_abs: '1245.00'
+                      signed_amount: '-1245.00'
+                      description: Покупка продуктов
+                      operation_date: '2026-05-17'
+                      date: '2026-05-17'
+                      created_at: 2026-05-17T12:00:00+0300
+                      updated_at: 2026-05-17T12:00:00+0300
+                    top_expense_categories:
+                    - category: 2
+                      category_name: Продукты
+                      category_icon: shopping-cart
+                      category_color: '#10B981'
+                      total: '12450.00'
+                    reminders:
+                      title: Напоминания
+                      headerIcon: bell
+                      rows: []
+                      footerLinkLabel: Все напоминания
+                  summary: Dashboard summary
+          description: ''
   /api/v1/finance/transactions/:
     get:
       operationId: finance_transactions_list
@@ -2193,6 +2262,149 @@ components:
       - is_active
       - role
       - username
+    DashboardPeriod:
+      type: object
+      properties:
+        date_from:
+          type: string
+          format: date
+          readOnly: true
+        date_to:
+          type: string
+          format: date
+          readOnly: true
+      required:
+      - date_from
+      - date_to
+    DashboardReminderRow:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        subtitle:
+          type: string
+          readOnly: true
+        dateLabel:
+          type: string
+          readOnly: true
+        icon:
+          type: string
+          readOnly: true
+        dateEmphasis:
+          type: boolean
+          readOnly: true
+      required:
+      - dateEmphasis
+      - dateLabel
+      - icon
+      - id
+      - subtitle
+      - title
+    DashboardRemindersCard:
+      type: object
+      properties:
+        title:
+          type: string
+          readOnly: true
+        headerIcon:
+          type: string
+          readOnly: true
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardReminderRow'
+          readOnly: true
+        footerLinkLabel:
+          type: string
+          readOnly: true
+      required:
+      - footerLinkLabel
+      - headerIcon
+      - rows
+      - title
+    DashboardSummary:
+      type: object
+      properties:
+        period:
+          allOf:
+          - $ref: '#/components/schemas/DashboardPeriod'
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        totals:
+          allOf:
+          - $ref: '#/components/schemas/DashboardTotals'
+          readOnly: true
+        recent_transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+          readOnly: true
+        top_expense_categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardTopExpenseCategory'
+          readOnly: true
+        reminders:
+          allOf:
+          - $ref: '#/components/schemas/DashboardRemindersCard'
+          readOnly: true
+      required:
+      - currency
+      - period
+      - recent_transactions
+      - reminders
+      - top_expense_categories
+      - totals
+    DashboardTopExpenseCategory:
+      type: object
+      properties:
+        category:
+          type: integer
+          readOnly: true
+        category_name:
+          type: string
+          readOnly: true
+        category_icon:
+          type: string
+          readOnly: true
+        category_color:
+          type: string
+          readOnly: true
+        total:
+          type: string
+          readOnly: true
+      required:
+      - category
+      - category_color
+      - category_icon
+      - category_name
+      - total
+    DashboardTotals:
+      type: object
+      properties:
+        accounts_balance:
+          type: string
+          readOnly: true
+        income:
+          type: string
+          readOnly: true
+        expense:
+          type: string
+          readOnly: true
+        net:
+          type: string
+          readOnly: true
+      required:
+      - accounts_balance
+      - expense
+      - income
+      - net
     ForgotPassword:
       type: object
       properties:

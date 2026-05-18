@@ -29,6 +29,11 @@ from apps.finance.exporters import (
     TRANSACTION_EXPORT_FORMATS,
     build_transaction_export,
 )
+from apps.finance.dashboard import (
+    DEFAULT_DASHBOARD_RECENT_LIMIT,
+    MAX_DASHBOARD_RECENT_LIMIT,
+    build_dashboard_summary,
+)
 from apps.finance.models import Category, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
 from apps.finance.serializers import (
@@ -39,6 +44,7 @@ from apps.finance.serializers import (
     CategorySuggestSerializer,
     CategoryTreeSerializer,
     TransactionSerializer,
+    DashboardSummarySerializer,
 )
 
 
@@ -178,6 +184,28 @@ def get_transaction_ordering_fields(query_params):
         "-id",
     ]
 
+
+def get_dashboard_recent_limit(query_params) -> int:
+    value = query_params.get("limit")
+
+    if value in (None, ""):
+        return DEFAULT_DASHBOARD_RECENT_LIMIT
+
+    limit = get_int_query_param(query_params, "limit")
+
+    if limit < 1 or limit > MAX_DASHBOARD_RECENT_LIMIT:
+        raise ValidationError(
+            {
+                "limit": [
+                    (
+                        "Параметр limit должен быть от 1 до "
+                        f"{MAX_DASHBOARD_RECENT_LIMIT}."
+                    )
+                ]
+            }
+        )
+
+    return limit
 
 @extend_schema_view(
     list=extend_schema(
@@ -958,6 +986,99 @@ def get_transaction_queryset_for_request(request):
         queryset = queryset.order_by("-operation_date", "-created_at", "-id")
 
     return queryset
+
+
+class DashboardSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance"],
+        summary="Получить агрегированные данные главного дашборда",
+        description=(
+            "Возвращает основные агрегаты для главной страницы: общий баланс "
+            "активных счетов, сумму доходов и расходов за текущий месяц, "
+            "чистый результат, последние операции и топ категорий расходов. "
+            "Блок reminders зарезервирован для будущего эпика напоминаний "
+            "и пока возвращается с пустым списком rows."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "limit",
+                OpenApiTypes.INT,
+                description=(
+                    "Количество последних операций в блоке recent_transactions. "
+                    f"По умолчанию {DEFAULT_DASHBOARD_RECENT_LIMIT}, "
+                    f"максимум {MAX_DASHBOARD_RECENT_LIMIT}."
+                ),
+            ),
+        ],
+        responses={200: DashboardSummarySerializer},
+        examples=[
+            OpenApiExample(
+                "Dashboard summary",
+                value={
+                    "period": {
+                        "date_from": "2026-05-01",
+                        "date_to": "2026-05-17",
+                    },
+                    "currency": "RUB",
+                    "totals": {
+                        "accounts_balance": "13000.00",
+                        "income": "50000.00",
+                        "expense": "12450.00",
+                        "net": "37550.00",
+                    },
+                    "recent_transactions": [
+                        {
+                            "id": 1,
+                            "account": 1,
+                            "account_name": "Основная карта",
+                            "account_currency": "RUB",
+                            "category": 2,
+                            "category_name": "Продукты",
+                            "category_icon": "shopping-cart",
+                            "category_color": "#10B981",
+                            "type": "expense",
+                            "kind": "expense",
+                            "amount": "1245.00",
+                            "amount_abs": "1245.00",
+                            "signed_amount": "-1245.00",
+                            "description": "Покупка продуктов",
+                            "operation_date": "2026-05-17",
+                            "date": "2026-05-17",
+                            "created_at": "2026-05-17T12:00:00+0300",
+                            "updated_at": "2026-05-17T12:00:00+0300",
+                        }
+                    ],
+                    "top_expense_categories": [
+                        {
+                            "category": 2,
+                            "category_name": "Продукты",
+                            "category_icon": "shopping-cart",
+                            "category_color": "#10B981",
+                            "total": "12450.00",
+                        }
+                    ],
+                    "reminders": {
+                        "title": "Напоминания",
+                        "headerIcon": "bell",
+                        "rows": [],
+                        "footerLinkLabel": "Все напоминания",
+                    },
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def get(self, request):
+        recent_limit = get_dashboard_recent_limit(request.query_params)
+        dashboard_data = build_dashboard_summary(
+            user=request.user,
+            recent_limit=recent_limit,
+        )
+        serializer = DashboardSummarySerializer(dashboard_data)
+
+        return Response(serializer.data)
 
 
 class TransactionExportView(APIView):
