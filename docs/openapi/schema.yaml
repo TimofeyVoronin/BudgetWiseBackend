@@ -1957,6 +1957,11 @@ paths:
           format: date
         description: Конец периода в формате YYYY-MM-DD.
       - in: query
+        name: deliveryStatus
+        schema:
+          type: string
+        description: 'Статус доставки: delivered, failed, pending или unavailable.'
+      - in: query
         name: entity
         schema:
           type: string
@@ -4789,6 +4794,7 @@ components:
           items:
             type: integer
             minimum: 1
+          maxItems: 100
       required:
       - ids
     NotificationBulkResult:

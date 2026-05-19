@@ -366,11 +366,24 @@ class NotificationMetaSerializer(serializers.Serializer):
     iconTones = NotificationOptionSerializer(many=True)
 
 
+MAX_BULK_NOTIFICATION_IDS = 100
+
+
 class NotificationBulkIdsSerializer(serializers.Serializer):
     ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         allow_empty=False,
+        max_length=MAX_BULK_NOTIFICATION_IDS,
     )
+
+    def validate_ids(self, value):
+        unique_ids = []
+
+        for notification_id in value:
+            if notification_id not in unique_ids:
+                unique_ids.append(notification_id)
+
+        return unique_ids
 
 
 class NotificationBulkResultSerializer(serializers.Serializer):
@@ -636,11 +649,22 @@ class NotificationSettingsSerializer(serializers.ModelSerializer):
                 "Дни тихих часов должны быть списком."
             )
 
-        invalid_days = [
-            day
-            for day in value
-            if day not in NOTIFICATION_QUIET_HOURS_DAYS
-        ]
+        result = []
+        invalid_days = []
+
+        for day in value:
+            if not isinstance(day, str):
+                invalid_days.append(str(day))
+                continue
+
+            normalized_day = day.strip().lower()
+
+            if normalized_day not in NOTIFICATION_QUIET_HOURS_DAYS:
+                invalid_days.append(day)
+                continue
+
+            if normalized_day not in result:
+                result.append(normalized_day)
 
         if invalid_days:
             raise serializers.ValidationError(
@@ -650,11 +674,48 @@ class NotificationSettingsSerializer(serializers.ModelSerializer):
                 )
             )
 
-        result = []
-
-        for day in value:
-            if day not in result:
-                result.append(day)
-
         return result
+
+    def validate(self, attrs):
+        quiet_hours_enabled = attrs.get(
+            "quiet_hours_enabled",
+            getattr(self.instance, "quiet_hours_enabled", False),
+        )
+
+        quiet_hours_days = attrs.get(
+            "quiet_hours_days",
+            getattr(self.instance, "quiet_hours_days", []),
+        )
+
+        quiet_hours_start = attrs.get(
+            "quiet_hours_start",
+            getattr(self.instance, "quiet_hours_start", None),
+        )
+        quiet_hours_end = attrs.get(
+            "quiet_hours_end",
+            getattr(self.instance, "quiet_hours_end", None),
+        )
+
+        if quiet_hours_enabled:
+            errors = {}
+
+            if quiet_hours_start is None:
+                errors["quiet_hours_start"] = [
+                    "Укажите начало тихих часов."
+                ]
+
+            if quiet_hours_end is None:
+                errors["quiet_hours_end"] = [
+                    "Укажите окончание тихих часов."
+                ]
+
+            if not quiet_hours_days:
+                errors["quiet_hours_days"] = [
+                    "Выберите хотя бы один день для тихих часов."
+                ]
+
+            if errors:
+                raise serializers.ValidationError(errors)
+
+        return attrs
 

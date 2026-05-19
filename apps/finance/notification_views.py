@@ -54,6 +54,8 @@ NOTIFICATION_STATUS_VALUES = {
     NOTIFICATION_STATUS_ARCHIVED,
 }
 
+NOTIFICATION_DELIVERY_STATUS_VALUES = set(NotificationDeliveryStatus.values)
+
 MAX_NOTIFICATION_SEARCH_LENGTH = 100
 
 
@@ -158,6 +160,11 @@ def get_date_query_param(query_params, *names):
                 description="Каналы через запятую: in_app, email, push, sms.",
             ),
             OpenApiParameter(
+                "deliveryStatus",
+                OpenApiTypes.STR,
+                description="Статус доставки: delivered, failed, pending или unavailable.",
+            ),
+            OpenApiParameter(
                 "entity",
                 OpenApiTypes.STR,
                 description="Связанная сущность: transaction, goal или budget.",
@@ -218,6 +225,7 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
             "channels",
             set(NotificationChannel.values),
         )
+        delivery_status = query_params.get("deliveryStatus") or query_params.get("delivery_status") or ""
         entity = query_params.get("entity") or ""
         search = query_params.get("search")
         date_from = get_date_query_param(query_params, "dateFrom", "date_from")
@@ -240,6 +248,21 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
 
         if channels:
             queryset = queryset.filter(channel__in=channels)
+
+        if delivery_status:
+            if delivery_status not in NOTIFICATION_DELIVERY_STATUS_VALUES:
+                raise ValidationError(
+                    {
+                        "deliveryStatus": [
+                            (
+                                "Статус доставки должен быть delivered, failed, "
+                                "pending или unavailable."
+                            )
+                        ]
+                    }
+                )
+
+            queryset = queryset.filter(delivery_status=delivery_status)
 
         if entity:
             if entity not in NotificationEntityKind.values:
@@ -410,10 +433,35 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = NotificationBulkIdsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        notification_ids = serializer.validated_data["ids"]
+        existing_ids = set(
+            Notification.objects.filter(
+                user=request.user,
+                pk__in=notification_ids,
+            ).values_list("pk", flat=True)
+        )
+        missing_ids = [
+            notification_id
+            for notification_id in notification_ids
+            if notification_id not in existing_ids
+        ]
+
+        if missing_ids:
+            raise ValidationError(
+                {
+                    "ids": [
+                        (
+                            "Некоторые уведомления не найдены или недоступны: "
+                            f"{', '.join(str(value) for value in missing_ids)}."
+                        )
+                    ]
+                }
+            )
+
         now = timezone.now()
         updated_count = Notification.objects.filter(
             user=request.user,
-            pk__in=serializer.validated_data["ids"],
+            pk__in=notification_ids,
             is_archived=False,
         ).update(
             is_archived=True,
