@@ -50,7 +50,6 @@ def fund_goal(
         locked_goal = (
             Goal.objects
             .select_for_update()
-            .select_related("account")
             .get(pk=goal.pk, user=user)
         )
 
