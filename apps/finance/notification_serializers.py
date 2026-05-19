@@ -10,6 +10,7 @@ from apps.finance.models import (
     NotificationDeliveryStatus,
     NotificationEntityKind,
     NotificationIconTone,
+    NotificationSettings,
     NotificationType,
 )
 
@@ -75,6 +76,12 @@ NOTIFICATION_TYPE_OPTIONS = [
         "value": NotificationType.SECURITY,
         "icon": "shield-alert",
         "iconTone": NotificationIconTone.ERROR,
+    },
+    {
+        "title": "Маркетинг и акции",
+        "value": NotificationType.MARKETING,
+        "icon": "tag",
+        "iconTone": NotificationIconTone.INFO,
     },
 ]
 
@@ -369,3 +376,285 @@ class NotificationBulkIdsSerializer(serializers.Serializer):
 class NotificationBulkResultSerializer(serializers.Serializer):
     updated_count = serializers.IntegerField()
     updatedCount = serializers.IntegerField()
+
+NOTIFICATION_QUIET_HOURS_DAY_OPTIONS = [
+    {
+        "title": "ПН",
+        "value": "mon",
+    },
+    {
+        "title": "ВТ",
+        "value": "tue",
+    },
+    {
+        "title": "СР",
+        "value": "wed",
+    },
+    {
+        "title": "ЧТ",
+        "value": "thu",
+    },
+    {
+        "title": "ПТ",
+        "value": "fri",
+    },
+    {
+        "title": "СБ",
+        "value": "sat",
+    },
+    {
+        "title": "ВС",
+        "value": "sun",
+    },
+]
+
+NOTIFICATION_SETTING_BOOLEAN_ALIASES = {
+    "inAppEnabled": "in_app_enabled",
+    "emailEnabled": "email_enabled",
+    "pushEnabled": "push_enabled",
+    "smsEnabled": "sms_enabled",
+    "operationEnabled": "operation_enabled",
+    "goalEnabled": "goal_enabled",
+    "budgetEnabled": "budget_enabled",
+    "systemEnabled": "system_enabled",
+    "securityEnabled": "security_enabled",
+    "marketingEnabled": "marketing_enabled",
+    "quietHoursEnabled": "quiet_hours_enabled",
+    "quietHoursStart": "quiet_hours_start",
+    "quietHoursEnd": "quiet_hours_end",
+    "quietHoursDays": "quiet_hours_days",
+}
+
+NOTIFICATION_QUIET_HOURS_DAYS = {
+    option["value"]
+    for option in NOTIFICATION_QUIET_HOURS_DAY_OPTIONS
+}
+
+
+class NotificationSettingsChannelSerializer(serializers.Serializer):
+    channel = serializers.CharField()
+    label = serializers.CharField()
+    icon = serializers.CharField()
+    enabled = serializers.BooleanField()
+    hint = serializers.CharField()
+
+
+class NotificationSettingsTypeSerializer(serializers.Serializer):
+    type = serializers.CharField()
+    label = serializers.CharField()
+    icon = serializers.CharField()
+    iconTone = serializers.CharField()
+    enabled = serializers.BooleanField()
+
+
+class NotificationQuietHoursDayOptionSerializer(serializers.Serializer):
+    title = serializers.CharField()
+    value = serializers.CharField()
+
+
+class NotificationSettingsSerializer(serializers.ModelSerializer):
+    inAppEnabled = serializers.SerializerMethodField(read_only=True)
+    emailEnabled = serializers.SerializerMethodField(read_only=True)
+    pushEnabled = serializers.SerializerMethodField(read_only=True)
+    smsEnabled = serializers.SerializerMethodField(read_only=True)
+
+    operationEnabled = serializers.SerializerMethodField(read_only=True)
+    goalEnabled = serializers.SerializerMethodField(read_only=True)
+    budgetEnabled = serializers.SerializerMethodField(read_only=True)
+    systemEnabled = serializers.SerializerMethodField(read_only=True)
+    securityEnabled = serializers.SerializerMethodField(read_only=True)
+    marketingEnabled = serializers.SerializerMethodField(read_only=True)
+
+    quietHoursEnabled = serializers.SerializerMethodField(read_only=True)
+    quietHoursStart = serializers.SerializerMethodField(read_only=True)
+    quietHoursEnd = serializers.SerializerMethodField(read_only=True)
+    quietHoursDays = serializers.SerializerMethodField(read_only=True)
+
+    channels = serializers.SerializerMethodField(read_only=True)
+    types = serializers.SerializerMethodField(read_only=True)
+    quietHoursDayOptions = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = NotificationSettings
+        fields = [
+            "id",
+            "in_app_enabled",
+            "inAppEnabled",
+            "email_enabled",
+            "emailEnabled",
+            "push_enabled",
+            "pushEnabled",
+            "sms_enabled",
+            "smsEnabled",
+            "operation_enabled",
+            "operationEnabled",
+            "goal_enabled",
+            "goalEnabled",
+            "budget_enabled",
+            "budgetEnabled",
+            "system_enabled",
+            "systemEnabled",
+            "security_enabled",
+            "securityEnabled",
+            "marketing_enabled",
+            "marketingEnabled",
+            "quiet_hours_enabled",
+            "quietHoursEnabled",
+            "quiet_hours_start",
+            "quietHoursStart",
+            "quiet_hours_end",
+            "quietHoursEnd",
+            "quiet_hours_days",
+            "quietHoursDays",
+            "channels",
+            "types",
+            "quietHoursDayOptions",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "inAppEnabled",
+            "emailEnabled",
+            "pushEnabled",
+            "smsEnabled",
+            "operationEnabled",
+            "goalEnabled",
+            "budgetEnabled",
+            "systemEnabled",
+            "securityEnabled",
+            "marketingEnabled",
+            "quietHoursEnabled",
+            "quietHoursStart",
+            "quietHoursEnd",
+            "quietHoursDays",
+            "channels",
+            "types",
+            "quietHoursDayOptions",
+            "created_at",
+            "updated_at",
+        ]
+
+    def to_internal_value(self, data):
+        mutable_data = data.copy()
+
+        for alias, field_name in NOTIFICATION_SETTING_BOOLEAN_ALIASES.items():
+            if alias in mutable_data and field_name not in mutable_data:
+                mutable_data[field_name] = mutable_data[alias]
+
+        return super().to_internal_value(mutable_data)
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_inAppEnabled(self, obj) -> bool:
+        return obj.in_app_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_emailEnabled(self, obj) -> bool:
+        return obj.email_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_pushEnabled(self, obj) -> bool:
+        return obj.push_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_smsEnabled(self, obj) -> bool:
+        return obj.sms_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_operationEnabled(self, obj) -> bool:
+        return obj.operation_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_goalEnabled(self, obj) -> bool:
+        return obj.goal_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_budgetEnabled(self, obj) -> bool:
+        return obj.budget_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_systemEnabled(self, obj) -> bool:
+        return obj.system_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_securityEnabled(self, obj) -> bool:
+        return obj.security_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_marketingEnabled(self, obj) -> bool:
+        return obj.marketing_enabled
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_quietHoursEnabled(self, obj) -> bool:
+        return obj.quiet_hours_enabled
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_quietHoursStart(self, obj) -> str:
+        return obj.quiet_hours_start.strftime("%H:%M")
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_quietHoursEnd(self, obj) -> str:
+        return obj.quiet_hours_end.strftime("%H:%M")
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_quietHoursDays(self, obj) -> list[str]:
+        return obj.quiet_hours_days
+
+    @extend_schema_field(NotificationSettingsChannelSerializer(many=True))
+    def get_channels(self, obj) -> list[dict]:
+        return [
+            {
+                "channel": option["value"],
+                "label": option["title"],
+                "icon": option["icon"],
+                "enabled": obj.is_channel_enabled(option["value"]),
+                "hint": option["hint"],
+            }
+            for option in NOTIFICATION_CHANNEL_OPTIONS
+        ]
+
+    @extend_schema_field(NotificationSettingsTypeSerializer(many=True))
+    def get_types(self, obj) -> list[dict]:
+        return [
+            {
+                "type": option["value"],
+                "label": option["title"],
+                "icon": option["icon"],
+                "iconTone": option["iconTone"],
+                "enabled": obj.is_type_enabled(option["value"]),
+            }
+            for option in NOTIFICATION_TYPE_OPTIONS
+        ]
+
+    @extend_schema_field(NotificationQuietHoursDayOptionSerializer(many=True))
+    def get_quietHoursDayOptions(self, obj) -> list[dict]:
+        return NOTIFICATION_QUIET_HOURS_DAY_OPTIONS
+
+    def validate_quiet_hours_days(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                "Дни тихих часов должны быть списком."
+            )
+
+        invalid_days = [
+            day
+            for day in value
+            if day not in NOTIFICATION_QUIET_HOURS_DAYS
+        ]
+
+        if invalid_days:
+            raise serializers.ValidationError(
+                (
+                    "Недопустимые дни тихих часов: "
+                    f"{', '.join(invalid_days)}."
+                )
+            )
+
+        result = []
+
+        for day in value:
+            if day not in result:
+                result.append(day)
+
+        return result
+

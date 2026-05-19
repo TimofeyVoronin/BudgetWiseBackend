@@ -1,3 +1,4 @@
+from datetime import time
 from decimal import Decimal
 
 from django.conf import settings
@@ -47,6 +48,7 @@ class NotificationType(models.TextChoices):
     BUDGET = "budget", "Бюджет"
     SYSTEM = "system", "Система"
     SECURITY = "security", "Безопасность"
+    MARKETING = "marketing", "Маркетинг и акции"
 
 
 class NotificationDeliveryStatus(models.TextChoices):
@@ -68,6 +70,21 @@ class NotificationEntityKind(models.TextChoices):
     TRANSACTION = "transaction", "Операция"
     GOAL = "goal", "Цель"
     BUDGET = "budget", "Бюджет"
+
+
+NOTIFICATION_QUIET_HOURS_DAYS = {
+    "mon",
+    "tue",
+    "wed",
+    "thu",
+    "fri",
+    "sat",
+    "sun",
+}
+
+
+def default_quiet_hours_days() -> list[str]:
+    return ["mon", "tue", "wed", "thu", "fri"]
 
 
 class AccountType(models.TextChoices):
@@ -1061,4 +1078,152 @@ class Notification(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.title} ({self.status})"
+
+class NotificationSettings(TimeStampedModel):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_settings",
+        verbose_name="Пользователь",
+    )
+    in_app_enabled = models.BooleanField(
+        default=True,
+        verbose_name="In-app уведомления включены",
+    )
+    email_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Email уведомления включены",
+    )
+    push_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Push уведомления включены",
+    )
+    sms_enabled = models.BooleanField(
+        default=True,
+        verbose_name="SMS уведомления включены",
+    )
+    operation_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления по операциям включены",
+    )
+    goal_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления по целям включены",
+    )
+    budget_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления по бюджетам включены",
+    )
+    system_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Системные уведомления включены",
+    )
+    security_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления безопасности включены",
+    )
+    marketing_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Маркетинговые уведомления включены",
+    )
+    quiet_hours_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Тихие часы включены",
+    )
+    quiet_hours_start = models.TimeField(
+        default=time(22, 0),
+        verbose_name="Начало тихих часов",
+    )
+    quiet_hours_end = models.TimeField(
+        default=time(8, 0),
+        verbose_name="Окончание тихих часов",
+    )
+    quiet_hours_days = models.JSONField(
+        default=default_quiet_hours_days,
+        blank=True,
+        verbose_name="Дни тихих часов",
+    )
+
+    class Meta:
+        verbose_name = "Настройки уведомлений"
+        verbose_name_plural = "Настройки уведомлений"
+        ordering = ["user_id"]
+
+    CHANNEL_FIELD_MAP = {
+        NotificationChannel.IN_APP: "in_app_enabled",
+        NotificationChannel.EMAIL: "email_enabled",
+        NotificationChannel.PUSH: "push_enabled",
+        NotificationChannel.SMS: "sms_enabled",
+    }
+
+    TYPE_FIELD_MAP = {
+        NotificationType.OPERATION: "operation_enabled",
+        NotificationType.GOAL: "goal_enabled",
+        NotificationType.BUDGET: "budget_enabled",
+        NotificationType.SYSTEM: "system_enabled",
+        NotificationType.SECURITY: "security_enabled",
+        NotificationType.MARKETING: "marketing_enabled",
+    }
+
+    def is_channel_enabled(self, channel: str) -> bool:
+        field_name = self.CHANNEL_FIELD_MAP.get(channel)
+
+        if not field_name:
+            return False
+
+        return bool(getattr(self, field_name))
+
+    def is_type_enabled(self, notification_type: str) -> bool:
+        field_name = self.TYPE_FIELD_MAP.get(notification_type)
+
+        if not field_name:
+            return False
+
+        return bool(getattr(self, field_name))
+
+    def is_quiet_time(self, moment=None) -> bool:
+        if not self.quiet_hours_enabled:
+            return False
+
+        if moment is None:
+            moment = timezone.localtime()
+
+        day_key = moment.strftime("%a").lower()[:3]
+
+        if day_key not in self.quiet_hours_days:
+            return False
+
+        current_time = moment.time()
+        start_time = self.quiet_hours_start
+        end_time = self.quiet_hours_end
+
+        if start_time <= end_time:
+            return start_time <= current_time < end_time
+
+        return current_time >= start_time or current_time < end_time
+
+    def clean(self) -> None:
+        errors = {}
+
+        if not isinstance(self.quiet_hours_days, list):
+            errors["quiet_hours_days"] = "Дни тихих часов должны быть списком."
+
+        else:
+            invalid_days = [
+                day
+                for day in self.quiet_hours_days
+                if day not in NOTIFICATION_QUIET_HOURS_DAYS
+            ]
+
+            if invalid_days:
+                errors["quiet_hours_days"] = (
+                    "Недопустимые дни тихих часов: "
+                    f"{', '.join(invalid_days)}."
+                )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"Настройки уведомлений пользователя {self.user_id}"
 

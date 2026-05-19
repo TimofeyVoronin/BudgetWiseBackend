@@ -35,8 +35,10 @@ from apps.finance.notification_serializers import (
     NotificationBulkResultSerializer,
     NotificationMetaSerializer,
     NotificationSerializer,
+    NotificationSettingsSerializer,
     NotificationSummarySerializer,
 )
+from apps.finance.notifications import get_or_create_notification_settings
 from apps.finance.permissions import IsObjectOwner
 
 
@@ -426,6 +428,74 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
             }
         )
         return Response(response_serializer.data)
+
+
+    @extend_schema(
+        methods=["GET"],
+        tags=["finance-notifications"],
+        summary="Получить настройки уведомлений",
+        description=(
+            "Возвращает настройки каналов, типов уведомлений и тихих часов "
+            "текущего пользователя."
+        ),
+        responses={200: NotificationSettingsSerializer},
+    )
+    @extend_schema(
+        methods=["PATCH"],
+        tags=["finance-notifications"],
+        summary="Обновить настройки уведомлений",
+        description=(
+            "Обновляет настройки каналов, типов уведомлений и тихих часов. "
+            "Поддерживаются snake_case и camelCase поля."
+        ),
+        request=NotificationSettingsSerializer,
+        responses={200: NotificationSettingsSerializer},
+        examples=[
+            OpenApiExample(
+                "Настройки уведомлений",
+                value={
+                    "emailEnabled": True,
+                    "pushEnabled": True,
+                    "smsEnabled": False,
+                    "inAppEnabled": True,
+                    "operationEnabled": True,
+                    "goalEnabled": True,
+                    "budgetEnabled": True,
+                    "systemEnabled": True,
+                    "securityEnabled": True,
+                    "marketingEnabled": False,
+                    "quietHoursEnabled": True,
+                    "quietHoursStart": "22:00",
+                    "quietHoursEnd": "08:00",
+                    "quietHoursDays": ["mon", "tue", "wed", "thu", "fri"],
+                },
+                request_only=True,
+            )
+        ],
+    )
+    @action(detail=False, methods=["get", "patch"], url_path="settings")
+    def notification_settings(self, request):
+        notification_settings = get_or_create_notification_settings(
+            user=request.user,
+        )
+
+        if request.method.lower() == "get":
+            serializer = NotificationSettingsSerializer(
+                notification_settings,
+                context=self.get_serializer_context(),
+            )
+            return Response(serializer.data)
+
+        serializer = NotificationSettingsSerializer(
+            notification_settings,
+            data=request.data,
+            partial=True,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data)
 
     @extend_schema(
         tags=["finance-notifications"],

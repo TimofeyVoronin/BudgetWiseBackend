@@ -2178,6 +2178,73 @@ paths:
               schema:
                 $ref: '#/components/schemas/NotificationMeta'
           description: ''
+  /api/v1/finance/notifications/settings/:
+    get:
+      operationId: finance_notifications_settings_retrieve
+      description: Возвращает настройки каналов, типов уведомлений и тихих часов текущего
+        пользователя.
+      summary: Получить настройки уведомлений
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+          description: ''
+    patch:
+      operationId: finance_notifications_settings_partial_update
+      description: Обновляет настройки каналов, типов уведомлений и тихих часов. Поддерживаются
+        snake_case и camelCase поля.
+      summary: Обновить настройки уведомлений
+      tags:
+      - finance-notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationSettingsRequest'
+            examples:
+              НастройкиУведомлений:
+                value:
+                  emailEnabled: true
+                  pushEnabled: true
+                  smsEnabled: false
+                  inAppEnabled: true
+                  operationEnabled: true
+                  goalEnabled: true
+                  budgetEnabled: true
+                  systemEnabled: true
+                  securityEnabled: true
+                  marketingEnabled: false
+                  quietHoursEnabled: true
+                  quietHoursStart: '22:00'
+                  quietHoursEnd: 08:00
+                  quietHoursDays:
+                  - mon
+                  - tue
+                  - wed
+                  - thu
+                  - fri
+                summary: Настройки уведомлений
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationSettingsRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+          description: ''
   /api/v1/finance/notifications/summary/:
     get:
       operationId: finance_notifications_summary_retrieve
@@ -4858,6 +4925,192 @@ components:
       required:
       - title
       - value
+    NotificationQuietHoursDayOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+      required:
+      - title
+      - value
+    NotificationSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        in_app_enabled:
+          type: boolean
+          title: In-app уведомления включены
+        inAppEnabled:
+          type: boolean
+          readOnly: true
+        email_enabled:
+          type: boolean
+          title: Email уведомления включены
+        emailEnabled:
+          type: boolean
+          readOnly: true
+        push_enabled:
+          type: boolean
+          title: Push уведомления включены
+        pushEnabled:
+          type: boolean
+          readOnly: true
+        sms_enabled:
+          type: boolean
+          title: SMS уведомления включены
+        smsEnabled:
+          type: boolean
+          readOnly: true
+        operation_enabled:
+          type: boolean
+          title: Уведомления по операциям включены
+        operationEnabled:
+          type: boolean
+          readOnly: true
+        goal_enabled:
+          type: boolean
+          title: Уведомления по целям включены
+        goalEnabled:
+          type: boolean
+          readOnly: true
+        budget_enabled:
+          type: boolean
+          title: Уведомления по бюджетам включены
+        budgetEnabled:
+          type: boolean
+          readOnly: true
+        system_enabled:
+          type: boolean
+          title: Системные уведомления включены
+        systemEnabled:
+          type: boolean
+          readOnly: true
+        security_enabled:
+          type: boolean
+          title: Уведомления безопасности включены
+        securityEnabled:
+          type: boolean
+          readOnly: true
+        marketing_enabled:
+          type: boolean
+          title: Маркетинговые уведомления включены
+        marketingEnabled:
+          type: boolean
+          readOnly: true
+        quiet_hours_enabled:
+          type: boolean
+          title: Тихие часы включены
+        quietHoursEnabled:
+          type: boolean
+          readOnly: true
+        quiet_hours_start:
+          type: string
+          format: time
+          title: Начало тихих часов
+        quietHoursStart:
+          type: string
+          readOnly: true
+        quiet_hours_end:
+          type: string
+          format: time
+          title: Окончание тихих часов
+        quietHoursEnd:
+          type: string
+          readOnly: true
+        quiet_hours_days:
+          title: Дни тихих часов
+        quietHoursDays:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationSettingsChannel'
+          readOnly: true
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationSettingsType'
+          readOnly: true
+        quietHoursDayOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationQuietHoursDayOption'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата создания
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата обновления
+      required:
+      - budgetEnabled
+      - channels
+      - created_at
+      - emailEnabled
+      - goalEnabled
+      - id
+      - inAppEnabled
+      - marketingEnabled
+      - operationEnabled
+      - pushEnabled
+      - quietHoursDayOptions
+      - quietHoursDays
+      - quietHoursEnabled
+      - quietHoursEnd
+      - quietHoursStart
+      - securityEnabled
+      - smsEnabled
+      - systemEnabled
+      - types
+      - updated_at
+    NotificationSettingsChannel:
+      type: object
+      properties:
+        channel:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+        enabled:
+          type: boolean
+        hint:
+          type: string
+      required:
+      - channel
+      - enabled
+      - hint
+      - icon
+      - label
+    NotificationSettingsType:
+      type: object
+      properties:
+        type:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+        iconTone:
+          type: string
+        enabled:
+          type: boolean
+      required:
+      - enabled
+      - icon
+      - iconTone
+      - label
+      - type
     NotificationSummary:
       type: object
       properties:
@@ -4899,6 +5152,7 @@ components:
       - budget
       - system
       - security
+      - marketing
       type: string
       description: |-
         * `operation` - Операции
@@ -4906,6 +5160,7 @@ components:
         * `budget` - Бюджет
         * `system` - Система
         * `security` - Безопасность
+        * `marketing` - Маркетинг и акции
     PaginatedAccountHistoryRowList:
       type: object
       required:
@@ -5286,6 +5541,52 @@ components:
         comment:
           type: string
           title: Комментарий
+    PatchedNotificationSettingsRequest:
+      type: object
+      properties:
+        in_app_enabled:
+          type: boolean
+          title: In-app уведомления включены
+        email_enabled:
+          type: boolean
+          title: Email уведомления включены
+        push_enabled:
+          type: boolean
+          title: Push уведомления включены
+        sms_enabled:
+          type: boolean
+          title: SMS уведомления включены
+        operation_enabled:
+          type: boolean
+          title: Уведомления по операциям включены
+        goal_enabled:
+          type: boolean
+          title: Уведомления по целям включены
+        budget_enabled:
+          type: boolean
+          title: Уведомления по бюджетам включены
+        system_enabled:
+          type: boolean
+          title: Системные уведомления включены
+        security_enabled:
+          type: boolean
+          title: Уведомления безопасности включены
+        marketing_enabled:
+          type: boolean
+          title: Маркетинговые уведомления включены
+        quiet_hours_enabled:
+          type: boolean
+          title: Тихие часы включены
+        quiet_hours_start:
+          type: string
+          format: time
+          title: Начало тихих часов
+        quiet_hours_end:
+          type: string
+          format: time
+          title: Окончание тихих часов
+        quiet_hours_days:
+          title: Дни тихих часов
     PatchedTransactionRequest:
       type: object
       properties:
@@ -5717,7 +6018,8 @@ tags:
     для формы.'
 - name: finance-notifications
   description: 'Центр уведомлений: список, просмотр, фильтрация, отметка как прочитанное/непрочитанное,
-    архивация, восстановление, сводка и справочники.'
+    архивация, восстановление, сводка, справочники, настройки каналов, типов уведомлений
+    и тихих часов.'
 - name: finance-categories
   description: 'Финансовые категории: список, создание, дерево категорий, избранное,
     архивирование, drag and drop порядок и подсказки категорий по описанию операции.'
