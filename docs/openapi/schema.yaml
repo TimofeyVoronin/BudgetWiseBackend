@@ -1838,6 +1838,13 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
         '409':
           content:
             application/json:

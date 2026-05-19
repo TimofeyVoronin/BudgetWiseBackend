@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db.models import Count, ExpressionWrapper, F, FloatField, Q, Sum, Value
+from django.utils import timezone
 from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiParameter,
@@ -485,7 +486,11 @@ class GoalViewSet(viewsets.ModelViewSet):
             "создаёт связанную расходную операцию и уменьшает баланс счёта-источника."
         ),
         request=GoalTopupCreateSerializer,
-        responses={201: OpenApiTypes.OBJECT, 409: OpenApiTypes.OBJECT},
+        responses={
+            201: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+            409: OpenApiTypes.OBJECT,
+        },
         examples=[
             OpenApiExample(
                 "Пополнение цели",
@@ -506,9 +511,12 @@ class GoalViewSet(viewsets.ModelViewSet):
         if request.method.lower() == "get":
             return self.get_goal_topups_response(goal=goal)
 
+        serializer_context = self.get_serializer_context()
+        serializer_context["goal"] = goal
+
         serializer = GoalTopupCreateSerializer(
             data=request.data,
-            context=self.get_serializer_context(),
+            context=serializer_context,
         )
         serializer.is_valid(raise_exception=True)
 
@@ -536,6 +544,23 @@ class GoalViewSet(viewsets.ModelViewSet):
 
     def set_goal_status(self, status_value: str):
         goal = self.get_object()
+
+        if (
+            status_value == GoalStatus.ACTIVE
+            and goal.deadline is not None
+            and goal.deadline < timezone.localdate()
+        ):
+            raise ValidationError(
+                {
+                    "deadline": [
+                        (
+                            "Нельзя восстановить активную цель с прошедшим "
+                            "сроком. Сначала измените срок цели."
+                        )
+                    ]
+                }
+            )
+
         goal.status = status_value
         goal.save(update_fields=["status", "updated_at"])
 

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
@@ -279,6 +280,16 @@ class GoalSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         name = attrs.get("name", getattr(self.instance, "name", None))
 
+        if self._has_direct_current_amount_input():
+            raise serializers.ValidationError(
+                {
+                    "current_amount": (
+                        "Накопленную сумму нельзя изменять напрямую. "
+                        "Используйте endpoint пополнения цели."
+                    )
+                }
+            )
+
         if request and name:
             duplicate_queryset = Goal.objects.filter(
                 user=request.user,
@@ -314,7 +325,41 @@ class GoalSerializer(serializers.ModelSerializer):
                 }
             )
 
+        status_value = attrs.get(
+            "status",
+            getattr(self.instance, "status", GoalStatus.ACTIVE),
+        )
+        deadline = attrs.get(
+            "deadline",
+            getattr(self.instance, "deadline", None),
+        )
+
+        if (
+            status_value == GoalStatus.ACTIVE
+            and deadline is not None
+            and deadline < timezone.localdate()
+        ):
+            raise serializers.ValidationError(
+                {
+                    "deadline": (
+                        "Срок активной цели не может быть раньше текущей даты."
+                    )
+                }
+            )
+
         return attrs
+
+    def _has_direct_current_amount_input(self) -> bool:
+        initial_data = getattr(self, "initial_data", {}) or {}
+
+        return any(
+            field_name in initial_data
+            for field_name in (
+                "current_amount",
+                "currentRub",
+                "current_rub",
+            )
+        )
 
     def create(self, validated_data):
         request = self.context["request"]
@@ -462,3 +507,53 @@ class GoalTopupCreateSerializer(serializers.Serializer):
                 mutable_data[field_name] = mutable_data[alias]
 
         return super().to_internal_value(mutable_data)
+
+    def validate_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError(
+                "Дата пополнения не может быть позже текущей даты."
+            )
+
+        return value
+
+    def validate(self, attrs):
+        goal = self.context.get("goal")
+        amount = attrs.get("amountRub")
+        account = attrs.get("accountId")
+
+        if (
+            goal is not None
+            and goal.status == GoalStatus.ACTIVE
+            and amount is not None
+        ):
+            remaining_amount = goal.target_amount - goal.current_amount
+
+            if remaining_amount <= Decimal("0.00"):
+                raise serializers.ValidationError(
+                    {
+                        "amountRub": "Цель уже достигнута."
+                    }
+                )
+
+            if amount > remaining_amount:
+                raise serializers.ValidationError(
+                    {
+                        "amountRub": (
+                            "Сумма пополнения не может быть больше "
+                            "оставшейся суммы по цели."
+                        )
+                    }
+                )
+
+        if account is not None and amount is not None:
+            if account.available_balance < amount:
+                raise serializers.ValidationError(
+                    {
+                        "accountId": (
+                            "На счёте недостаточно доступного баланса "
+                            "для пополнения цели."
+                        )
+                    }
+                )
+
+        return attrs

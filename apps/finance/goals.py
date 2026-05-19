@@ -69,12 +69,57 @@ def fund_goal(
             .get(pk=account.pk, user=user)
         )
 
+        if amount <= Decimal("0.00"):
+            raise DomainConflictError(
+                code="invalid_goal_topup_amount",
+                message="Сумма пополнения цели должна быть больше нуля.",
+                detail={
+                    "amount": str(amount),
+                },
+            )
+
+        remaining_amount = locked_goal.target_amount - locked_goal.current_amount
+
+        if remaining_amount <= Decimal("0.00"):
+            raise DomainConflictError(
+                code="goal_already_funded",
+                message="Цель уже достигнута и не требует пополнения.",
+                detail={
+                    "goal_id": locked_goal.pk,
+                    "status": locked_goal.status,
+                },
+            )
+
+        if amount > remaining_amount:
+            raise DomainConflictError(
+                code="goal_topup_exceeds_remaining_amount",
+                message=(
+                    "Сумма пополнения не может быть больше оставшейся "
+                    "суммы по цели."
+                ),
+                detail={
+                    "remaining_amount": str(remaining_amount),
+                    "amount": str(amount),
+                },
+            )
+
         if not locked_account.is_active or locked_account.is_archived:
             raise DomainConflictError(
                 code="account_not_available",
                 message="Нельзя пополнить цель с неактивного или архивного счёта.",
                 detail={
                     "account_id": locked_account.pk,
+                },
+            )
+
+        if locked_account.available_balance < amount:
+            raise DomainConflictError(
+                code="insufficient_account_balance",
+                message="На счёте недостаточно доступного баланса для пополнения цели.",
+                detail={
+                    "account_id": locked_account.pk,
+                    "available_balance": str(locked_account.available_balance),
+                    "amount": str(amount),
                 },
             )
 
