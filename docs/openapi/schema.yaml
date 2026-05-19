@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, финансовыми целями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -1384,6 +1384,545 @@ paths:
                       rows: []
                       footerLinkLabel: Все напоминания
                   summary: Dashboard summary
+          description: ''
+  /api/v1/finance/goals/:
+    get:
+      operationId: finance_goals_list
+      description: Возвращает финансовые цели текущего пользователя с пагинацией,
+        поиском по названию, фильтром по статусу и сортировкой. По умолчанию возвращаются
+        активные цели.
+      summary: Получить список целей
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Размер страницы. По умолчанию 20, максимум 100.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию цели. Максимум 100 символов.
+      - in: query
+        name: sortBy
+        schema:
+          type: string
+        description: 'Сортировка: deadline, progress, name или priority.'
+      - in: query
+        name: sortDir
+        schema:
+          type: string
+        description: 'Направление сортировки: asc или desc.'
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: 'Статус цели: active, completed, archived, cancelled или all.'
+      tags:
+      - finance-goals
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedGoalList'
+              examples:
+                СписокЦелей:
+                  value:
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - count: 1
+                      next: null
+                      previous: null
+                      results:
+                      - id: 1
+                        name: Ремонт
+                        category: housing
+                        categoryKey: housing
+                        categoryLabel: Жильё
+                        priority: medium
+                        priorityLabel: Средний
+                        status: active
+                        statusLabel: Активна
+                        target_amount: '500000.00'
+                        targetRub: '500000.00'
+                        current_amount: '455000.00'
+                        currentRub: '455000.00'
+                        percent: '91.00'
+                        deadline: '2026-09-01'
+                        icon: tools
+                        color: '#4F46E5'
+                        topups_count: 3
+                        topupsCount: 3
+                        comment: ''
+                  summary: Список целей
+          description: ''
+    post:
+      operationId: finance_goals_create
+      description: Создаёт финансовую цель текущего пользователя. Накопленная сумма
+        не передаётся напрямую, она изменяется через topups.
+      summary: Создать цель
+      tags:
+      - finance-goals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+            examples:
+              СозданиеЦели:
+                value:
+                  name: Отпуск в Турции
+                  targetRub: '250000.00'
+                  deadline: '2026-12-31'
+                  categoryKey: travel
+                  priority: high
+                  icon: airplane
+                  color: '#4F46E5'
+                  comment: Семейный отпуск
+                summary: Создание цели
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+          description: ''
+  /api/v1/finance/goals/{id}/:
+    get:
+      operationId: finance_goals_retrieve
+      description: Возвращает цель текущего пользователя и последние пополнения цели.
+        Для отдельной пагинированной истории используйте /goals/{id}/topups/.
+      summary: Получить цель с историей пополнений
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-goals
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalDetail'
+          description: ''
+    put:
+      operationId: finance_goals_update
+      summary: Полностью обновить цель
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-goals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GoalRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+          description: ''
+    patch:
+      operationId: finance_goals_partial_update
+      description: Частично обновляет цель. Поле current_amount напрямую не меняется,
+        накопленная сумма изменяется через endpoint topups.
+      summary: Частично обновить цель
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-goals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+          description: ''
+    delete:
+      operationId: finance_goals_destroy
+      description: Удаляет цель только если у неё нет пополнений. Если пополнения
+        есть, возвращается 409 Conflict. Для скрытия используйте archive.
+      summary: Удалить цель
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-goals
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/goals/{id}/archive/:
+    patch:
+      operationId: finance_goals_archive_partial_update
+      description: Переводит цель в статус archived без удаления истории.
+      summary: Архивировать цель
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-goals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+          description: ''
+  /api/v1/finance/goals/{id}/cancel/:
+    patch:
+      operationId: finance_goals_cancel_partial_update
+      description: Переводит цель в статус cancelled.
+      summary: Отменить цель
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-goals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+          description: ''
+  /api/v1/finance/goals/{id}/complete/:
+    patch:
+      operationId: finance_goals_complete_partial_update
+      description: Переводит цель в статус completed.
+      summary: Завершить цель
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-goals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+          description: ''
+  /api/v1/finance/goals/{id}/restore/:
+    patch:
+      operationId: finance_goals_restore_partial_update
+      description: Возвращает цель в статус active.
+      summary: Восстановить цель
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-goals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedGoalRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+          description: ''
+  /api/v1/finance/goals/{id}/topups/:
+    get:
+      operationId: finance_goals_topups_list
+      description: Возвращает пагинированную историю пополнений выбранной цели.
+      summary: Получить историю пополнений цели
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - finance-goals
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedGoalContributionList'
+          description: ''
+    post:
+      operationId: finance_goals_topups_create
+      description: Пополняет активную цель, создаёт запись в истории пополнений, создаёт
+        связанную расходную операцию и уменьшает баланс счёта-источника.
+      summary: Пополнить цель
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-goals
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalTopupCreateRequest'
+            examples:
+              ПополнениеЦели:
+                value:
+                  amountRub: '10000.00'
+                  date: '2026-05-17'
+                  accountId: 1
+                  comment: Ежемесячное пополнение
+                summary: Пополнение цели
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/GoalTopupCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GoalTopupCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/goals/meta/:
+    get:
+      operationId: finance_goals_meta_retrieve
+      description: Возвращает категории, приоритеты и статусы целей.
+      summary: Получить справочники для формы цели
+      tags:
+      - finance-goals
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalMeta'
+              examples:
+                СправочникиЦелей:
+                  value:
+                    categories:
+                    - title: Накопления
+                      value: savings
+                      icon: piggy-bank
+                    - title: Жильё
+                      value: housing
+                      icon: home
+                    - title: Транспорт
+                      value: transport
+                      icon: car
+                    - title: Путешествия
+                      value: travel
+                      icon: airplane
+                    - title: Другое
+                      value: other
+                      icon: target
+                    priorities:
+                    - title: Высокий
+                      value: high
+                    - title: Средний
+                      value: medium
+                    - title: Низкий
+                      value: low
+                    statuses:
+                    - title: Активна
+                      value: active
+                    - title: Завершена
+                      value: completed
+                    - title: В архиве
+                      value: archived
+                    - title: Отменена
+                      value: cancelled
+                  summary: Справочники целей
+          description: ''
+  /api/v1/finance/goals/summary/:
+    get:
+      operationId: finance_goals_summary_retrieve
+      description: Возвращает общий прогресс только по активным целям, количество
+        активных и завершённых целей.
+      summary: Получить сводку по целям
+      tags:
+      - finance-goals
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalSummary'
+              examples:
+                СводкаЦелей:
+                  value:
+                    total_current: '2084000.00'
+                    totalCurrentRub: '2084000.00'
+                    total_target: '5450000.00'
+                    totalTargetRub: '5450000.00'
+                    active_count: 4
+                    completed_count: 1
+                  summary: Сводка целей
           description: ''
   /api/v1/finance/transactions/:
     get:
@@ -3176,6 +3715,402 @@ components:
           minLength: 1
       required:
       - email
+    Goal:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название цели
+          maxLength: 150
+        account:
+          type: integer
+          nullable: true
+          title: Связанный счёт
+        account_name:
+          type: string
+          readOnly: true
+        accountId:
+          type: integer
+          readOnly: true
+        accountName:
+          type: string
+          readOnly: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/GoalCategoryEnum'
+          title: Категория цели
+        category_label:
+          type: string
+          readOnly: true
+        categoryKey:
+          type: string
+          readOnly: true
+        categoryLabel:
+          type: string
+          readOnly: true
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/GoalPriorityEnum'
+          title: Приоритет
+        priority_label:
+          type: string
+          readOnly: true
+        priorityLabel:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/GoalStatusEnum'
+          title: Статус
+        status_label:
+          type: string
+          readOnly: true
+        statusLabel:
+          type: string
+          readOnly: true
+        target_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Целевая сумма
+        targetRub:
+          type: string
+          readOnly: true
+        current_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+          title: Текущая сумма
+        currentRub:
+          type: string
+          readOnly: true
+        percent:
+          type: number
+          readOnly: true
+        deadline:
+          type: string
+          format: date
+          nullable: true
+          title: Срок достижения
+        icon:
+          type: string
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        topups_count:
+          type: integer
+          readOnly: true
+        topupsCount:
+          type: integer
+          readOnly: true
+        comment:
+          type: string
+          title: Комментарий
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата создания
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата обновления
+      required:
+      - accountId
+      - accountName
+      - account_name
+      - categoryKey
+      - categoryLabel
+      - category_label
+      - created_at
+      - currentRub
+      - current_amount
+      - id
+      - name
+      - percent
+      - priorityLabel
+      - priority_label
+      - statusLabel
+      - status_label
+      - targetRub
+      - target_amount
+      - topupsCount
+      - topups_count
+      - updated_at
+    GoalCategoryEnum:
+      enum:
+      - savings
+      - housing
+      - transport
+      - travel
+      - other
+      type: string
+      description: |-
+        * `savings` - Накопления
+        * `housing` - Жильё
+        * `transport` - Транспорт
+        * `travel` - Путешествия
+        * `other` - Другое
+    GoalCategoryOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - title
+      - value
+    GoalContribution:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        date:
+          type: string
+          format: date
+          readOnly: true
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+          title: Сумма пополнения
+        amountRub:
+          type: string
+          readOnly: true
+        account:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: Счёт-источник
+        account_name:
+          type: string
+          readOnly: true
+          title: Название счёта на момент пополнения
+        accountName:
+          type: string
+          readOnly: true
+        transaction:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: Связанная операция
+        operationId:
+          type: integer
+          readOnly: true
+        comment:
+          type: string
+          readOnly: true
+          title: Комментарий
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата создания
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата обновления
+      required:
+      - account
+      - accountName
+      - account_name
+      - amount
+      - amountRub
+      - comment
+      - created_at
+      - date
+      - id
+      - operationId
+      - transaction
+      - updated_at
+    GoalDetail:
+      type: object
+      properties:
+        goal:
+          $ref: '#/components/schemas/Goal'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalContribution'
+      required:
+      - goal
+      - history
+    GoalMeta:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalCategoryOption'
+        priorities:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalPriorityOption'
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalStatusOption'
+      required:
+      - categories
+      - priorities
+      - statuses
+    GoalPriorityEnum:
+      enum:
+      - high
+      - medium
+      - low
+      type: string
+      description: |-
+        * `high` - Высокий
+        * `medium` - Средний
+        * `low` - Низкий
+    GoalPriorityOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+      required:
+      - title
+      - value
+    GoalRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название цели
+          maxLength: 150
+        account:
+          type: integer
+          nullable: true
+          title: Связанный счёт
+        category:
+          allOf:
+          - $ref: '#/components/schemas/GoalCategoryEnum'
+          title: Категория цели
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/GoalPriorityEnum'
+          title: Приоритет
+        status:
+          allOf:
+          - $ref: '#/components/schemas/GoalStatusEnum'
+          title: Статус
+        target_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Целевая сумма
+        deadline:
+          type: string
+          format: date
+          nullable: true
+          title: Срок достижения
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        comment:
+          type: string
+          title: Комментарий
+      required:
+      - name
+      - target_amount
+    GoalStatusEnum:
+      enum:
+      - active
+      - completed
+      - archived
+      - cancelled
+      type: string
+      description: |-
+        * `active` - Активна
+        * `completed` - Завершена
+        * `archived` - В архиве
+        * `cancelled` - Отменена
+    GoalStatusOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+      required:
+      - title
+      - value
+    GoalSummary:
+      type: object
+      properties:
+        total_current:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        total_target:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        active_count:
+          type: integer
+        completed_count:
+          type: integer
+        totalCurrentRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        totalTargetRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - active_count
+      - completed_count
+      - totalCurrentRub
+      - totalTargetRub
+      - total_current
+      - total_target
+    GoalTopupCreateRequest:
+      type: object
+      properties:
+        amountRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        date:
+          type: string
+          format: date
+        accountId:
+          type: integer
+        comment:
+          type: string
+      required:
+      - accountId
+      - amountRub
+      - date
     HealthCheckResponse:
       type: object
       properties:
@@ -3354,6 +4289,52 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CategoryTree'
+    PaginatedGoalContributionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalContribution'
+    PaginatedGoalList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Goal'
     PaginatedTransactionList:
       type: object
       required:
@@ -3525,6 +4506,54 @@ components:
           type: string
           title: Фамилия
           maxLength: 150
+    PatchedGoalRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название цели
+          maxLength: 150
+        account:
+          type: integer
+          nullable: true
+          title: Связанный счёт
+        category:
+          allOf:
+          - $ref: '#/components/schemas/GoalCategoryEnum'
+          title: Категория цели
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/GoalPriorityEnum'
+          title: Приоритет
+        status:
+          allOf:
+          - $ref: '#/components/schemas/GoalStatusEnum'
+          title: Статус
+        target_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Целевая сумма
+        deadline:
+          type: string
+          format: date
+          nullable: true
+          title: Срок достижения
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        comment:
+          type: string
+          title: Комментарий
     PatchedTransactionRequest:
       type: object
       properties:
@@ -3950,6 +4979,10 @@ tags:
 - name: finance-accounts
   description: 'Финансовые счета: список, создание, редактирование, архивирование,
     сводка балансов, история операций по счёту и справочники для формы.'
+- name: finance-goals
+  description: 'Финансовые цели: список, создание, редактирование, архивирование,
+    завершение, отмена, восстановление, сводка прогресса, история пополнений и справочники
+    для формы.'
 - name: finance-categories
   description: 'Финансовые категории: список, создание, дерево категорий, избранное,
     архивирование, drag and drop порядок и подсказки категорий по описанию операции.'
