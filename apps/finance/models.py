@@ -15,8 +15,23 @@ class TransactionType(models.TextChoices):
 
 class GoalStatus(models.TextChoices):
     ACTIVE = "active", "Активна"
-    COMPLETED = "completed", "Достигнута"
+    COMPLETED = "completed", "Завершена"
+    ARCHIVED = "archived", "В архиве"
     CANCELLED = "cancelled", "Отменена"
+
+
+class GoalPriority(models.TextChoices):
+    HIGH = "high", "Высокий"
+    MEDIUM = "medium", "Средний"
+    LOW = "low", "Низкий"
+
+
+class GoalCategory(models.TextChoices):
+    SAVINGS = "savings", "Накопления"
+    HOUSING = "housing", "Жильё"
+    TRANSPORT = "transport", "Транспорт"
+    TRAVEL = "travel", "Путешествия"
+    OTHER = "other", "Другое"
 
 
 class AccountType(models.TextChoices):
@@ -578,6 +593,18 @@ class Goal(TimeStampedModel):
         max_length=150,
         verbose_name="Название цели",
     )
+    category = models.CharField(
+        max_length=20,
+        choices=GoalCategory.choices,
+        default=GoalCategory.SAVINGS,
+        verbose_name="Категория цели",
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=GoalPriority.choices,
+        default=GoalPriority.MEDIUM,
+        verbose_name="Приоритет",
+    )
     target_amount = models.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -602,6 +629,21 @@ class Goal(TimeStampedModel):
         default=GoalStatus.ACTIVE,
         verbose_name="Статус",
     )
+    icon = models.CharField(
+        max_length=50,
+        default="target",
+        verbose_name="Иконка",
+    )
+    color = models.CharField(
+        max_length=7,
+        default="#4F46E5",
+        validators=[hex_color_validator],
+        verbose_name="Цвет",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
 
     class Meta:
         verbose_name = "Финансовая цель"
@@ -620,6 +662,18 @@ class Goal(TimeStampedModel):
                 condition=models.Q(status__in=GoalStatus.values),
                 name="goal_status_valid",
             ),
+            models.CheckConstraint(
+                condition=models.Q(category__in=GoalCategory.values),
+                name="goal_category_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(priority__in=GoalPriority.values),
+                name="goal_priority_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(color__regex=r"^#[0-9A-Fa-f]{6}$"),
+                name="goal_color_hex_format",
+            ),
             models.UniqueConstraint(
                 fields=["user", "name"],
                 name="unique_goal_name_per_user",
@@ -630,7 +684,21 @@ class Goal(TimeStampedModel):
             models.Index(fields=["user", "status"], name="idx_goal_user_status"),
             models.Index(fields=["user", "deadline"], name="idx_goal_user_deadline"),
             models.Index(fields=["user", "account"], name="idx_goal_user_account"),
+            models.Index(fields=["user", "category"], name="idx_goal_user_category"),
+            models.Index(fields=["user", "priority"], name="idx_goal_user_priority"),
+            models.Index(
+                fields=["user", "status", "deadline"],
+                name="idx_goal_user_status_deadline",
+            ),
         ]
+
+    @property
+    def progress_percent(self) -> Decimal:
+        if self.target_amount <= 0:
+            return Decimal("0.00")
+
+        percent = self.current_amount / self.target_amount * Decimal("100")
+        return min(percent, Decimal("100.00")).quantize(Decimal("0.01"))
 
     def clean(self) -> None:
         errors = {}
@@ -638,8 +706,121 @@ class Goal(TimeStampedModel):
         if self.account_id and self.user_id and self.account.user_id != self.user_id:
             errors["account"] = "Счёт цели должен принадлежать пользователю."
 
+        if self.category not in GoalCategory.values:
+            errors["category"] = "Недопустимая категория цели."
+
+        if self.priority not in GoalPriority.values:
+            errors["priority"] = "Недопустимый приоритет цели."
+
+        if self.status not in GoalStatus.values:
+            errors["status"] = "Недопустимый статус цели."
+
         if errors:
             raise ValidationError(errors)
 
     def __str__(self) -> str:
         return f"{self.name}: {self.current_amount}/{self.target_amount}"
+
+
+class GoalContribution(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="goal_contributions",
+        verbose_name="Пользователь",
+    )
+    goal = models.ForeignKey(
+        Goal,
+        on_delete=models.PROTECT,
+        related_name="contributions",
+        verbose_name="Цель",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="goal_contributions",
+        verbose_name="Счёт-источник",
+    )
+    transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="goal_contributions",
+        verbose_name="Связанная операция",
+    )
+    account_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Название счёта на момент пополнения",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма пополнения",
+    )
+    contribution_date = models.DateField(
+        verbose_name="Дата пополнения",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
+
+    class Meta:
+        verbose_name = "Пополнение цели"
+        verbose_name_plural = "Пополнения целей"
+        ordering = ["-contribution_date", "-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="goal_contribution_amount_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_gcontrib_user"),
+            models.Index(fields=["goal", "contribution_date"], name="idx_gcontrib_goal_dt"),
+            models.Index(
+                fields=["user", "goal", "contribution_date"],
+                name="idx_gcontrib_user_goal_dt",
+            ),
+            models.Index(fields=["account"], name="idx_gcontrib_account"),
+            models.Index(fields=["transaction"], name="idx_gcontrib_tx"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.goal_id and self.user_id and self.goal.user_id != self.user_id:
+            errors["goal"] = "Цель должна принадлежать пользователю пополнения."
+
+        if self.account_id and self.user_id and self.account.user_id != self.user_id:
+            errors["account"] = "Счёт пополнения должен принадлежать пользователю."
+
+        if self.transaction_id and self.user_id and self.transaction.user_id != self.user_id:
+            errors["transaction"] = "Операция должна принадлежать пользователю."
+
+        if (
+            self.transaction_id
+            and self.account_id
+            and self.transaction.account_id != self.account_id
+        ):
+            errors["transaction"] = (
+                "Связанная операция должна относиться к счёту пополнения."
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.account_id and not self.account_name:
+            self.account_name = self.account.name
+
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.goal.name}: +{self.amount}"
+
