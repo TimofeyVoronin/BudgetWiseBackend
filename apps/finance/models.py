@@ -1,5 +1,7 @@
+from datetime import time
 from decimal import Decimal
 
+from django.utils import timezone
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, RegexValidator
@@ -32,6 +34,58 @@ class GoalCategory(models.TextChoices):
     TRANSPORT = "transport", "Транспорт"
     TRAVEL = "travel", "Путешествия"
     OTHER = "other", "Другое"
+
+
+class NotificationChannel(models.TextChoices):
+    IN_APP = "in_app", "In-app"
+    EMAIL = "email", "Email"
+    PUSH = "push", "Push"
+    SMS = "sms", "SMS"
+
+
+class NotificationType(models.TextChoices):
+    OPERATION = "operation", "Операции"
+    GOAL = "goal", "Цели"
+    BUDGET = "budget", "Бюджет"
+    SYSTEM = "system", "Система"
+    SECURITY = "security", "Безопасность"
+    MARKETING = "marketing", "Маркетинг и акции"
+
+
+class NotificationDeliveryStatus(models.TextChoices):
+    DELIVERED = "delivered", "Доставлено"
+    FAILED = "failed", "Ошибка доставки"
+    PENDING = "pending", "Ожидает доставки"
+    UNAVAILABLE = "unavailable", "Канал недоступен"
+
+
+class NotificationIconTone(models.TextChoices):
+    PRIMARY = "primary", "Основной"
+    SUCCESS = "success", "Успех"
+    WARNING = "warning", "Предупреждение"
+    ERROR = "error", "Ошибка"
+    INFO = "info", "Информация"
+
+
+class NotificationEntityKind(models.TextChoices):
+    TRANSACTION = "transaction", "Операция"
+    GOAL = "goal", "Цель"
+    BUDGET = "budget", "Бюджет"
+
+
+NOTIFICATION_QUIET_HOURS_DAYS = {
+    "mon",
+    "tue",
+    "wed",
+    "thu",
+    "fri",
+    "sat",
+    "sun",
+}
+
+
+def default_quiet_hours_days() -> list[str]:
+    return ["mon", "tue", "wed", "thu", "fri"]
 
 
 class AccountType(models.TextChoices):
@@ -823,4 +877,354 @@ class GoalContribution(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.goal.name}: +{self.amount}"
+
+
+class Notification(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+        verbose_name="Пользователь",
+    )
+    title = models.CharField(
+        max_length=200,
+        verbose_name="Заголовок уведомления",
+    )
+    body = models.TextField(
+        blank=True,
+        verbose_name="Текст уведомления",
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=NotificationType.choices,
+        default=NotificationType.SYSTEM,
+        verbose_name="Тип уведомления",
+    )
+    channel = models.CharField(
+        max_length=20,
+        choices=NotificationChannel.choices,
+        default=NotificationChannel.IN_APP,
+        verbose_name="Канал доставки",
+    )
+    delivery_status = models.CharField(
+        max_length=20,
+        choices=NotificationDeliveryStatus.choices,
+        default=NotificationDeliveryStatus.DELIVERED,
+        verbose_name="Статус доставки",
+    )
+    delivery_error = models.TextField(
+        blank=True,
+        verbose_name="Ошибка доставки",
+    )
+    icon = models.CharField(
+        max_length=50,
+        default="bell",
+        verbose_name="Иконка",
+    )
+    icon_tone = models.CharField(
+        max_length=20,
+        choices=NotificationIconTone.choices,
+        default=NotificationIconTone.PRIMARY,
+        verbose_name="Тон иконки",
+    )
+    is_read = models.BooleanField(
+        default=False,
+        verbose_name="Прочитано",
+    )
+    read_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата прочтения",
+    )
+    is_archived = models.BooleanField(
+        default=False,
+        verbose_name="В архиве",
+    )
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата архивации",
+    )
+    entity_kind = models.CharField(
+        max_length=20,
+        choices=NotificationEntityKind.choices,
+        blank=True,
+        verbose_name="Тип связанной сущности",
+    )
+    entity_id = models.PositiveBigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="ID связанной сущности",
+    )
+    entity_route_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Маршрут связанной сущности",
+    )
+    entity_label = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Название связанной сущности",
+    )
+    entity_tag = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Тег связанной сущности",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Сумма",
+    )
+    account_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Название счёта",
+    )
+    category_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Название категории",
+    )
+    related_goal_name = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Название связанной цели",
+    )
+    related_goal_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Процент связанной цели",
+    )
+    delivery_steps = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Шаги доставки",
+    )
+
+    class Meta:
+        verbose_name = "Уведомление"
+        verbose_name_plural = "Уведомления"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(type__in=NotificationType.values),
+                name="notification_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(channel__in=NotificationChannel.values),
+                name="notification_channel_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(delivery_status__in=NotificationDeliveryStatus.values),
+                name="notif_delivery_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(icon_tone__in=NotificationIconTone.values),
+                name="notif_icon_tone_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(entity_kind="")
+                    | models.Q(entity_kind__in=NotificationEntityKind.values)
+                ),
+                name="notif_entity_kind_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_notif_user"),
+            models.Index(fields=["user", "is_read"], name="idx_notif_user_read"),
+            models.Index(fields=["user", "is_archived"], name="idx_notif_user_archived"),
+            models.Index(fields=["user", "type"], name="idx_notif_user_type"),
+            models.Index(fields=["user", "channel"], name="idx_notif_user_channel"),
+            models.Index(fields=["user", "created_at"], name="idx_notif_user_created"),
+            models.Index(fields=["user", "entity_kind", "entity_id"], name="idx_notif_entity"),
+            models.Index(fields=["user", "delivery_status"], name="idx_notif_delivery"),
+        ]
+
+    @property
+    def status(self) -> str:
+        if self.is_archived:
+            return "archived"
+
+        if self.is_read:
+            return "read"
+
+        return "unread"
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.type not in NotificationType.values:
+            errors["type"] = "Недопустимый тип уведомления."
+
+        if self.channel not in NotificationChannel.values:
+            errors["channel"] = "Недопустимый канал уведомления."
+
+        if self.delivery_status not in NotificationDeliveryStatus.values:
+            errors["delivery_status"] = "Недопустимый статус доставки."
+
+        if self.icon_tone not in NotificationIconTone.values:
+            errors["icon_tone"] = "Недопустимый тон иконки."
+
+        if self.entity_kind and self.entity_kind not in NotificationEntityKind.values:
+            errors["entity_kind"] = "Недопустимый тип связанной сущности."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.status})"
+
+class NotificationSettings(TimeStampedModel):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_settings",
+        verbose_name="Пользователь",
+    )
+    in_app_enabled = models.BooleanField(
+        default=True,
+        verbose_name="In-app уведомления включены",
+    )
+    email_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Email уведомления включены",
+    )
+    push_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Push уведомления включены",
+    )
+    sms_enabled = models.BooleanField(
+        default=True,
+        verbose_name="SMS уведомления включены",
+    )
+    operation_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления по операциям включены",
+    )
+    goal_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления по целям включены",
+    )
+    budget_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления по бюджетам включены",
+    )
+    system_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Системные уведомления включены",
+    )
+    security_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления безопасности включены",
+    )
+    marketing_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Маркетинговые уведомления включены",
+    )
+    quiet_hours_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Тихие часы включены",
+    )
+    quiet_hours_start = models.TimeField(
+        default=time(22, 0),
+        verbose_name="Начало тихих часов",
+    )
+    quiet_hours_end = models.TimeField(
+        default=time(8, 0),
+        verbose_name="Окончание тихих часов",
+    )
+    quiet_hours_days = models.JSONField(
+        default=default_quiet_hours_days,
+        blank=True,
+        verbose_name="Дни тихих часов",
+    )
+
+    class Meta:
+        verbose_name = "Настройки уведомлений"
+        verbose_name_plural = "Настройки уведомлений"
+        ordering = ["user_id"]
+
+    CHANNEL_FIELD_MAP = {
+        NotificationChannel.IN_APP: "in_app_enabled",
+        NotificationChannel.EMAIL: "email_enabled",
+        NotificationChannel.PUSH: "push_enabled",
+        NotificationChannel.SMS: "sms_enabled",
+    }
+
+    TYPE_FIELD_MAP = {
+        NotificationType.OPERATION: "operation_enabled",
+        NotificationType.GOAL: "goal_enabled",
+        NotificationType.BUDGET: "budget_enabled",
+        NotificationType.SYSTEM: "system_enabled",
+        NotificationType.SECURITY: "security_enabled",
+        NotificationType.MARKETING: "marketing_enabled",
+    }
+
+    def is_channel_enabled(self, channel: str) -> bool:
+        field_name = self.CHANNEL_FIELD_MAP.get(channel)
+
+        if not field_name:
+            return False
+
+        return bool(getattr(self, field_name))
+
+    def is_type_enabled(self, notification_type: str) -> bool:
+        field_name = self.TYPE_FIELD_MAP.get(notification_type)
+
+        if not field_name:
+            return False
+
+        return bool(getattr(self, field_name))
+
+    def is_quiet_time(self, moment=None) -> bool:
+        if not self.quiet_hours_enabled:
+            return False
+
+        if moment is None:
+            moment = timezone.localtime()
+
+        day_key = moment.strftime("%a").lower()[:3]
+
+        if day_key not in self.quiet_hours_days:
+            return False
+
+        current_time = moment.time()
+        start_time = self.quiet_hours_start
+        end_time = self.quiet_hours_end
+
+        if start_time <= end_time:
+            return start_time <= current_time < end_time
+
+        return current_time >= start_time or current_time < end_time
+
+    def clean(self) -> None:
+        errors = {}
+
+        if not isinstance(self.quiet_hours_days, list):
+            errors["quiet_hours_days"] = "Дни тихих часов должны быть списком."
+
+        else:
+            invalid_days = [
+                day
+                for day in self.quiet_hours_days
+                if day not in NOTIFICATION_QUIET_HOURS_DAYS
+            ]
+
+            if invalid_days:
+                errors["quiet_hours_days"] = (
+                    "Недопустимые дни тихих часов: "
+                    f"{', '.join(invalid_days)}."
+                )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"Настройки уведомлений пользователя {self.user_id}"
 

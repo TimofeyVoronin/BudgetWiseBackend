@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, финансовыми целями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, финансовыми целями, уведомлениями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -1930,6 +1930,354 @@ paths:
                     active_count: 4
                     completed_count: 1
                   summary: Сводка целей
+          description: ''
+  /api/v1/finance/notifications/:
+    get:
+      operationId: finance_notifications_list
+      description: Возвращает уведомления текущего пользователя с фильтрами по статусу,
+        типам, каналам, связанной сущности, периоду и поиску. По умолчанию возвращаются
+        непрочитанные и прочитанные уведомления без архива.
+      summary: Получить список уведомлений
+      parameters:
+      - in: query
+        name: channels
+        schema:
+          type: string
+        description: 'Каналы через запятую: in_app, email, push, sms.'
+      - in: query
+        name: dateFrom
+        schema:
+          type: string
+          format: date
+        description: Начало периода в формате YYYY-MM-DD.
+      - in: query
+        name: dateTo
+        schema:
+          type: string
+          format: date
+        description: Конец периода в формате YYYY-MM-DD.
+      - in: query
+        name: deliveryStatus
+        schema:
+          type: string
+        description: 'Статус доставки: delivered, failed, pending или unavailable.'
+      - in: query
+        name: entity
+        schema:
+          type: string
+        description: 'Связанная сущность: transaction, goal или budget.'
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Размер страницы. По умолчанию 20, максимум 100.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по заголовку, тексту или тегу сущности.
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: 'Статус: all, unread, read или archived.'
+      - in: query
+        name: types
+        schema:
+          type: string
+        description: 'Типы уведомлений через запятую: operation, goal, budget, system,
+          security.'
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNotificationList'
+          description: ''
+  /api/v1/finance/notifications/{id}/:
+    get:
+      operationId: finance_notifications_retrieve
+      summary: Получить уведомление
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/v1/finance/notifications/{id}/archive/:
+    patch:
+      operationId: finance_notifications_archive_partial_update
+      description: Скрывает уведомление из основного списка без удаления данных.
+      summary: Архивировать уведомление
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/v1/finance/notifications/{id}/read/:
+    patch:
+      operationId: finance_notifications_read_partial_update
+      summary: Отметить уведомление как прочитанное
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/v1/finance/notifications/{id}/restore/:
+    patch:
+      operationId: finance_notifications_restore_partial_update
+      summary: Восстановить уведомление из архива
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/v1/finance/notifications/{id}/unread/:
+    patch:
+      operationId: finance_notifications_unread_partial_update
+      summary: Отметить уведомление как непрочитанное
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+          description: ''
+  /api/v1/finance/notifications/archive-selected/:
+    post:
+      operationId: finance_notifications_archive_selected_create
+      summary: Архивировать выбранные уведомления
+      tags:
+      - finance-notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationBulkIdsRequest'
+            examples:
+              ВыбранныеУведомления:
+                value:
+                  ids:
+                  - 1
+                  - 2
+                  - 3
+                summary: Выбранные уведомления
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/NotificationBulkIdsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/NotificationBulkIdsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationBulkResult'
+          description: ''
+  /api/v1/finance/notifications/mark-all-read/:
+    post:
+      operationId: finance_notifications_mark_all_read_create
+      description: Отмечает все неархивные непрочитанные уведомления пользователя
+        как прочитанные.
+      summary: Отметить все уведомления как прочитанные
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationBulkResult'
+          description: ''
+  /api/v1/finance/notifications/meta/:
+    get:
+      operationId: finance_notifications_meta_retrieve
+      description: Возвращает типы, каналы, статусы, статусы доставки, связанные сущности
+        и тоны иконок.
+      summary: Получить справочники уведомлений
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationMeta'
+          description: ''
+  /api/v1/finance/notifications/settings/:
+    get:
+      operationId: finance_notifications_settings_retrieve
+      description: Возвращает настройки каналов, типов уведомлений и тихих часов текущего
+        пользователя.
+      summary: Получить настройки уведомлений
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+          description: ''
+    patch:
+      operationId: finance_notifications_settings_partial_update
+      description: Обновляет настройки каналов, типов уведомлений и тихих часов. Поддерживаются
+        snake_case и camelCase поля.
+      summary: Обновить настройки уведомлений
+      tags:
+      - finance-notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationSettingsRequest'
+            examples:
+              НастройкиУведомлений:
+                value:
+                  emailEnabled: true
+                  pushEnabled: true
+                  smsEnabled: false
+                  inAppEnabled: true
+                  operationEnabled: true
+                  goalEnabled: true
+                  budgetEnabled: true
+                  systemEnabled: true
+                  securityEnabled: true
+                  marketingEnabled: false
+                  quietHoursEnabled: true
+                  quietHoursStart: '22:00'
+                  quietHoursEnd: 08:00
+                  quietHoursDays:
+                  - mon
+                  - tue
+                  - wed
+                  - thu
+                  - fri
+                summary: Настройки уведомлений
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedNotificationSettingsRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSettings'
+          description: ''
+  /api/v1/finance/notifications/summary/:
+    get:
+      operationId: finance_notifications_summary_retrieve
+      summary: Получить сводку уведомлений
+      tags:
+      - finance-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationSummary'
+              examples:
+                СводкаУведомлений:
+                  value:
+                    unread_count: 3
+                    unreadCount: 3
+                    today_count: 8
+                    todayCount: 8
+                    delivery_errors_count: 1
+                    deliveryErrorsCount: 1
+                    archived_count: 2
+                    archivedCount: 2
+                    total_count: 10
+                    totalCount: 10
+                  summary: Сводка уведомлений
           description: ''
   /api/v1/finance/transactions/:
     get:
@@ -4204,6 +4552,621 @@ components:
       - last_name
       - role
       - username
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+          title: Заголовок уведомления
+        body:
+          type: string
+          readOnly: true
+          title: Текст уведомления
+        icon:
+          type: string
+          readOnly: true
+          title: Иконка
+        icon_tone:
+          allOf:
+          - $ref: '#/components/schemas/NotificationIconToneEnum'
+          readOnly: true
+          title: Тон иконки
+        iconTone:
+          type: string
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/NotificationTypeEnum'
+          readOnly: true
+          title: Тип уведомления
+        type_label:
+          type: string
+          readOnly: true
+        typeLabel:
+          type: string
+          readOnly: true
+        channel:
+          allOf:
+          - $ref: '#/components/schemas/NotificationChannelEnum'
+          readOnly: true
+          title: Канал доставки
+        channel_label:
+          type: string
+          readOnly: true
+        channelLabel:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        is_read:
+          type: boolean
+          readOnly: true
+          title: Прочитано
+        isRead:
+          type: boolean
+          readOnly: true
+        delivery_status:
+          allOf:
+          - $ref: '#/components/schemas/NotificationDeliveryStatusEnum'
+          readOnly: true
+          title: Статус доставки
+        delivery_status_label:
+          type: string
+          readOnly: true
+        deliveryStatus:
+          type: string
+          readOnly: true
+        delivery_error:
+          type: string
+          readOnly: true
+          title: Ошибка доставки
+        deliveryError:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата создания
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        timeLabel:
+          type: string
+          readOnly: true
+        entity_kind:
+          allOf:
+          - $ref: '#/components/schemas/NotificationEntityKindEnum'
+          readOnly: true
+          title: Тип связанной сущности
+        entity_id:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: ID связанной сущности
+        entity_route_name:
+          type: string
+          readOnly: true
+          title: Маршрут связанной сущности
+        entity_label:
+          type: string
+          readOnly: true
+          title: Название связанной сущности
+        entity_tag:
+          type: string
+          readOnly: true
+          title: Тег связанной сущности
+        entityTag:
+          type: string
+          readOnly: true
+        entityLink:
+          allOf:
+          - $ref: '#/components/schemas/NotificationEntityLink'
+          readOnly: true
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+          nullable: true
+          title: Сумма
+        amountRub:
+          type: string
+          readOnly: true
+        account_name:
+          type: string
+          readOnly: true
+          title: Название счёта
+        accountName:
+          type: string
+          readOnly: true
+        category_name:
+          type: string
+          readOnly: true
+          title: Название категории
+        categoryName:
+          type: string
+          readOnly: true
+        related_goal_name:
+          type: string
+          readOnly: true
+          title: Название связанной цели
+        relatedGoalName:
+          type: string
+          readOnly: true
+        related_goal_percent:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          readOnly: true
+          nullable: true
+          title: Процент связанной цели
+        relatedGoalPercent:
+          type: string
+          readOnly: true
+        delivery_steps:
+          readOnly: true
+          title: Шаги доставки
+        deliverySteps:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationDeliveryStep'
+          readOnly: true
+        read_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Дата прочтения
+        is_archived:
+          type: boolean
+          readOnly: true
+          title: В архиве
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Дата архивации
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата обновления
+      required:
+      - accountName
+      - account_name
+      - amount
+      - amountRub
+      - archived_at
+      - body
+      - categoryName
+      - category_name
+      - channel
+      - channelLabel
+      - channel_label
+      - createdAt
+      - created_at
+      - deliveryError
+      - deliveryStatus
+      - deliverySteps
+      - delivery_error
+      - delivery_status
+      - delivery_status_label
+      - delivery_steps
+      - entityLink
+      - entityTag
+      - entity_id
+      - entity_kind
+      - entity_label
+      - entity_route_name
+      - entity_tag
+      - icon
+      - iconTone
+      - icon_tone
+      - id
+      - isRead
+      - is_archived
+      - is_read
+      - read_at
+      - relatedGoalName
+      - relatedGoalPercent
+      - related_goal_name
+      - related_goal_percent
+      - status
+      - timeLabel
+      - title
+      - type
+      - typeLabel
+      - type_label
+      - updated_at
+    NotificationBulkIdsRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          maxItems: 100
+      required:
+      - ids
+    NotificationBulkResult:
+      type: object
+      properties:
+        updated_count:
+          type: integer
+        updatedCount:
+          type: integer
+      required:
+      - updatedCount
+      - updated_count
+    NotificationChannelEnum:
+      enum:
+      - in_app
+      - email
+      - push
+      - sms
+      type: string
+      description: |-
+        * `in_app` - In-app
+        * `email` - Email
+        * `push` - Push
+        * `sms` - SMS
+    NotificationDeliveryStatusEnum:
+      enum:
+      - delivered
+      - failed
+      - pending
+      - unavailable
+      type: string
+      description: |-
+        * `delivered` - Доставлено
+        * `failed` - Ошибка доставки
+        * `pending` - Ожидает доставки
+        * `unavailable` - Канал недоступен
+    NotificationDeliveryStep:
+      type: object
+      properties:
+        label:
+          type: string
+        at:
+          type: string
+          format: date-time
+      required:
+      - at
+      - label
+    NotificationEntityKindEnum:
+      enum:
+      - transaction
+      - goal
+      - budget
+      type: string
+      description: |-
+        * `transaction` - Операция
+        * `goal` - Цель
+        * `budget` - Бюджет
+    NotificationEntityLink:
+      type: object
+      properties:
+        kind:
+          type: string
+        routeName:
+          type: string
+        label:
+          type: string
+      required:
+      - kind
+      - label
+      - routeName
+    NotificationIconToneEnum:
+      enum:
+      - primary
+      - success
+      - warning
+      - error
+      - info
+      type: string
+      description: |-
+        * `primary` - Основной
+        * `success` - Успех
+        * `warning` - Предупреждение
+        * `error` - Ошибка
+        * `info` - Информация
+    NotificationMeta:
+      type: object
+      properties:
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationOption'
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationOption'
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationOption'
+        deliveryStatuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationOption'
+        entityKinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationOption'
+        iconTones:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationOption'
+      required:
+      - channels
+      - deliveryStatuses
+      - entityKinds
+      - iconTones
+      - statuses
+      - types
+    NotificationOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+        icon:
+          type: string
+        iconTone:
+          type: string
+        active:
+          type: boolean
+        hint:
+          type: string
+      required:
+      - title
+      - value
+    NotificationQuietHoursDayOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+      required:
+      - title
+      - value
+    NotificationSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        in_app_enabled:
+          type: boolean
+          title: In-app уведомления включены
+        inAppEnabled:
+          type: boolean
+          readOnly: true
+        email_enabled:
+          type: boolean
+          title: Email уведомления включены
+        emailEnabled:
+          type: boolean
+          readOnly: true
+        push_enabled:
+          type: boolean
+          title: Push уведомления включены
+        pushEnabled:
+          type: boolean
+          readOnly: true
+        sms_enabled:
+          type: boolean
+          title: SMS уведомления включены
+        smsEnabled:
+          type: boolean
+          readOnly: true
+        operation_enabled:
+          type: boolean
+          title: Уведомления по операциям включены
+        operationEnabled:
+          type: boolean
+          readOnly: true
+        goal_enabled:
+          type: boolean
+          title: Уведомления по целям включены
+        goalEnabled:
+          type: boolean
+          readOnly: true
+        budget_enabled:
+          type: boolean
+          title: Уведомления по бюджетам включены
+        budgetEnabled:
+          type: boolean
+          readOnly: true
+        system_enabled:
+          type: boolean
+          title: Системные уведомления включены
+        systemEnabled:
+          type: boolean
+          readOnly: true
+        security_enabled:
+          type: boolean
+          title: Уведомления безопасности включены
+        securityEnabled:
+          type: boolean
+          readOnly: true
+        marketing_enabled:
+          type: boolean
+          title: Маркетинговые уведомления включены
+        marketingEnabled:
+          type: boolean
+          readOnly: true
+        quiet_hours_enabled:
+          type: boolean
+          title: Тихие часы включены
+        quietHoursEnabled:
+          type: boolean
+          readOnly: true
+        quiet_hours_start:
+          type: string
+          format: time
+          title: Начало тихих часов
+        quietHoursStart:
+          type: string
+          readOnly: true
+        quiet_hours_end:
+          type: string
+          format: time
+          title: Окончание тихих часов
+        quietHoursEnd:
+          type: string
+          readOnly: true
+        quiet_hours_days:
+          title: Дни тихих часов
+        quietHoursDays:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationSettingsChannel'
+          readOnly: true
+        types:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationSettingsType'
+          readOnly: true
+        quietHoursDayOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationQuietHoursDayOption'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата создания
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата обновления
+      required:
+      - budgetEnabled
+      - channels
+      - created_at
+      - emailEnabled
+      - goalEnabled
+      - id
+      - inAppEnabled
+      - marketingEnabled
+      - operationEnabled
+      - pushEnabled
+      - quietHoursDayOptions
+      - quietHoursDays
+      - quietHoursEnabled
+      - quietHoursEnd
+      - quietHoursStart
+      - securityEnabled
+      - smsEnabled
+      - systemEnabled
+      - types
+      - updated_at
+    NotificationSettingsChannel:
+      type: object
+      properties:
+        channel:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+        enabled:
+          type: boolean
+        hint:
+          type: string
+      required:
+      - channel
+      - enabled
+      - hint
+      - icon
+      - label
+    NotificationSettingsType:
+      type: object
+      properties:
+        type:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+        iconTone:
+          type: string
+        enabled:
+          type: boolean
+      required:
+      - enabled
+      - icon
+      - iconTone
+      - label
+      - type
+    NotificationSummary:
+      type: object
+      properties:
+        unread_count:
+          type: integer
+        today_count:
+          type: integer
+        delivery_errors_count:
+          type: integer
+        archived_count:
+          type: integer
+        total_count:
+          type: integer
+        unreadCount:
+          type: integer
+        todayCount:
+          type: integer
+        deliveryErrorsCount:
+          type: integer
+        archivedCount:
+          type: integer
+        totalCount:
+          type: integer
+      required:
+      - archivedCount
+      - archived_count
+      - deliveryErrorsCount
+      - delivery_errors_count
+      - todayCount
+      - today_count
+      - totalCount
+      - total_count
+      - unreadCount
+      - unread_count
+    NotificationTypeEnum:
+      enum:
+      - operation
+      - goal
+      - budget
+      - system
+      - security
+      - marketing
+      type: string
+      description: |-
+        * `operation` - Операции
+        * `goal` - Цели
+        * `budget` - Бюджет
+        * `system` - Система
+        * `security` - Безопасность
+        * `marketing` - Маркетинг и акции
     PaginatedAccountHistoryRowList:
       type: object
       required:
@@ -4342,6 +5305,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Goal'
+    PaginatedNotificationList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
     PaginatedTransactionList:
       type: object
       required:
@@ -4561,6 +5547,52 @@ components:
         comment:
           type: string
           title: Комментарий
+    PatchedNotificationSettingsRequest:
+      type: object
+      properties:
+        in_app_enabled:
+          type: boolean
+          title: In-app уведомления включены
+        email_enabled:
+          type: boolean
+          title: Email уведомления включены
+        push_enabled:
+          type: boolean
+          title: Push уведомления включены
+        sms_enabled:
+          type: boolean
+          title: SMS уведомления включены
+        operation_enabled:
+          type: boolean
+          title: Уведомления по операциям включены
+        goal_enabled:
+          type: boolean
+          title: Уведомления по целям включены
+        budget_enabled:
+          type: boolean
+          title: Уведомления по бюджетам включены
+        system_enabled:
+          type: boolean
+          title: Системные уведомления включены
+        security_enabled:
+          type: boolean
+          title: Уведомления безопасности включены
+        marketing_enabled:
+          type: boolean
+          title: Маркетинговые уведомления включены
+        quiet_hours_enabled:
+          type: boolean
+          title: Тихие часы включены
+        quiet_hours_start:
+          type: string
+          format: time
+          title: Начало тихих часов
+        quiet_hours_end:
+          type: string
+          format: time
+          title: Окончание тихих часов
+        quiet_hours_days:
+          title: Дни тихих часов
     PatchedTransactionRequest:
       type: object
       properties:
@@ -4990,6 +6022,10 @@ tags:
   description: 'Финансовые цели: список, создание, редактирование, архивирование,
     завершение, отмена, восстановление, сводка прогресса, история пополнений и справочники
     для формы.'
+- name: finance-notifications
+  description: 'Центр уведомлений: список, просмотр, фильтрация, отметка как прочитанное/непрочитанное,
+    архивация, восстановление, сводка, справочники, настройки каналов, типов уведомлений
+    и тихих часов.'
 - name: finance-categories
   description: 'Финансовые категории: список, создание, дерево категорий, избранное,
     архивирование, drag and drop порядок и подсказки категорий по описанию операции.'
