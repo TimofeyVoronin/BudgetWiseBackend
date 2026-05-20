@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, финансовыми целями, уведомлениями, регулярными операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, финансовыми целями, уведомлениями, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -2279,6 +2279,507 @@ paths:
                     totalCount: 10
                   summary: Сводка уведомлений
           description: ''
+  /api/v1/finance/planned-transactions/:
+    get:
+      operationId: finance_planned_transactions_list
+      description: Возвращает планируемые операции текущего пользователя. Поддерживаются
+        фильтры по статусу, периоду, счёту, категории, сумме, дубликатам и поиску.
+        Планируемые операции не меняют текущий баланс до конвертации в фактическую
+        операцию.
+      summary: Получить список планируемых операций
+      parameters:
+      - in: query
+        name: accounts
+        schema:
+          type: string
+        description: ID счетов через запятую.
+      - in: query
+        name: amountMax
+        schema:
+          type: number
+        description: Максимальная сумма.
+      - in: query
+        name: amountMin
+        schema:
+          type: number
+        description: Минимальная сумма.
+      - in: query
+        name: categories
+        schema:
+          type: string
+        description: ID категорий через запятую.
+      - in: query
+        name: dateFrom
+        schema:
+          type: string
+          format: date
+        description: Дата начала периода.
+      - in: query
+        name: dateTo
+        schema:
+          type: string
+          format: date
+        description: Дата конца периода.
+      - in: query
+        name: onlyDuplicates
+        schema:
+          type: boolean
+        description: Только возможные дубликаты.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Размер страницы.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию, категории или счёту.
+      - in: query
+        name: statusTab
+        schema:
+          type: string
+        description: 'Вкладка: all, pending, confirmed или cancelled.'
+      - in: query
+        name: statuses
+        schema:
+          type: string
+        description: Статусы через запятую.
+      tags:
+      - finance-planned-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPlannedTransactionList'
+          description: ''
+    post:
+      operationId: finance_planned_transactions_create
+      summary: Создать планируемую операцию
+      tags:
+      - finance-planned-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+            examples:
+              СозданиеПланируемойОперации:
+                value:
+                  name: Такси в аэропорт
+                  kind: expense
+                  amountRub: '2800.00'
+                  categoryId: 2
+                  accountId: 1
+                  plannedDate: '2026-06-11'
+                  includeInForecast: true
+                  comment: Будущая операция без влияния на текущий баланс
+                summary: Создание планируемой операции
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedTransaction'
+          description: ''
+  /api/v1/finance/planned-transactions/{id}/:
+    get:
+      operationId: finance_planned_transactions_retrieve
+      summary: Получить планируемую операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-planned-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedTransaction'
+          description: ''
+    put:
+      operationId: finance_planned_transactions_update
+      summary: Полностью обновить планируемую операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-planned-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedTransaction'
+          description: ''
+    patch:
+      operationId: finance_planned_transactions_partial_update
+      summary: Частично обновить планируемую операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-planned-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPlannedTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPlannedTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPlannedTransactionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedTransaction'
+          description: ''
+    delete:
+      operationId: finance_planned_transactions_destroy
+      summary: Удалить планируемую операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-planned-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/planned-transactions/{id}/cancel/:
+    post:
+      operationId: finance_planned_transactions_cancel_create
+      summary: Отменить планируемую операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-planned-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedTransaction'
+          description: ''
+  /api/v1/finance/planned-transactions/{id}/confirm/:
+    post:
+      operationId: finance_planned_transactions_confirm_create
+      summary: Подтвердить планируемую операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-planned-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedTransaction'
+          description: ''
+  /api/v1/finance/planned-transactions/{id}/restore/:
+    post:
+      operationId: finance_planned_transactions_restore_create
+      summary: Вернуть планируемую операцию в ожидание
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-planned-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlannedTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedTransaction'
+          description: ''
+  /api/v1/finance/planned-transactions/calendar/:
+    get:
+      operationId: finance_planned_transactions_calendar_retrieve
+      summary: Получить календарь планируемых операций
+      parameters:
+      - in: query
+        name: accounts
+        schema:
+          type: string
+        description: ID счетов через запятую.
+      - in: query
+        name: categories
+        schema:
+          type: string
+        description: ID категорий через запятую.
+      - in: query
+        name: month
+        schema:
+          type: integer
+        description: Месяц от 1 до 12.
+        required: true
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск.
+      - in: query
+        name: statuses
+        schema:
+          type: string
+        description: Статусы через запятую.
+      - in: query
+        name: year
+        schema:
+          type: integer
+        description: Год.
+        required: true
+      tags:
+      - finance-planned-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedCalendarResponse'
+          description: ''
+  /api/v1/finance/planned-transactions/check-duplicate/:
+    post:
+      operationId: finance_planned_transactions_check_duplicate_create
+      summary: Проверить возможный дубликат планируемой операции
+      tags:
+      - finance-planned-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckPlannedDuplicateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CheckPlannedDuplicateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CheckPlannedDuplicateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckPlannedDuplicateResponse'
+          description: ''
+  /api/v1/finance/planned-transactions/forecast/:
+    get:
+      operationId: finance_planned_transactions_forecast_retrieve
+      summary: Получить прогноз баланса с учётом планируемых операций
+      parameters:
+      - in: query
+        name: dateFrom
+        schema:
+          type: string
+          format: date
+        description: Дата начала периода.
+      - in: query
+        name: dateTo
+        schema:
+          type: string
+          format: date
+        description: Дата конца периода.
+      - in: query
+        name: includePlanned
+        schema:
+          type: boolean
+        description: Учитывать плановые операции.
+      - in: query
+        name: timeRange
+        schema:
+          type: string
+        description: 7 дней, 1 мес, 3 мес, 6 мес, 1 год или Всё время.
+      tags:
+      - finance-planned-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedForecastResponse'
+          description: ''
+  /api/v1/finance/planned-transactions/meta/:
+    get:
+      operationId: finance_planned_transactions_meta_retrieve
+      summary: Получить справочники для планируемых операций
+      tags:
+      - finance-planned-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedMeta'
+          description: ''
+  /api/v1/finance/planned-transactions/summary/:
+    get:
+      operationId: finance_planned_transactions_summary_retrieve
+      summary: Получить сводку планируемых операций
+      tags:
+      - finance-planned-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedSummary'
+          description: ''
+  /api/v1/finance/planned-transactions/validate/:
+    post:
+      operationId: finance_planned_transactions_validate_create
+      summary: Проверить данные формы планируемой операции
+      tags:
+      - finance-planned-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidatePlannedFormRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ValidatePlannedFormRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidatePlannedFormRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlannedValidationResponse'
+          description: ''
   /api/v1/finance/recurring-transactions/:
     get:
       operationId: finance_recurring_transactions_list
@@ -4300,6 +4801,46 @@ components:
       - name
       - type
       - updated_at
+    CheckPlannedDuplicateRequest:
+      type: object
+      properties:
+        excludeId:
+          type: integer
+          nullable: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        plannedDate:
+          type: string
+          format: date
+        categoryId:
+          type: integer
+          nullable: true
+        categoryName:
+          type: string
+        accountId:
+          type: integer
+          nullable: true
+        accountName:
+          type: string
+        amountRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - amountRub
+      - name
+      - plannedDate
+    CheckPlannedDuplicateResponse:
+      type: object
+      properties:
+        isDuplicate:
+          type: boolean
+        message:
+          type: string
+      required:
+      - isDuplicate
     CurrentUser:
       type: object
       properties:
@@ -5768,6 +6309,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Notification'
+    PaginatedPlannedTransactionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlannedTransaction'
     PaginatedRecurringTransactionList:
       type: object
       required:
@@ -6056,6 +6620,45 @@ components:
           title: Окончание тихих часов
         quiet_hours_days:
           title: Дни тихих часов
+    PatchedPlannedTransactionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название плановой операции
+          maxLength: 150
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          title: Тип операции
+        kind:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Сумма
+        category:
+          type: integer
+          title: Категория
+        account:
+          type: integer
+          title: Счёт
+        planned_date:
+          type: string
+          format: date
+          title: Плановая дата операции
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlannedStatusEnum'
+          title: Статус
+        comment:
+          type: string
+          title: Комментарий
+        include_in_forecast:
+          type: boolean
+          title: Учитывать в прогнозе баланса
     PatchedRecurringTransactionRequest:
       type: object
       properties:
@@ -6189,6 +6792,425 @@ components:
           type: boolean
           title: Статус суперпользователя
           description: Указывает, что пользователь имеет все права без явного их назначения.
+    PlannedCalendarDayBadge:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        tone:
+          $ref: '#/components/schemas/ToneEnum'
+      required:
+      - id
+      - label
+      - tone
+    PlannedCalendarDayCell:
+      type: object
+      properties:
+        iso:
+          type: string
+          format: date
+        day:
+          type: integer
+        inMonth:
+          type: boolean
+        isToday:
+          type: boolean
+        badges:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlannedCalendarDayBadge'
+      required:
+      - badges
+      - day
+      - inMonth
+      - isToday
+      - iso
+    PlannedCalendarResponse:
+      type: object
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        cells:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlannedCalendarDayCell'
+      required:
+      - cells
+      - month
+      - year
+    PlannedForecastChartPoint:
+      type: object
+      properties:
+        label:
+          type: string
+        withPlansPct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+        withoutPlansPct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+        markerExpense:
+          type: object
+          additionalProperties: {}
+      required:
+      - label
+      - withPlansPct
+      - withoutPlansPct
+    PlannedForecastResponse:
+      type: object
+      properties:
+        legendWithPlans:
+          type: string
+        legendWithPlansValue:
+          type: string
+        legendWithoutPlans:
+          type: string
+        legendWithoutPlansValue:
+          type: string
+        yAxisLabels:
+          type: array
+          items:
+            type: string
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlannedForecastChartPoint'
+        timeRanges:
+          type: array
+          items:
+            type: string
+        defaultTimeRange:
+          type: string
+        totalPlannedExpensesLabel:
+          type: string
+        totalPlannedExpensesRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - defaultTimeRange
+      - legendWithPlans
+      - legendWithPlansValue
+      - legendWithoutPlans
+      - legendWithoutPlansValue
+      - points
+      - timeRanges
+      - totalPlannedExpensesLabel
+      - totalPlannedExpensesRub
+      - yAxisLabels
+    PlannedMeta:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlannedOption'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlannedOption'
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlannedOption'
+      required:
+      - accounts
+      - categories
+      - statuses
+    PlannedOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+      required:
+      - title
+      - value
+    PlannedStatusEnum:
+      enum:
+      - pending
+      - confirmed
+      - cancelled
+      - converted
+      - overdue
+      type: string
+      description: |-
+        * `pending` - Ожидает
+        * `confirmed` - Подтверждена
+        * `cancelled` - Отменена
+        * `converted` - Конвертирована
+        * `overdue` - Просрочена
+    PlannedSummary:
+      type: object
+      properties:
+        planned_month_label:
+          type: string
+        planned_month_rub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        to_confirm_count:
+          type: integer
+        forecast_delta_rub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        forecast_delta_label:
+          type: string
+        plannedMonthLabel:
+          type: string
+        plannedMonthRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        toConfirmCount:
+          type: integer
+        forecastDeltaRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        forecastDeltaLabel:
+          type: string
+      required:
+      - forecastDeltaRub
+      - forecast_delta_rub
+      - plannedMonthLabel
+      - plannedMonthRub
+      - planned_month_label
+      - planned_month_rub
+      - toConfirmCount
+      - to_confirm_count
+    PlannedTransaction:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название плановой операции
+          maxLength: 150
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          title: Тип операции
+        kind:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Сумма
+        amountRub:
+          type: string
+          readOnly: true
+        category:
+          type: integer
+          title: Категория
+        categoryId:
+          type: integer
+          readOnly: true
+        categoryName:
+          type: string
+          readOnly: true
+        categoryIcon:
+          type: string
+          readOnly: true
+        categoryColor:
+          type: string
+          readOnly: true
+        account:
+          type: integer
+          title: Счёт
+        accountId:
+          type: integer
+          readOnly: true
+        accountName:
+          type: string
+          readOnly: true
+        accountIcon:
+          type: string
+          readOnly: true
+        planned_date:
+          type: string
+          format: date
+          title: Плановая дата операции
+        plannedDate:
+          type: string
+          format: date
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlannedStatusEnum'
+          title: Статус
+        statusLabel:
+          type: string
+          readOnly: true
+        comment:
+          type: string
+          title: Комментарий
+        include_in_forecast:
+          type: boolean
+          title: Учитывать в прогнозе баланса
+        includeInForecast:
+          type: boolean
+          readOnly: true
+        converted_transaction:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: Созданная операция
+        convertedTransactionId:
+          type: integer
+          readOnly: true
+        operationId:
+          type: integer
+          readOnly: true
+        converted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Дата конвертации
+        convertedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_error_code:
+          type: string
+          readOnly: true
+          title: Код последней ошибки
+        lastErrorCode:
+          type: string
+          readOnly: true
+        last_error_message:
+          type: string
+          readOnly: true
+          title: Сообщение последней ошибки
+        lastErrorMessage:
+          type: string
+          readOnly: true
+        last_failed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Дата последней ошибки
+        lastFailedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата создания
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата обновления
+      required:
+      - account
+      - accountIcon
+      - accountId
+      - accountName
+      - amount
+      - amountRub
+      - category
+      - categoryColor
+      - categoryIcon
+      - categoryId
+      - categoryName
+      - convertedAt
+      - convertedTransactionId
+      - converted_at
+      - converted_transaction
+      - created_at
+      - id
+      - includeInForecast
+      - lastErrorCode
+      - lastErrorMessage
+      - lastFailedAt
+      - last_error_code
+      - last_error_message
+      - last_failed_at
+      - name
+      - operationId
+      - plannedDate
+      - planned_date
+      - statusLabel
+      - updated_at
+    PlannedTransactionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название плановой операции
+          maxLength: 150
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          title: Тип операции
+        kind:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Сумма
+        category:
+          type: integer
+          title: Категория
+        account:
+          type: integer
+          title: Счёт
+        planned_date:
+          type: string
+          format: date
+          title: Плановая дата операции
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlannedStatusEnum'
+          title: Статус
+        comment:
+          type: string
+          title: Комментарий
+        include_in_forecast:
+          type: boolean
+          title: Учитывать в прогнозе баланса
+      required:
+      - account
+      - amount
+      - category
+      - name
+      - planned_date
+    PlannedValidationResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - fieldErrors
+      - ok
     RecurringFrequencyEnum:
       enum:
       - daily
@@ -6757,6 +7779,16 @@ components:
           minLength: 1
       required:
       - refresh
+    ToneEnum:
+      enum:
+      - income
+      - expense
+      - subscription
+      type: string
+      description: |-
+        * `income` - income
+        * `expense` - expense
+        * `subscription` - subscription
     Transaction:
       type: object
       properties:
@@ -6985,6 +8017,30 @@ components:
       required:
       - email
       - username
+    ValidatePlannedFormRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        kind:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        amountAbs:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        plannedDate:
+          type: string
+          format: date
+        allowPastDate:
+          type: boolean
+          default: false
+      required:
+      - amountAbs
+      - kind
+      - name
+      - plannedDate
     ValidateRecurringScheduleRequest:
       type: object
       properties:
@@ -7063,6 +8119,10 @@ tags:
 - name: finance-recurring-transactions
   description: 'Регулярные операции: список, создание, редактирование, удаление, пауза,
     возобновление, завершение, справочники, сводка, история списаний и проверка расписания.'
+- name: finance-planned-transactions
+  description: 'Планируемые операции: будущие доходы и расходы, список, создание,
+    редактирование, отмена, подтверждение, конвертация в фактические операции, календарь
+    и прогноз баланса.'
 - name: finance-categories
   description: 'Финансовые категории: список, создание, дерево категорий, избранное,
     архивирование, drag and drop порядок и подсказки категорий по описанию операции.'
