@@ -93,6 +93,14 @@ class RecurringChargeStatus(models.TextChoices):
     SKIPPED = "skipped", "Пропущено"
 
 
+class PlannedStatus(models.TextChoices):
+    PENDING = "pending", "Ожидает"
+    CONFIRMED = "confirmed", "Подтверждена"
+    CANCELLED = "cancelled", "Отменена"
+    CONVERTED = "converted", "Конвертирована"
+    OVERDUE = "overdue", "Просрочена"
+
+
 NOTIFICATION_QUIET_HOURS_DAYS = {
     "mon",
     "tue",
@@ -1547,4 +1555,197 @@ class RecurringTransactionCharge(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.recurring_transaction_id}: {self.status}"
+
+
+class PlannedTransaction(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="planned_transactions",
+        verbose_name="Пользователь",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="planned_transactions",
+        verbose_name="Счёт",
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name="planned_transactions",
+        verbose_name="Категория",
+    )
+    converted_transaction = models.OneToOneField(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_planned_transaction",
+        verbose_name="Созданная операция",
+    )
+    name = models.CharField(
+        max_length=150,
+        verbose_name="Название плановой операции",
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=TransactionType.choices,
+        default=TransactionType.EXPENSE,
+        verbose_name="Тип операции",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма",
+    )
+    planned_date = models.DateField(
+        verbose_name="Плановая дата операции",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=PlannedStatus.choices,
+        default=PlannedStatus.PENDING,
+        verbose_name="Статус",
+    )
+    include_in_forecast = models.BooleanField(
+        default=True,
+        verbose_name="Учитывать в прогнозе баланса",
+    )
+    converted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата конвертации",
+    )
+    last_error_code = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Код последней ошибки",
+    )
+    last_error_message = models.TextField(
+        blank=True,
+        verbose_name="Сообщение последней ошибки",
+    )
+    last_failed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последней ошибки",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
+
+    class Meta:
+        verbose_name = "Планируемая операция"
+        verbose_name_plural = "Планируемые операции"
+        ordering = ["planned_date", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="ptx_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(type__in=TransactionType.values),
+                name="ptx_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=PlannedStatus.values),
+                name="ptx_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_ptx_user"),
+            models.Index(fields=["user", "status"], name="idx_ptx_user_status"),
+            models.Index(fields=["user", "planned_date"], name="idx_ptx_user_date"),
+            models.Index(fields=["user", "account"], name="idx_ptx_user_account"),
+            models.Index(fields=["user", "category"], name="idx_ptx_user_category"),
+            models.Index(fields=["user", "include_in_forecast"], name="idx_ptx_user_forecast"),
+            models.Index(fields=["user", "status", "planned_date"], name="idx_ptx_status_date"),
+            models.Index(fields=["converted_transaction"], name="idx_ptx_converted_tx"),
+        ]
+
+    @property
+    def signed_amount(self) -> Decimal:
+        if self.type == TransactionType.INCOME:
+            return self.amount
+
+        return -self.amount
+
+    @property
+    def forecast_delta(self) -> Decimal:
+        if not self.include_in_forecast:
+            return Decimal("0.00")
+
+        if self.status not in {
+            PlannedStatus.PENDING,
+            PlannedStatus.CONFIRMED,
+        }:
+            return Decimal("0.00")
+
+        return self.signed_amount
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.account_id and self.user_id and self.account.user_id != self.user_id:
+            errors["account"] = "Счёт должен принадлежать пользователю."
+
+        if self.category_id and self.user_id and self.category.user_id != self.user_id:
+            errors["category"] = "Категория должна принадлежать пользователю."
+
+        if self.category_id and self.type and self.category.type != self.type:
+            errors["category"] = "Тип категории должен совпадать с типом операции."
+
+        if self.account_id and not self.account.is_active:
+            errors["account"] = "Нельзя использовать неактивный счёт."
+
+        if self.account_id and self.account.is_archived:
+            errors["account"] = "Нельзя использовать архивный счёт."
+
+        if self.category_id and not self.category.is_active:
+            errors["category"] = "Нельзя использовать неактивную категорию."
+
+        if self.category_id and self.category.is_archived:
+            errors["category"] = "Нельзя использовать архивную категорию."
+
+        if self.type not in TransactionType.values:
+            errors["type"] = "Недопустимый тип операции."
+
+        if self.status not in PlannedStatus.values:
+            errors["status"] = "Недопустимый статус плановой операции."
+
+        if (
+            self.converted_transaction_id
+            and self.user_id
+            and self.converted_transaction.user_id != self.user_id
+        ):
+            errors["converted_transaction"] = (
+                "Созданная операция должна принадлежать пользователю."
+            )
+
+        if (
+            self.converted_transaction_id
+            and self.account_id
+            and self.converted_transaction.account_id != self.account_id
+        ):
+            errors["converted_transaction"] = (
+                "Созданная операция должна относиться к тому же счёту."
+            )
+
+        if (
+            self.converted_transaction_id
+            and self.category_id
+            and self.converted_transaction.category_id != self.category_id
+        ):
+            errors["converted_transaction"] = (
+                "Созданная операция должна относиться к той же категории."
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.name}: {self.amount}"
 
