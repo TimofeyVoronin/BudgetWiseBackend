@@ -35,6 +35,8 @@ from apps.finance.planned_transaction_serializers import (
     DEFAULT_PLANNED_FORECAST_TIME_RANGE,
     PLANNED_FORECAST_TIME_RANGES,
     PLANNED_STATUS_OPTIONS,
+    ConvertPlannedResponseSerializer,
+    ConvertPlannedTransactionSerializer,
     PlannedCalendarResponseSerializer,
     PlannedForecastResponseSerializer,
     PlannedMetaSerializer,
@@ -43,6 +45,10 @@ from apps.finance.planned_transaction_serializers import (
     PlannedValidationResponseSerializer,
     ValidatePlannedFormSerializer,
     get_planned_validation_errors,
+)
+from apps.finance.planned_transactions import (
+    PlannedConversionError,
+    convert_planned_transaction,
 )
 
 
@@ -522,6 +528,55 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(planned)
         return Response(serializer.data)
+
+    @extend_schema(
+        tags=["finance-planned-transactions"],
+        summary="Конвертировать планируемую операцию в фактическую",
+        description=(
+            "Создаёт обычную финансовую операцию на основе планируемой, "
+            "обновляет баланс счёта и связывает план с созданной операцией. "
+            "Повторный вызов для уже конвертированной операции не создаёт дубль."
+        ),
+        request=ConvertPlannedTransactionSerializer,
+        responses={200: ConvertPlannedResponseSerializer},
+        examples=[
+            OpenApiExample(
+                "Конвертация планируемой операции",
+                value={
+                    "operationDate": "2026-06-11",
+                },
+                request_only=True,
+            )
+        ],
+    )
+    @action(detail=True, methods=["post"], url_path="convert")
+    def convert(self, request, pk=None):
+        planned = self.get_object()
+        request_serializer = ConvertPlannedTransactionSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+
+        try:
+            result = convert_planned_transaction(
+                planned_id=planned.pk,
+                user=request.user,
+                operation_date=request_serializer.validated_data.get("operation_date"),
+                mark_overdue_on_failure=True,
+            )
+        except PlannedConversionError as exc:
+            raise ValidationError(
+                {
+                    "code": exc.code,
+                    "message": exc.message,
+                }
+            ) from exc
+
+        serializer = self.get_serializer(result.planned)
+        return Response(
+            {
+                "planned": serializer.data,
+                "operationId": result.transaction_id,
+            }
+        )
 
     @extend_schema(
         tags=["finance-planned-transactions"],

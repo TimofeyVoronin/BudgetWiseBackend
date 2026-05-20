@@ -449,3 +449,20 @@ def get_planned_validation_errors(data: dict, *, today: date) -> dict:
         errors["plannedDate"] = "Дата плановой операции не может быть в прошлом."
 
     return errors
+
+
+class ConvertPlannedTransactionSerializer(serializers.Serializer):
+    operationDate = serializers.DateField(required=False)
+    operation_date = serializers.DateField(required=False, write_only=True)
+
+    def validate(self, attrs):
+        operation_date = attrs.get("operationDate") or attrs.get("operation_date")
+
+        return {
+            "operation_date": operation_date,
+        }
+
+
+class ConvertPlannedResponseSerializer(serializers.Serializer):
+    planned = PlannedTransactionSerializer()
+    operationId = serializers.IntegerField()

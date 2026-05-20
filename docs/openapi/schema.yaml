@@ -2576,6 +2576,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlannedTransaction'
           description: ''
+  /api/v1/finance/planned-transactions/{id}/convert/:
+    post:
+      operationId: finance_planned_transactions_convert_create
+      description: Создаёт обычную финансовую операцию на основе планируемой, обновляет
+        баланс счёта и связывает план с созданной операцией. Повторный вызов для уже
+        конвертированной операции не создаёт дубль.
+      summary: Конвертировать планируемую операцию в фактическую
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-planned-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertPlannedTransactionRequest'
+            examples:
+              КонвертацияПланируемойОперации:
+                value:
+                  operationDate: '2026-06-11'
+                summary: Конвертация планируемой операции
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConvertPlannedTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConvertPlannedTransactionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConvertPlannedResponse'
+          description: ''
   /api/v1/finance/planned-transactions/{id}/restore/:
     post:
       operationId: finance_planned_transactions_restore_create
@@ -4841,6 +4882,26 @@ components:
           type: string
       required:
       - isDuplicate
+    ConvertPlannedResponse:
+      type: object
+      properties:
+        planned:
+          $ref: '#/components/schemas/PlannedTransaction'
+        operationId:
+          type: integer
+      required:
+      - operationId
+      - planned
+    ConvertPlannedTransactionRequest:
+      type: object
+      properties:
+        operationDate:
+          type: string
+          format: date
+        operation_date:
+          type: string
+          format: date
+          writeOnly: true
     CurrentUser:
       type: object
       properties:
