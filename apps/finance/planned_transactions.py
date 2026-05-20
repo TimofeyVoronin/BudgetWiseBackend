@@ -217,6 +217,8 @@ def convert_planned_transaction(
     The function is idempotent for already converted planned transactions: it
     returns the existing operation instead of creating a duplicate.
     """
+    conversion_error: PlannedConversionError | None = None
+
     with db_transaction.atomic():
         planned_queryset = (
             PlannedTransaction.objects
@@ -266,28 +268,36 @@ def convert_planned_transaction(
                 error_message=error["message"],
                 mark_overdue=mark_overdue_on_failure,
             )
-            raise PlannedConversionError(
+            conversion_error = PlannedConversionError(
                 code=error["code"],
                 message=error["message"],
             )
+        else:
+            transaction = _create_transaction_from_planned(
+                planned=planned,
+                account=locked_account,
+                category=category,
+                operation_date=scheduled_operation_date,
+            )
+            _mark_planned_converted(
+                planned=planned,
+                transaction=transaction,
+            )
 
-        transaction = _create_transaction_from_planned(
-            planned=planned,
-            account=locked_account,
-            category=category,
-            operation_date=scheduled_operation_date,
-        )
-        _mark_planned_converted(
-            planned=planned,
-            transaction=transaction,
-        )
+            return PlannedConversionResult(
+                planned=planned,
+                transaction=transaction,
+                status=PLANNED_CONVERSION_CONVERTED,
+                message="Планируемая операция конвертирована.",
+            )
 
-        return PlannedConversionResult(
-            planned=planned,
-            transaction=transaction,
-            status=PLANNED_CONVERSION_CONVERTED,
-            message="Планируемая операция конвертирована.",
-        )
+    if conversion_error is not None:
+        raise conversion_error
+
+    raise PlannedConversionError(
+        code=PLANNED_ERROR_UNEXPECTED,
+        message="Не удалось завершить конвертацию планируемой операции.",
+    )
 
 
 def get_planned_conversion_error(
