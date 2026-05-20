@@ -73,6 +73,26 @@ class NotificationEntityKind(models.TextChoices):
     BUDGET = "budget", "Бюджет"
 
 
+class RecurringFrequency(models.TextChoices):
+    DAILY = "daily", "Ежедневно"
+    WEEKLY = "weekly", "Еженедельно"
+    MONTHLY = "monthly", "Ежемесячно"
+    YEARLY = "yearly", "Ежегодно"
+
+
+class RecurringStatus(models.TextChoices):
+    ACTIVE = "active", "Активна"
+    PAUSED = "paused", "На паузе"
+    COMPLETED = "completed", "Завершена"
+    ERROR = "error", "Ошибка"
+
+
+class RecurringChargeStatus(models.TextChoices):
+    SUCCESS = "success", "Выполнено"
+    FAILED = "failed", "Ошибка"
+    SKIPPED = "skipped", "Пропущено"
+
+
 NOTIFICATION_QUIET_HOURS_DAYS = {
     "mon",
     "tue",
@@ -1227,4 +1247,304 @@ class NotificationSettings(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Настройки уведомлений пользователя {self.user_id}"
+
+
+class RecurringTransaction(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recurring_transactions",
+        verbose_name="Пользователь",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="recurring_transactions",
+        verbose_name="Счёт",
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name="recurring_transactions",
+        verbose_name="Категория",
+    )
+    name = models.CharField(
+        max_length=150,
+        verbose_name="Название регулярной операции",
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=TransactionType.choices,
+        default=TransactionType.EXPENSE,
+        verbose_name="Тип операции",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма",
+    )
+    frequency = models.CharField(
+        max_length=20,
+        choices=RecurringFrequency.choices,
+        default=RecurringFrequency.MONTHLY,
+        verbose_name="Периодичность",
+    )
+    day_of_month = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="День месяца",
+    )
+    start_date = models.DateField(
+        verbose_name="Дата начала",
+    )
+    has_end = models.BooleanField(
+        default=False,
+        verbose_name="Есть дата окончания",
+    )
+    end_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Дата окончания",
+    )
+    next_charge_date = models.DateField(
+        verbose_name="Дата следующего списания",
+    )
+    last_charge_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последнего списания",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=RecurringStatus.choices,
+        default=RecurringStatus.ACTIVE,
+        verbose_name="Статус",
+    )
+    template_id = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="ID шаблона",
+    )
+    template_name = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Название шаблона",
+    )
+    created_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Количество созданных операций",
+    )
+    last_error_code = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Код последней ошибки",
+    )
+    last_error_message = models.TextField(
+        blank=True,
+        verbose_name="Сообщение последней ошибки",
+    )
+    last_failed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последней ошибки",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
+
+    class Meta:
+        verbose_name = "Регулярная операция"
+        verbose_name_plural = "Регулярные операции"
+        ordering = ["next_charge_date", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="rtx_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(type__in=TransactionType.values),
+                name="rtx_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(frequency__in=RecurringFrequency.values),
+                name="rtx_frequency_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=RecurringStatus.values),
+                name="rtx_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(day_of_month__isnull=True)
+                    | (
+                        models.Q(day_of_month__gte=1)
+                        & models.Q(day_of_month__lte=31)
+                    )
+                ),
+                name="rtx_day_of_month_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(has_end=False)
+                    | models.Q(end_date__gte=models.F("start_date"))
+                ),
+                name="rtx_date_range_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_rtx_user"),
+            models.Index(fields=["user", "status"], name="idx_rtx_user_status"),
+            models.Index(fields=["user", "frequency"], name="idx_rtx_user_freq"),
+            models.Index(fields=["user", "account"], name="idx_rtx_user_account"),
+            models.Index(fields=["user", "category"], name="idx_rtx_user_category"),
+            models.Index(fields=["user", "next_charge_date"], name="idx_rtx_user_next"),
+            models.Index(fields=["user", "status", "next_charge_date"], name="idx_rtx_status_next"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.account_id and self.user_id and self.account.user_id != self.user_id:
+            errors["account"] = "Счёт должен принадлежать пользователю."
+
+        if self.category_id and self.user_id and self.category.user_id != self.user_id:
+            errors["category"] = "Категория должна принадлежать пользователю."
+
+        if self.category_id and self.type and self.category.type != self.type:
+            errors["category"] = "Тип категории должен совпадать с типом операции."
+
+        if self.account_id and not self.account.is_active:
+            errors["account"] = "Нельзя использовать неактивный счёт."
+
+        if self.account_id and self.account.is_archived:
+            errors["account"] = "Нельзя использовать архивный счёт."
+
+        if self.category_id and not self.category.is_active:
+            errors["category"] = "Нельзя использовать неактивную категорию."
+
+        if self.category_id and self.category.is_archived:
+            errors["category"] = "Нельзя использовать архивную категорию."
+
+        if self.frequency not in RecurringFrequency.values:
+            errors["frequency"] = "Недопустимая периодичность."
+
+        if self.status not in RecurringStatus.values:
+            errors["status"] = "Недопустимый статус."
+
+        if self.type not in TransactionType.values:
+            errors["type"] = "Недопустимый тип операции."
+
+        if self.day_of_month is not None and not 1 <= self.day_of_month <= 31:
+            errors["day_of_month"] = "День месяца должен быть от 1 до 31."
+
+        if self.has_end and not self.end_date:
+            errors["end_date"] = "Укажите дату окончания."
+
+        if self.has_end and self.end_date and self.start_date and self.end_date < self.start_date:
+            errors["end_date"] = "Дата окончания не может быть раньше даты начала."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.name}: {self.amount}"
+
+
+class RecurringTransactionCharge(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recurring_transaction_charges",
+        verbose_name="Пользователь",
+    )
+    recurring_transaction = models.ForeignKey(
+        RecurringTransaction,
+        on_delete=models.CASCADE,
+        related_name="charges",
+        verbose_name="Регулярная операция",
+    )
+    transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recurring_charges",
+        verbose_name="Созданная операция",
+    )
+    charged_at = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="Дата попытки списания",
+    )
+    scheduled_date = models.DateField(
+        verbose_name="Плановая дата списания",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=RecurringChargeStatus.choices,
+        default=RecurringChargeStatus.SUCCESS,
+        verbose_name="Статус списания",
+    )
+    error_code = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Код ошибки",
+    )
+    error_message = models.TextField(
+        blank=True,
+        verbose_name="Сообщение ошибки",
+    )
+
+    class Meta:
+        verbose_name = "История регулярного списания"
+        verbose_name_plural = "История регулярных списаний"
+        ordering = ["-charged_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="rtx_charge_amount_pos",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=RecurringChargeStatus.values),
+                name="rtx_charge_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_rtx_charge_user"),
+            models.Index(fields=["recurring_transaction"], name="idx_rtx_charge_rtx"),
+            models.Index(fields=["user", "status"], name="idx_rtx_charge_status"),
+            models.Index(fields=["user", "charged_at"], name="idx_rtx_charge_date"),
+            models.Index(fields=["transaction"], name="idx_rtx_charge_tx"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if (
+            self.recurring_transaction_id
+            and self.user_id
+            and self.recurring_transaction.user_id != self.user_id
+        ):
+            errors["recurring_transaction"] = (
+                "Регулярная операция должна принадлежать пользователю."
+            )
+
+        if self.transaction_id and self.user_id and self.transaction.user_id != self.user_id:
+            errors["transaction"] = "Операция должна принадлежать пользователю."
+
+        if self.status not in RecurringChargeStatus.values:
+            errors["status"] = "Недопустимый статус списания."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.recurring_transaction_id}: {self.status}"
 

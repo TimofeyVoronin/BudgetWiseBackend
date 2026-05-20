@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, финансовыми целями, уведомлениями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, финансовыми целями, уведомлениями, регулярными операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -2278,6 +2278,446 @@ paths:
                     total_count: 10
                     totalCount: 10
                   summary: Сводка уведомлений
+          description: ''
+  /api/v1/finance/recurring-transactions/:
+    get:
+      operationId: finance_recurring_transactions_list
+      description: Возвращает регулярные операции текущего пользователя. Поддерживаются
+        фильтры по вкладке статуса, периодичности, счёту, категории, сумме, ошибкам
+        и поиску.
+      summary: Получить список регулярных операций
+      parameters:
+      - in: query
+        name: accounts
+        schema:
+          type: string
+        description: ID счетов через запятую.
+      - in: query
+        name: amountMax
+        schema:
+          type: number
+        description: Максимальная сумма.
+      - in: query
+        name: amountMin
+        schema:
+          type: number
+        description: Минимальная сумма.
+      - in: query
+        name: categories
+        schema:
+          type: string
+        description: ID категорий через запятую.
+      - in: query
+        name: frequencies
+        schema:
+          type: string
+        description: 'Периодичности через запятую: daily, weekly, monthly, yearly.'
+      - in: query
+        name: onlyWithErrors
+        schema:
+          type: boolean
+        description: Только операции с ошибками.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Размер страницы.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию операции, категории или счёту.
+      - in: query
+        name: statusTab
+        schema:
+          type: string
+        description: 'Вкладка: active, paused или completed.'
+      tags:
+      - finance-recurring-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRecurringTransactionList'
+          description: ''
+    post:
+      operationId: finance_recurring_transactions_create
+      summary: Создать регулярную операцию
+      tags:
+      - finance-recurring-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+            examples:
+              СозданиеРегулярнойОперации:
+                value:
+                  name: Интернет домашний
+                  kind: expense
+                  amountRub: '890.00'
+                  categoryId: 2
+                  accountId: 1
+                  schedule:
+                    frequency: monthly
+                    dayOfMonth: 15
+                    startDate: '2026-05-15'
+                    hasEnd: false
+                    endDate: null
+                    templateId: internet
+                  comment: Домашний интернет
+                summary: Создание регулярной операции
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringTransaction'
+          description: ''
+  /api/v1/finance/recurring-transactions/{id}/:
+    get:
+      operationId: finance_recurring_transactions_retrieve
+      summary: Получить регулярную операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-recurring-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringTransaction'
+          description: ''
+    put:
+      operationId: finance_recurring_transactions_update
+      summary: Полностью обновить регулярную операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-recurring-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringTransaction'
+          description: ''
+    patch:
+      operationId: finance_recurring_transactions_partial_update
+      summary: Частично обновить регулярную операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-recurring-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRecurringTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRecurringTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRecurringTransactionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringTransaction'
+          description: ''
+    delete:
+      operationId: finance_recurring_transactions_destroy
+      summary: Удалить регулярную операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-recurring-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/recurring-transactions/{id}/charge-history/:
+    get:
+      operationId: finance_recurring_transactions_charge_history_retrieve
+      summary: Получить историю списаний по регулярной операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Количество записей, максимум 100.
+      - in: query
+        name: offset
+        schema:
+          type: integer
+        description: Смещение.
+      tags:
+      - finance-recurring-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/recurring-transactions/{id}/complete/:
+    post:
+      operationId: finance_recurring_transactions_complete_create
+      summary: Завершить регулярную операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-recurring-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringTransaction'
+          description: ''
+  /api/v1/finance/recurring-transactions/{id}/pause/:
+    post:
+      operationId: finance_recurring_transactions_pause_create
+      summary: Поставить регулярную операцию на паузу
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-recurring-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringTransaction'
+          description: ''
+  /api/v1/finance/recurring-transactions/{id}/resume/:
+    post:
+      operationId: finance_recurring_transactions_resume_create
+      summary: Возобновить регулярную операцию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-recurring-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RecurringTransactionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringTransaction'
+          description: ''
+  /api/v1/finance/recurring-transactions/meta/:
+    get:
+      operationId: finance_recurring_transactions_meta_retrieve
+      summary: Получить справочники для регулярных операций
+      tags:
+      - finance-recurring-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringMeta'
+          description: ''
+  /api/v1/finance/recurring-transactions/schedule-preview/:
+    post:
+      operationId: finance_recurring_transactions_schedule_preview_create
+      summary: Получить превью расписания
+      tags:
+      - finance-recurring-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecurringSchedulePreviewRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RecurringSchedulePreviewRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RecurringSchedulePreviewRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringSchedulePreviewResponse'
+          description: ''
+  /api/v1/finance/recurring-transactions/summary/:
+    get:
+      operationId: finance_recurring_transactions_summary_retrieve
+      summary: Получить сводку регулярных операций
+      tags:
+      - finance-recurring-transactions
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringSummary'
+          description: ''
+  /api/v1/finance/recurring-transactions/validate-schedule/:
+    post:
+      operationId: finance_recurring_transactions_validate_schedule_create
+      summary: Проверить расписание
+      tags:
+      - finance-recurring-transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateRecurringScheduleRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ValidateRecurringScheduleRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateRecurringScheduleRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecurringScheduleValidationResponse'
           description: ''
   /api/v1/finance/transactions/:
     get:
@@ -5328,6 +5768,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Notification'
+    PaginatedRecurringTransactionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurringTransaction'
     PaginatedTransactionList:
       type: object
       required:
@@ -5593,6 +6056,72 @@ components:
           title: Окончание тихих часов
         quiet_hours_days:
           title: Дни тихих часов
+    PatchedRecurringTransactionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название регулярной операции
+          maxLength: 150
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          title: Тип операции
+        kind:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Сумма
+        category:
+          type: integer
+          title: Категория
+        account:
+          type: integer
+          title: Счёт
+        frequency:
+          allOf:
+          - $ref: '#/components/schemas/RecurringFrequencyEnum'
+          title: Периодичность
+        day_of_month:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: День месяца
+        start_date:
+          type: string
+          format: date
+          title: Дата начала
+        has_end:
+          type: boolean
+          title: Есть дата окончания
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          title: Дата окончания
+        template_id:
+          type: string
+          title: ID шаблона
+          maxLength: 100
+        template_name:
+          type: string
+          title: Название шаблона
+          maxLength: 150
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RecurringStatusEnum'
+          title: Статус
+        comment:
+          type: string
+          title: Комментарий
+        schedule:
+          allOf:
+          - $ref: '#/components/schemas/RecurringScheduleRequest'
+          writeOnly: true
     PatchedTransactionRequest:
       type: object
       properties:
@@ -5660,6 +6189,488 @@ components:
           type: boolean
           title: Статус суперпользователя
           description: Указывает, что пользователь имеет все права без явного их назначения.
+    RecurringFrequencyEnum:
+      enum:
+      - daily
+      - weekly
+      - monthly
+      - yearly
+      type: string
+      description: |-
+        * `daily` - Ежедневно
+        * `weekly` - Еженедельно
+        * `monthly` - Ежемесячно
+        * `yearly` - Ежегодно
+    RecurringMeta:
+      type: object
+      properties:
+        frequencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurringOption'
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurringOption'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurringOption'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurringOption'
+        templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecurringOption'
+      required:
+      - accounts
+      - categories
+      - frequencies
+      - statuses
+      - templates
+    RecurringOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+      required:
+      - title
+      - value
+    RecurringSchedule:
+      type: object
+      properties:
+        frequency:
+          $ref: '#/components/schemas/RecurringFrequencyEnum'
+        dayOfMonth:
+          type: integer
+          maximum: 31
+          minimum: 1
+          nullable: true
+        startDate:
+          type: string
+          format: date
+        hasEnd:
+          type: boolean
+          default: false
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        templateId:
+          type: string
+          nullable: true
+          maxLength: 100
+      required:
+      - frequency
+      - startDate
+    RecurringSchedulePreviewRequest:
+      type: object
+      properties:
+        frequency:
+          $ref: '#/components/schemas/RecurringFrequencyEnum'
+        startDate:
+          type: string
+          format: date
+        dayOfMonth:
+          type: integer
+          maximum: 31
+          minimum: 1
+          nullable: true
+        count:
+          type: integer
+          maximum: 24
+          minimum: 1
+          default: 6
+      required:
+      - frequency
+      - startDate
+    RecurringSchedulePreviewResponse:
+      type: object
+      properties:
+        dates:
+          type: array
+          items:
+            type: string
+            format: date
+      required:
+      - dates
+    RecurringScheduleRequest:
+      type: object
+      properties:
+        frequency:
+          $ref: '#/components/schemas/RecurringFrequencyEnum'
+        dayOfMonth:
+          type: integer
+          maximum: 31
+          minimum: 1
+          nullable: true
+        startDate:
+          type: string
+          format: date
+        hasEnd:
+          type: boolean
+          default: false
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        templateId:
+          type: string
+          nullable: true
+          maxLength: 100
+      required:
+      - frequency
+      - startDate
+    RecurringScheduleValidationResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - fieldErrors
+      - ok
+    RecurringStatusEnum:
+      enum:
+      - active
+      - paused
+      - completed
+      - error
+      type: string
+      description: |-
+        * `active` - Активна
+        * `paused` - На паузе
+        * `completed` - Завершена
+        * `error` - Ошибка
+    RecurringSummary:
+      type: object
+      properties:
+        active_count:
+          type: integer
+        paused_count:
+          type: integer
+        failed_count:
+          type: integer
+        next_charge_date:
+          type: string
+          format: date
+          nullable: true
+        next_charge_label:
+          type: string
+        activeCount:
+          type: integer
+        pausedCount:
+          type: integer
+        failedCount:
+          type: integer
+        nextChargeDate:
+          type: string
+          format: date
+          nullable: true
+        nextChargeLabel:
+          type: string
+      required:
+      - activeCount
+      - active_count
+      - failedCount
+      - failed_count
+      - nextChargeDate
+      - nextChargeLabel
+      - next_charge_date
+      - next_charge_label
+      - pausedCount
+      - paused_count
+    RecurringTransaction:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название регулярной операции
+          maxLength: 150
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          title: Тип операции
+        kind:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Сумма
+        amountRub:
+          type: string
+          readOnly: true
+        category:
+          type: integer
+          title: Категория
+        categoryId:
+          type: integer
+          readOnly: true
+        categoryName:
+          type: string
+          readOnly: true
+        categoryIcon:
+          type: string
+          readOnly: true
+        categoryColor:
+          type: string
+          readOnly: true
+        account:
+          type: integer
+          title: Счёт
+        accountId:
+          type: integer
+          readOnly: true
+        accountName:
+          type: string
+          readOnly: true
+        accountIcon:
+          type: string
+          readOnly: true
+        frequency:
+          allOf:
+          - $ref: '#/components/schemas/RecurringFrequencyEnum'
+          title: Периодичность
+        frequencyLabel:
+          type: string
+          readOnly: true
+        day_of_month:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: День месяца
+        dayOfMonth:
+          type: integer
+          readOnly: true
+        start_date:
+          type: string
+          format: date
+          title: Дата начала
+        startDate:
+          type: string
+          format: date
+          readOnly: true
+        has_end:
+          type: boolean
+          title: Есть дата окончания
+        hasEnd:
+          type: boolean
+          readOnly: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          title: Дата окончания
+        endDate:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        template_id:
+          type: string
+          title: ID шаблона
+          maxLength: 100
+        templateId:
+          type: string
+          readOnly: true
+        template_name:
+          type: string
+          title: Название шаблона
+          maxLength: 150
+        templateName:
+          type: string
+          readOnly: true
+        next_charge_date:
+          type: string
+          format: date
+          readOnly: true
+          title: Дата следующего списания
+        nextChargeDate:
+          type: string
+          format: date
+          readOnly: true
+        last_charge_date:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+          title: Дата последнего списания
+        lastChargeDate:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RecurringStatusEnum'
+          title: Статус
+        statusLabel:
+          type: string
+          readOnly: true
+        created_count:
+          type: integer
+          readOnly: true
+          title: Количество созданных операций
+        createdCount:
+          type: integer
+          readOnly: true
+        last_error_code:
+          type: string
+          readOnly: true
+          title: Код последней ошибки
+        lastErrorCode:
+          type: string
+          readOnly: true
+        last_error_message:
+          type: string
+          readOnly: true
+          title: Сообщение последней ошибки
+        lastErrorMessage:
+          type: string
+          readOnly: true
+        last_failed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Дата последней ошибки
+        comment:
+          type: string
+          title: Комментарий
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата создания
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата обновления
+      required:
+      - account
+      - accountIcon
+      - accountId
+      - accountName
+      - amount
+      - amountRub
+      - category
+      - categoryColor
+      - categoryIcon
+      - categoryId
+      - categoryName
+      - createdCount
+      - created_at
+      - created_count
+      - dayOfMonth
+      - endDate
+      - frequencyLabel
+      - hasEnd
+      - id
+      - lastChargeDate
+      - lastErrorCode
+      - lastErrorMessage
+      - last_charge_date
+      - last_error_code
+      - last_error_message
+      - last_failed_at
+      - name
+      - nextChargeDate
+      - next_charge_date
+      - startDate
+      - start_date
+      - statusLabel
+      - templateId
+      - templateName
+      - updated_at
+    RecurringTransactionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название регулярной операции
+          maxLength: 150
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          title: Тип операции
+        kind:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Сумма
+        category:
+          type: integer
+          title: Категория
+        account:
+          type: integer
+          title: Счёт
+        frequency:
+          allOf:
+          - $ref: '#/components/schemas/RecurringFrequencyEnum'
+          title: Периодичность
+        day_of_month:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: День месяца
+        start_date:
+          type: string
+          format: date
+          title: Дата начала
+        has_end:
+          type: boolean
+          title: Есть дата окончания
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          title: Дата окончания
+        template_id:
+          type: string
+          title: ID шаблона
+          maxLength: 100
+        template_name:
+          type: string
+          title: Название шаблона
+          maxLength: 150
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RecurringStatusEnum'
+          title: Статус
+        comment:
+          type: string
+          title: Комментарий
+        schedule:
+          allOf:
+          - $ref: '#/components/schemas/RecurringScheduleRequest'
+          writeOnly: true
+      required:
+      - account
+      - amount
+      - category
+      - name
+      - start_date
     Register:
       type: object
       properties:
@@ -5974,6 +6985,29 @@ components:
       required:
       - email
       - username
+    ValidateRecurringScheduleRequest:
+      type: object
+      properties:
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        hasEnd:
+          type: boolean
+          default: false
+        frequency:
+          $ref: '#/components/schemas/RecurringFrequencyEnum'
+        dayOfMonth:
+          type: integer
+          maximum: 31
+          minimum: 1
+          nullable: true
+      required:
+      - frequency
+      - startDate
     VerifyEmail:
       type: object
       properties:
@@ -6026,6 +7060,9 @@ tags:
   description: 'Центр уведомлений: список, просмотр, фильтрация, отметка как прочитанное/непрочитанное,
     архивация, восстановление, сводка, справочники, настройки каналов, типов уведомлений
     и тихих часов.'
+- name: finance-recurring-transactions
+  description: 'Регулярные операции: список, создание, редактирование, удаление, пауза,
+    возобновление, завершение, справочники, сводка, история списаний и проверка расписания.'
 - name: finance-categories
   description: 'Финансовые категории: список, создание, дерево категорий, избранное,
     архивирование, drag and drop порядок и подсказки категорий по описанию операции.'
