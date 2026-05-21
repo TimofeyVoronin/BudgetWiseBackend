@@ -101,6 +101,29 @@ class PlannedStatus(models.TextChoices):
     OVERDUE = "overdue", "Просрочена"
 
 
+class BudgetKind(models.TextChoices):
+    EXPENSE = "expense", "Расходный"
+    INCOME = "income", "Доходный"
+
+
+class BudgetPeriodType(models.TextChoices):
+    MONTH = "month", "Месяц"
+    QUARTER = "quarter", "Квартал"
+    YEAR = "year", "Год"
+
+
+class BudgetCategoryGroup(models.TextChoices):
+    MAIN = "main", "Основной бюджет"
+    FAMILY = "family", "Семейный"
+    PERSONAL = "personal", "Личный"
+
+
+class BudgetUsageStatus(models.TextChoices):
+    NORMAL = "normal", "Норма"
+    WARNING = "warning", "Близко к лимиту"
+    EXCEEDED = "exceeded", "Превышен"
+
+
 NOTIFICATION_QUIET_HOURS_DAYS = {
     "mon",
     "tue",
@@ -579,6 +602,18 @@ class Budget(TimeStampedModel):
         related_name="budgets",
         verbose_name="Категория",
     )
+    category_group = models.CharField(
+        max_length=30,
+        choices=BudgetCategoryGroup.choices,
+        default=BudgetCategoryGroup.MAIN,
+        verbose_name="Группа бюджета",
+    )
+    period_type = models.CharField(
+        max_length=20,
+        choices=BudgetPeriodType.choices,
+        default=BudgetPeriodType.MONTH,
+        verbose_name="Тип периода",
+    )
     amount_limit = models.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -591,9 +626,38 @@ class Budget(TimeStampedModel):
     period_end = models.DateField(
         verbose_name="Конец периода",
     )
+    currency = models.CharField(
+        max_length=3,
+        default="RUB",
+        validators=[
+            RegexValidator(
+                regex=r"^[A-Z]{3}$",
+                message="Валюта должна быть указана в формате ISO-кода, например RUB.",
+            )
+        ],
+        verbose_name="Валюта",
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=BudgetKind.choices,
+        default=BudgetKind.EXPENSE,
+        verbose_name="Тип бюджета",
+    )
+    rollover = models.BooleanField(
+        default=False,
+        verbose_name="Перенос остатка на следующий период",
+    )
+    paused = models.BooleanField(
+        default=False,
+        verbose_name="На паузе",
+    )
     is_active = models.BooleanField(
         default=True,
         verbose_name="Активен",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
     )
 
     class Meta:
@@ -609,9 +673,32 @@ class Budget(TimeStampedModel):
                 condition=models.Q(period_end__gte=models.F("period_start")),
                 name="budget_period_valid",
             ),
+            models.CheckConstraint(
+                condition=models.Q(period_type__in=BudgetPeriodType.values),
+                name="budget_period_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind__in=BudgetKind.values),
+                name="budget_kind_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(category_group__in=BudgetCategoryGroup.values),
+                name="budget_category_group_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(currency__regex=r"^[A-Z]{3}$"),
+                name="budget_currency_code_format",
+            ),
             models.UniqueConstraint(
-                fields=["user", "category", "period_start", "period_end"],
-                name="unique_budget_category_period_per_user",
+                fields=[
+                    "user",
+                    "category",
+                    "kind",
+                    "period_type",
+                    "period_start",
+                    "period_end",
+                ],
+                name="unique_budget_kind_category_period",
             ),
         ]
         indexes = [
@@ -625,23 +712,56 @@ class Budget(TimeStampedModel):
                 name="idx_budget_user_cat_period",
             ),
             models.Index(fields=["user", "is_active"], name="idx_budget_user_active"),
+            models.Index(fields=["user", "period_type"], name="idx_budget_user_period_type"),
+            models.Index(fields=["user", "kind"], name="idx_budget_user_kind"),
+            models.Index(fields=["user", "category_group"], name="idx_budget_user_group"),
+            models.Index(fields=["user", "paused"], name="idx_budget_user_paused"),
+            models.Index(fields=["user", "currency"], name="idx_budget_user_currency"),
+            models.Index(
+                fields=["user", "kind", "period_type", "period_start"],
+                name="idx_budget_kind_period",
+            ),
         ]
+
+    @property
+    def limit_amount(self) -> Decimal:
+        return self.amount_limit
+
+    @property
+    def status(self) -> str:
+        if self.paused:
+            return "paused"
+
+        if not self.is_active:
+            return "inactive"
+
+        return "active"
 
     def clean(self) -> None:
         errors = {}
+
+        if self.currency:
+            self.currency = self.currency.upper()
 
         if self.period_start and self.period_end and self.period_end < self.period_start:
             errors["period_end"] = (
                 "Дата окончания периода не может быть раньше даты начала."
             )
 
+        if self.period_type not in BudgetPeriodType.values:
+            errors["period_type"] = "Недопустимый тип периода бюджета."
+
+        if self.kind not in BudgetKind.values:
+            errors["kind"] = "Недопустимый тип бюджета."
+
+        if self.category_group not in BudgetCategoryGroup.values:
+            errors["category_group"] = "Недопустимая группа бюджета."
+
         if self.category_id and self.user_id and self.category.user_id != self.user_id:
             errors["category"] = "Категория бюджета должна принадлежать пользователю."
 
-        if self.category_id and self.category.type != TransactionType.EXPENSE:
-            errors["category"] = (
-                "Бюджет можно создавать только для категории расходов."
-            )
+        if self.category_id and self.kind and self.category.type != self.kind:
+            errors["category"] = "Тип категории должен совпадать с типом бюджета."
 
         if self.category_id and not self.category.is_active:
             errors["category"] = "Нельзя использовать неактивную категорию в бюджете."
@@ -652,8 +772,14 @@ class Budget(TimeStampedModel):
         if errors:
             raise ValidationError(errors)
 
+    def save(self, *args, **kwargs):
+        if self.currency:
+            self.currency = self.currency.upper()
+
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
-        return f"{self.category.name}: {self.amount_limit}"
+        return f"{self.category.name}: {self.amount_limit} {self.currency}"
 
 
 class Goal(TimeStampedModel):

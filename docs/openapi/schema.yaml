@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, финансовыми целями, уведомлениями, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, бюджетами, финансовыми целями, уведомлениями, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -228,9 +228,9 @@ paths:
   /api/v1/auth/token/refresh/:
     post:
       operationId: auth_token_refresh_create
-      description: |-
-        Takes a refresh type JSON web token and returns an access type JSON web
-        token if the refresh token is valid.
+      description: Принимает refresh token и возвращает новую пару JWT-токенов. Используется
+        клиентом для продления сессии без повторного ввода email и password.
+      summary: Обновить JWT access token
       tags:
       - auth
       requestBody:
@@ -238,6 +238,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TokenRefreshRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  refresh: jwt-refresh-token
+                summary: Пример запроса
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/TokenRefreshRequest'
@@ -245,12 +250,20 @@ paths:
             schema:
               $ref: '#/components/schemas/TokenRefreshRequest'
         required: true
+      security:
+      - {}
       responses:
         '200':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    access: new-jwt-access-token
+                    refresh: rotated-jwt-refresh-token
+                  summary: Успешный ответ
           description: ''
   /api/v1/auth/verify-email/:
     post:
@@ -711,6 +724,396 @@ paths:
                     archived_count: 1
                     currency: RUB
                   summary: Сводка по счетам
+          description: ''
+  /api/v1/finance/budgets/:
+    get:
+      operationId: finance_budgets_list
+      description: 'Возвращает бюджеты текущего пользователя с рассчитанными показателями
+        использования: потрачено, процент прогресса, статус использования и сводка
+        для верхних карточек страницы.'
+      summary: Получить список бюджетов
+      parameters:
+      - in: query
+        name: categories
+        schema:
+          type: string
+        description: ID категорий через запятую, например 1,2,3.
+      - in: query
+        name: categoryGroups
+        schema:
+          type: string
+        description: 'Группы бюджетов через запятую: main, family, personal.'
+      - in: query
+        name: kinds
+        schema:
+          type: string
+        description: 'Типы бюджетов через запятую: expense, income.'
+      - in: query
+        name: onlyAtRisk
+        schema:
+          type: boolean
+        description: Только бюджеты со статусом warning или exceeded.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Альтернативный размер страницы.
+      - in: query
+        name: perPage
+        schema:
+          type: integer
+        description: Размер страницы.
+      - in: query
+        name: periodTab
+        schema:
+          type: string
+        description: 'Вкладка периода: all, month, quarter или year.'
+      - in: query
+        name: periodTypes
+        schema:
+          type: string
+        description: 'Типы периодов через запятую: month, quarter, year.'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по категории или комментарию.
+      - in: query
+        name: usageStatuses
+        schema:
+          type: string
+        description: 'Статусы использования через запятую: normal, warning, exceeded.'
+      tags:
+      - finance-budgets
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBudgetListResponseList'
+          description: ''
+    post:
+      operationId: finance_budgets_create
+      summary: Создать бюджет
+      tags:
+      - finance-budgets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+            examples:
+              СозданиеБюджета:
+                value:
+                  categoryId: 1
+                  categoryGroup: main
+                  periodType: month
+                  periodStart: '2026-05-01'
+                  periodEnd: '2026-05-31'
+                  limitRub: 30000
+                  currency: RUB
+                  kind: expense
+                  rollover: false
+                  comment: Лимит на продукты
+                summary: Создание бюджета
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+          description: ''
+  /api/v1/finance/budgets/{id}/:
+    get:
+      operationId: finance_budgets_retrieve
+      description: Возвращает данные бюджета, рассчитанную статистику использования,
+        точки графика факта/прогноза и последние операции по категории бюджета.
+      summary: Получить бюджет с детальной статистикой
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-budgets
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetDetail'
+          description: ''
+    put:
+      operationId: finance_budgets_update
+      summary: Полностью обновить бюджет
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-budgets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+          description: ''
+    patch:
+      operationId: finance_budgets_partial_update
+      summary: Частично обновить бюджет
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-budgets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedBudgetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedBudgetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedBudgetRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+          description: ''
+    delete:
+      operationId: finance_budgets_destroy
+      description: Удаляет только запись бюджета. Финансовые операции, по которым
+        считался прогресс бюджета, не удаляются и не изменяются.
+      summary: Удалить бюджет
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-budgets
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteBudgetResponse'
+          description: ''
+  /api/v1/finance/budgets/{id}/pause/:
+    post:
+      operationId: finance_budgets_pause_create
+      description: Помечает бюджет как приостановленный. Расчёт суммы остаётся доступен,
+        но статус риска возвращается как normal.
+      summary: Поставить бюджет на паузу
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-budgets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+          description: ''
+  /api/v1/finance/budgets/{id}/resume/:
+    post:
+      operationId: finance_budgets_resume_create
+      description: Снимает паузу с бюджета и снова включает его в расчёт предупреждений
+        по лимиту.
+      summary: Возобновить бюджет
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-budgets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BudgetRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+          description: ''
+  /api/v1/finance/budgets/check-duplicate/:
+    post:
+      operationId: finance_budgets_check_duplicate_create
+      description: Проверяет, существует ли у пользователя бюджет с той же категорией,
+        типом бюджета, типом периода и датами периода. Используется формой создания
+        и редактирования.
+      summary: Проверить дубликат бюджета
+      tags:
+      - finance-budgets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckBudgetDuplicateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CheckBudgetDuplicateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CheckBudgetDuplicateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckBudgetDuplicateResponse'
+          description: ''
+  /api/v1/finance/budgets/meta/:
+    get:
+      operationId: finance_budgets_meta_retrieve
+      description: Возвращает категории пользователя, группы бюджета, типы периода,
+        валюты, типы бюджета и статусы использования.
+      summary: Получить справочники страницы бюджетов
+      tags:
+      - finance-budgets
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetsListMeta'
+          description: ''
+  /api/v1/finance/budgets/validate/:
+    post:
+      operationId: finance_budgets_validate_create
+      description: Возвращает ok=false и fieldErrors, если данные формы бюджета требуют
+        исправления.
+      summary: Проверить форму бюджета
+      tags:
+      - finance-budgets
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateBudgetFormRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ValidateBudgetFormRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateBudgetFormRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateBudgetFormResponse'
+          description: ''
+  /api/v1/finance/budgets/warnings/:
+    get:
+      operationId: finance_budgets_warnings_retrieve
+      description: Возвращает бюджеты со статусом warning или exceeded.
+      summary: Получить предупреждения по бюджетам
+      tags:
+      - finance-budgets
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetWarningsResponse'
           description: ''
   /api/v1/finance/categories/:
     get:
@@ -4455,6 +4858,424 @@ components:
           example: false
         error:
           $ref: '#/components/schemas/ApiErrorDetail'
+    Budget:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        categoryId:
+          type: integer
+        categoryName:
+          type: string
+          readOnly: true
+        categoryGroup:
+          allOf:
+          - $ref: '#/components/schemas/BudgetCategoryGroupEnum'
+          default: main
+        categoryGroupLabel:
+          type: string
+          readOnly: true
+        categoryIcon:
+          type: string
+          readOnly: true
+        categoryColor:
+          type: string
+          readOnly: true
+        periodType:
+          allOf:
+          - $ref: '#/components/schemas/BudgetPeriodTypeEnum'
+          default: month
+        periodTypeLabel:
+          type: string
+          readOnly: true
+        periodLabel:
+          type: string
+          readOnly: true
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        limitRub:
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
+        spentRub:
+          type: number
+          readOnly: true
+        currency:
+          type: string
+          default: RUB
+          maxLength: 3
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/BudgetKindEnum'
+          default: expense
+        kindLabel:
+          type: string
+          readOnly: true
+        rollover:
+          type: boolean
+          title: Перенос остатка на следующий период
+        comment:
+          type: string
+          title: Комментарий
+        paused:
+          type: boolean
+          title: На паузе
+        usageStatus:
+          type: string
+          readOnly: true
+        usageStatusLabel:
+          type: string
+          readOnly: true
+        usagePercent:
+          type: number
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата создания
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Дата обновления
+      required:
+      - categoryColor
+      - categoryGroupLabel
+      - categoryIcon
+      - categoryId
+      - categoryName
+      - created_at
+      - id
+      - kindLabel
+      - limitRub
+      - periodEnd
+      - periodLabel
+      - periodStart
+      - periodTypeLabel
+      - spentRub
+      - updated_at
+      - usagePercent
+      - usageStatus
+      - usageStatusLabel
+    BudgetCategoryGroupEnum:
+      enum:
+      - main
+      - family
+      - personal
+      type: string
+      description: |-
+        * `main` - Основной бюджет
+        * `family` - Семейный
+        * `personal` - Личный
+    BudgetChartPoint:
+      type: object
+      properties:
+        label:
+          type: string
+        factPct:
+          type: number
+          format: double
+        forecastPct:
+          type: number
+          format: double
+      required:
+      - factPct
+      - forecastPct
+      - label
+    BudgetDetail:
+      type: object
+      properties:
+        budget:
+          $ref: '#/components/schemas/Budget'
+        stats:
+          $ref: '#/components/schemas/BudgetDetailStats'
+        chart:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetChartPoint'
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetOperationRow'
+      required:
+      - budget
+      - chart
+      - operations
+      - stats
+    BudgetDetailStats:
+      type: object
+      properties:
+        limitRub:
+          type: number
+          format: double
+        spentRub:
+          type: number
+          format: double
+        remainingRub:
+          type: number
+          format: double
+        avgDailyRub:
+          type: number
+          format: double
+        forecastRub:
+          type: number
+          format: double
+        forecastWithinLimit:
+          type: boolean
+      required:
+      - avgDailyRub
+      - forecastRub
+      - forecastWithinLimit
+      - limitRub
+      - remainingRub
+      - spentRub
+    BudgetKindEnum:
+      enum:
+      - expense
+      - income
+      type: string
+      description: |-
+        * `expense` - Расходный
+        * `income` - Доходный
+    BudgetListPagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        perPage:
+          type: integer
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+      - page
+      - perPage
+      - totalItems
+      - totalPages
+    BudgetListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Budget'
+        summary:
+          $ref: '#/components/schemas/BudgetListSummary'
+        pagination:
+          $ref: '#/components/schemas/BudgetListPagination'
+      required:
+      - items
+      - pagination
+      - summary
+    BudgetListSummary:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        normalCount:
+          type: integer
+        attentionCount:
+          type: integer
+      required:
+      - attentionCount
+      - normalCount
+      - totalCount
+    BudgetOperationRow:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: string
+        dateLabel:
+          type: string
+        amountRub:
+          type: number
+          format: double
+        icon:
+          type: string
+      required:
+      - amountRub
+      - dateLabel
+      - icon
+      - id
+      - subtitle
+      - title
+    BudgetOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        kind:
+          type: string
+      required:
+      - title
+      - value
+    BudgetPeriodTypeEnum:
+      enum:
+      - month
+      - quarter
+      - year
+      type: string
+      description: |-
+        * `month` - Месяц
+        * `quarter` - Квартал
+        * `year` - Год
+    BudgetRequest:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+        categoryGroup:
+          allOf:
+          - $ref: '#/components/schemas/BudgetCategoryGroupEnum'
+          default: main
+        periodType:
+          allOf:
+          - $ref: '#/components/schemas/BudgetPeriodTypeEnum'
+          default: month
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        limitRub:
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
+        currency:
+          type: string
+          minLength: 1
+          default: RUB
+          maxLength: 3
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/BudgetKindEnum'
+          default: expense
+        rollover:
+          type: boolean
+          title: Перенос остатка на следующий период
+        comment:
+          type: string
+          title: Комментарий
+        paused:
+          type: boolean
+          title: На паузе
+      required:
+      - categoryId
+      - limitRub
+      - periodEnd
+      - periodStart
+    BudgetUsageStatusEnum:
+      enum:
+      - normal
+      - warning
+      - exceeded
+      type: string
+      description: |-
+        * `normal` - Норма
+        * `warning` - Близко к лимиту
+        * `exceeded` - Превышен
+    BudgetWarningItem:
+      type: object
+      properties:
+        budgetId:
+          type: string
+        categoryName:
+          type: string
+        periodLabel:
+          type: string
+        status:
+          $ref: '#/components/schemas/BudgetUsageStatusEnum'
+        percent:
+          type: number
+          format: double
+        spentRub:
+          type: number
+          format: double
+        limitRub:
+          type: number
+          format: double
+        remainingRub:
+          type: number
+          format: double
+        message:
+          type: string
+      required:
+      - budgetId
+      - categoryName
+      - limitRub
+      - percent
+      - periodLabel
+      - remainingRub
+      - spentRub
+      - status
+    BudgetWarningsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetWarningItem'
+        attentionCount:
+          type: integer
+      required:
+      - attentionCount
+      - items
+    BudgetsListMeta:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetOption'
+        categoryGroups:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetOption'
+        periodTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetOption'
+        currencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetOption'
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetOption'
+        usageStatuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetOption'
+      required:
+      - categories
+      - categoryGroups
+      - currencies
+      - kinds
+      - periodTypes
+      - usageStatuses
     Category:
       type: object
       properties:
@@ -4842,6 +5663,41 @@ components:
       - name
       - type
       - updated_at
+    CheckBudgetDuplicateRequest:
+      type: object
+      properties:
+        excludeId:
+          type: integer
+          nullable: true
+        categoryId:
+          type: integer
+        categoryName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        periodType:
+          $ref: '#/components/schemas/BudgetPeriodTypeEnum'
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        kind:
+          $ref: '#/components/schemas/BudgetKindEnum'
+      required:
+      - kind
+      - periodStart
+      - periodType
+    CheckBudgetDuplicateResponse:
+      type: object
+      properties:
+        isDuplicate:
+          type: boolean
+        message:
+          type: string
+      required:
+      - isDuplicate
     CheckPlannedDuplicateRequest:
       type: object
       properties:
@@ -5094,6 +5950,16 @@ components:
       - expense
       - income
       - net
+    DeleteBudgetResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+        id:
+          type: string
+      required:
+      - deleted
+      - id
     ForgotPassword:
       type: object
       properties:
@@ -6255,6 +7121,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Account'
+    PaginatedBudgetListResponseList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetListResponse'
     PaginatedCategoryList:
       type: object
       required:
@@ -6529,6 +7418,49 @@ components:
         comment:
           type: string
           title: Комментарий
+    PatchedBudgetRequest:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+        categoryGroup:
+          allOf:
+          - $ref: '#/components/schemas/BudgetCategoryGroupEnum'
+          default: main
+        periodType:
+          allOf:
+          - $ref: '#/components/schemas/BudgetPeriodTypeEnum'
+          default: month
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        limitRub:
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
+        currency:
+          type: string
+          minLength: 1
+          default: RUB
+          maxLength: 3
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/BudgetKindEnum'
+          default: expense
+        rollover:
+          type: boolean
+          title: Перенос остатка на следующий период
+        comment:
+          type: string
+          title: Комментарий
+        paused:
+          type: boolean
+          title: На паузе
     PatchedCategoryFavoriteRequest:
       type: object
       properties:
@@ -8078,6 +9010,42 @@ components:
       required:
       - email
       - username
+    ValidateBudgetFormRequest:
+      type: object
+      properties:
+        categoryName:
+          type: string
+          maxLength: 100
+        categoryId:
+          type: integer
+        limitRub:
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+      required:
+      - limitRub
+      - periodEnd
+      - periodStart
+    ValidateBudgetFormResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - fieldErrors
+      - ok
     ValidatePlannedFormRequest:
       type: object
       properties:
@@ -8169,6 +9137,10 @@ tags:
 - name: finance-accounts
   description: 'Финансовые счета: список, создание, редактирование, архивирование,
     сводка балансов, история операций по счёту и справочники для формы.'
+- name: finance-budgets
+  description: 'Бюджеты и лимиты: список, создание, редактирование, удаление, пауза,
+    возобновление, расчёт прогресса, предупреждения, детальная статистика и справочники
+    для формы.'
 - name: finance-goals
   description: 'Финансовые цели: список, создание, редактирование, архивирование,
     завершение, отмена, восстановление, сводка прогресса, история пополнений и справочники

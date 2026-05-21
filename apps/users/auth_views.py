@@ -3,6 +3,8 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.users.auth_serializers import (
     ForgotPasswordSerializer,
@@ -261,3 +263,38 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
 
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+
+class BudgetWiseTokenRefreshView(TokenRefreshView):
+    permission_classes = [AllowAny]
+    serializer_class = TokenRefreshSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Обновить JWT access token",
+        description=(
+            "Принимает refresh token и возвращает новую пару JWT-токенов. "
+            "Используется клиентом для продления сессии без повторного ввода email и password."
+        ),
+        request=TokenRefreshSerializer,
+        responses={200: TokenRefreshSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={
+                    "refresh": "jwt-refresh-token",
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "access": "new-jwt-access-token",
+                    "refresh": "rotated-jwt-refresh-token",
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
