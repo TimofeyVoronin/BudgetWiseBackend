@@ -30,6 +30,7 @@ from apps.finance.budget_serializers import (
     BudgetSerializer,
     BudgetWarningsResponseSerializer,
     BudgetsListMetaSerializer,
+    DeleteBudgetResponseSerializer,
     CheckBudgetDuplicateResponseSerializer,
     CheckBudgetDuplicateSerializer,
     MAX_BUDGET_SEARCH_LENGTH,
@@ -227,10 +228,10 @@ def normalize_budget_group_values(values: list[str]) -> list[str]:
             OpenApiParameter("page_size", OpenApiTypes.INT, description="Альтернативный размер страницы."),
             OpenApiParameter("search", OpenApiTypes.STR, description="Поиск по категории или комментарию."),
             OpenApiParameter("periodTab", OpenApiTypes.STR, description="Вкладка периода: all, month, quarter или year."),
-            OpenApiParameter("periodTypes", OpenApiTypes.STR, description="Типы периодов через запятую."),
-            OpenApiParameter("categories", OpenApiTypes.STR, description="ID категорий через запятую."),
-            OpenApiParameter("categoryGroups", OpenApiTypes.STR, description="Группы бюджетов через запятую."),
-            OpenApiParameter("usageStatuses", OpenApiTypes.STR, description="Статусы использования через запятую."),
+            OpenApiParameter("periodTypes", OpenApiTypes.STR, description="Типы периодов через запятую: month, quarter, year."),
+            OpenApiParameter("categories", OpenApiTypes.STR, description="ID категорий через запятую, например 1,2,3."),
+            OpenApiParameter("categoryGroups", OpenApiTypes.STR, description="Группы бюджетов через запятую: main, family, personal."),
+            OpenApiParameter("usageStatuses", OpenApiTypes.STR, description="Статусы использования через запятую: normal, warning, exceeded."),
             OpenApiParameter("kinds", OpenApiTypes.STR, description="Типы бюджетов через запятую: expense, income."),
             OpenApiParameter("onlyAtRisk", OpenApiTypes.BOOL, description="Только бюджеты со статусом warning или exceeded."),
         ],
@@ -263,6 +264,10 @@ def normalize_budget_group_values(values: list[str]) -> list[str]:
     retrieve=extend_schema(
         tags=["finance-budgets"],
         summary="Получить бюджет с детальной статистикой",
+        description=(
+            "Возвращает данные бюджета, рассчитанную статистику использования, "
+            "точки графика факта/прогноза и последние операции по категории бюджета."
+        ),
         responses={200: BudgetDetailSerializer},
     ),
     partial_update=extend_schema(
@@ -280,7 +285,11 @@ def normalize_budget_group_values(values: list[str]) -> list[str]:
     destroy=extend_schema(
         tags=["finance-budgets"],
         summary="Удалить бюджет",
-        responses={200: OpenApiTypes.OBJECT},
+        description=(
+            "Удаляет только запись бюджета. Финансовые операции, по которым считался "
+            "прогресс бюджета, не удаляются и не изменяются."
+        ),
+        responses={200: DeleteBudgetResponseSerializer},
     ),
 )
 class BudgetViewSet(viewsets.ModelViewSet):
@@ -488,6 +497,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["finance-budgets"],
         summary="Поставить бюджет на паузу",
+        description="Помечает бюджет как приостановленный. Расчёт суммы остаётся доступен, но статус риска возвращается как normal.",
         responses={200: BudgetSerializer},
     )
     @action(detail=True, methods=["post"], url_path="pause")
@@ -501,6 +511,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["finance-budgets"],
         summary="Возобновить бюджет",
+        description="Снимает паузу с бюджета и снова включает его в расчёт предупреждений по лимиту.",
         responses={200: BudgetSerializer},
     )
     @action(detail=True, methods=["post"], url_path="resume")
@@ -541,6 +552,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["finance-budgets"],
         summary="Получить справочники страницы бюджетов",
+        description="Возвращает категории пользователя, группы бюджета, типы периода, валюты, типы бюджета и статусы использования.",
         responses={200: BudgetsListMetaSerializer},
     )
     @action(detail=False, methods=["get"], url_path="meta")
@@ -551,6 +563,10 @@ class BudgetViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["finance-budgets"],
         summary="Проверить дубликат бюджета",
+        description=(
+            "Проверяет, существует ли у пользователя бюджет с той же категорией, "
+            "типом бюджета, типом периода и датами периода. Используется формой создания и редактирования."
+        ),
         request=CheckBudgetDuplicateSerializer,
         responses={200: CheckBudgetDuplicateResponseSerializer},
     )
@@ -588,6 +604,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["finance-budgets"],
         summary="Проверить форму бюджета",
+        description="Возвращает ok=false и fieldErrors, если данные формы бюджета требуют исправления.",
         request=ValidateBudgetFormSerializer,
         responses={200: ValidateBudgetFormResponseSerializer},
     )

@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, финансовыми целями, уведомлениями, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, бюджетами, финансовыми целями, уведомлениями, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -228,9 +228,9 @@ paths:
   /api/v1/auth/token/refresh/:
     post:
       operationId: auth_token_refresh_create
-      description: |-
-        Takes a refresh type JSON web token and returns an access type JSON web
-        token if the refresh token is valid.
+      description: Принимает refresh token и возвращает новую пару JWT-токенов. Используется
+        клиентом для продления сессии без повторного ввода email и password.
+      summary: Обновить JWT access token
       tags:
       - auth
       requestBody:
@@ -238,6 +238,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TokenRefreshRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  refresh: jwt-refresh-token
+                summary: Пример запроса
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/TokenRefreshRequest'
@@ -245,12 +250,20 @@ paths:
             schema:
               $ref: '#/components/schemas/TokenRefreshRequest'
         required: true
+      security:
+      - {}
       responses:
         '200':
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenRefresh'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    access: new-jwt-access-token
+                    refresh: rotated-jwt-refresh-token
+                  summary: Успешный ответ
           description: ''
   /api/v1/auth/verify-email/:
     post:
@@ -724,12 +737,12 @@ paths:
         name: categories
         schema:
           type: string
-        description: ID категорий через запятую.
+        description: ID категорий через запятую, например 1,2,3.
       - in: query
         name: categoryGroups
         schema:
           type: string
-        description: Группы бюджетов через запятую.
+        description: 'Группы бюджетов через запятую: main, family, personal.'
       - in: query
         name: kinds
         schema:
@@ -764,7 +777,7 @@ paths:
         name: periodTypes
         schema:
           type: string
-        description: Типы периодов через запятую.
+        description: 'Типы периодов через запятую: month, quarter, year.'
       - in: query
         name: search
         schema:
@@ -774,7 +787,7 @@ paths:
         name: usageStatuses
         schema:
           type: string
-        description: Статусы использования через запятую.
+        description: 'Статусы использования через запятую: normal, warning, exceeded.'
       tags:
       - finance-budgets
       security:
@@ -829,6 +842,8 @@ paths:
   /api/v1/finance/budgets/{id}/:
     get:
       operationId: finance_budgets_retrieve
+      description: Возвращает данные бюджета, рассчитанную статистику использования,
+        точки графика факта/прогноза и последние операции по категории бюджета.
       summary: Получить бюджет с детальной статистикой
       parameters:
       - in: path
@@ -915,6 +930,8 @@ paths:
           description: ''
     delete:
       operationId: finance_budgets_destroy
+      description: Удаляет только запись бюджета. Финансовые операции, по которым
+        считался прогресс бюджета, не удаляются и не изменяются.
       summary: Удалить бюджет
       parameters:
       - in: path
@@ -932,12 +949,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: {}
+                $ref: '#/components/schemas/DeleteBudgetResponse'
           description: ''
   /api/v1/finance/budgets/{id}/pause/:
     post:
       operationId: finance_budgets_pause_create
+      description: Помечает бюджет как приостановленный. Расчёт суммы остаётся доступен,
+        но статус риска возвращается как normal.
       summary: Поставить бюджет на паузу
       parameters:
       - in: path
@@ -972,6 +990,8 @@ paths:
   /api/v1/finance/budgets/{id}/resume/:
     post:
       operationId: finance_budgets_resume_create
+      description: Снимает паузу с бюджета и снова включает его в расчёт предупреждений
+        по лимиту.
       summary: Возобновить бюджет
       parameters:
       - in: path
@@ -1006,6 +1026,9 @@ paths:
   /api/v1/finance/budgets/check-duplicate/:
     post:
       operationId: finance_budgets_check_duplicate_create
+      description: Проверяет, существует ли у пользователя бюджет с той же категорией,
+        типом бюджета, типом периода и датами периода. Используется формой создания
+        и редактирования.
       summary: Проверить дубликат бюджета
       tags:
       - finance-budgets
@@ -1033,6 +1056,8 @@ paths:
   /api/v1/finance/budgets/meta/:
     get:
       operationId: finance_budgets_meta_retrieve
+      description: Возвращает категории пользователя, группы бюджета, типы периода,
+        валюты, типы бюджета и статусы использования.
       summary: Получить справочники страницы бюджетов
       tags:
       - finance-budgets
@@ -1048,6 +1073,8 @@ paths:
   /api/v1/finance/budgets/validate/:
     post:
       operationId: finance_budgets_validate_create
+      description: Возвращает ok=false и fieldErrors, если данные формы бюджета требуют
+        исправления.
       summary: Проверить форму бюджета
       tags:
       - finance-budgets
@@ -4844,7 +4871,7 @@ components:
           readOnly: true
         categoryGroup:
           allOf:
-          - $ref: '#/components/schemas/CategoryGroupEnum'
+          - $ref: '#/components/schemas/BudgetCategoryGroupEnum'
           default: main
         categoryGroupLabel:
           type: string
@@ -4857,7 +4884,7 @@ components:
           readOnly: true
         periodType:
           allOf:
-          - $ref: '#/components/schemas/PeriodTypeEnum'
+          - $ref: '#/components/schemas/BudgetPeriodTypeEnum'
           default: month
         periodTypeLabel:
           type: string
@@ -4872,12 +4899,13 @@ components:
           type: string
           format: date
         limitRub:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-        spentRub:
           type: number
           format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
+        spentRub:
+          type: number
           readOnly: true
         currency:
           type: string
@@ -4885,7 +4913,7 @@ components:
           maxLength: 3
         kind:
           allOf:
-          - $ref: '#/components/schemas/Kind44aEnum'
+          - $ref: '#/components/schemas/BudgetKindEnum'
           default: expense
         kindLabel:
           type: string
@@ -4907,7 +4935,6 @@ components:
           readOnly: true
         usagePercent:
           type: number
-          format: double
           readOnly: true
         created_at:
           type: string
@@ -4938,6 +4965,16 @@ components:
       - usagePercent
       - usageStatus
       - usageStatusLabel
+    BudgetCategoryGroupEnum:
+      enum:
+      - main
+      - family
+      - personal
+      type: string
+      description: |-
+        * `main` - Основной бюджет
+        * `family` - Семейный
+        * `personal` - Личный
     BudgetChartPoint:
       type: object
       properties:
@@ -5000,6 +5037,14 @@ components:
       - limitRub
       - remainingRub
       - spentRub
+    BudgetKindEnum:
+      enum:
+      - expense
+      - income
+      type: string
+      description: |-
+        * `expense` - Расходный
+        * `income` - Доходный
     BudgetListPagination:
       type: object
       properties:
@@ -5083,6 +5128,16 @@ components:
       required:
       - title
       - value
+    BudgetPeriodTypeEnum:
+      enum:
+      - month
+      - quarter
+      - year
+      type: string
+      description: |-
+        * `month` - Месяц
+        * `quarter` - Квартал
+        * `year` - Год
     BudgetRequest:
       type: object
       properties:
@@ -5090,11 +5145,11 @@ components:
           type: integer
         categoryGroup:
           allOf:
-          - $ref: '#/components/schemas/CategoryGroupEnum'
+          - $ref: '#/components/schemas/BudgetCategoryGroupEnum'
           default: main
         periodType:
           allOf:
-          - $ref: '#/components/schemas/PeriodTypeEnum'
+          - $ref: '#/components/schemas/BudgetPeriodTypeEnum'
           default: month
         periodStart:
           type: string
@@ -5103,9 +5158,11 @@ components:
           type: string
           format: date
         limitRub:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
         currency:
           type: string
           minLength: 1
@@ -5113,7 +5170,7 @@ components:
           maxLength: 3
         kind:
           allOf:
-          - $ref: '#/components/schemas/Kind44aEnum'
+          - $ref: '#/components/schemas/BudgetKindEnum'
           default: expense
         rollover:
           type: boolean
@@ -5129,6 +5186,16 @@ components:
       - limitRub
       - periodEnd
       - periodStart
+    BudgetUsageStatusEnum:
+      enum:
+      - normal
+      - warning
+      - exceeded
+      type: string
+      description: |-
+        * `normal` - Норма
+        * `warning` - Близко к лимиту
+        * `exceeded` - Превышен
     BudgetWarningItem:
       type: object
       properties:
@@ -5139,7 +5206,7 @@ components:
         periodLabel:
           type: string
         status:
-          $ref: '#/components/schemas/BudgetWarningItemStatusEnum'
+          $ref: '#/components/schemas/BudgetUsageStatusEnum'
         percent:
           type: number
           format: double
@@ -5163,16 +5230,6 @@ components:
       - remainingRub
       - spentRub
       - status
-    BudgetWarningItemStatusEnum:
-      enum:
-      - normal
-      - warning
-      - exceeded
-      type: string
-      description: |-
-        * `normal` - Норма
-        * `warning` - Близко к лимиту
-        * `exceeded` - Превышен
     BudgetWarningsResponse:
       type: object
       properties:
@@ -5343,16 +5400,6 @@ components:
       - detail
       - id
       - is_favorite
-    CategoryGroupEnum:
-      enum:
-      - main
-      - family
-      - personal
-      type: string
-      description: |-
-        * `main` - Основной бюджет
-        * `family` - Семейный
-        * `personal` - Личный
     CategoryReorder:
       type: object
       properties:
@@ -5629,7 +5676,7 @@ components:
           minLength: 1
           maxLength: 100
         periodType:
-          $ref: '#/components/schemas/PeriodTypeEnum'
+          $ref: '#/components/schemas/BudgetPeriodTypeEnum'
         periodStart:
           type: string
           format: date
@@ -5637,7 +5684,7 @@ components:
           type: string
           format: date
         kind:
-          $ref: '#/components/schemas/Kind44aEnum'
+          $ref: '#/components/schemas/BudgetKindEnum'
       required:
       - kind
       - periodStart
@@ -5903,6 +5950,16 @@ components:
       - expense
       - income
       - net
+    DeleteBudgetResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+        id:
+          type: string
+      required:
+      - deleted
+      - id
     ForgotPassword:
       type: object
       properties:
@@ -6338,14 +6395,6 @@ components:
       - status
       - timestamp
       - version
-    Kind44aEnum:
-      enum:
-      - expense
-      - income
-      type: string
-      description: |-
-        * `expense` - Расходный
-        * `income` - Доходный
     Login:
       type: object
       properties:
@@ -7376,11 +7425,11 @@ components:
           type: integer
         categoryGroup:
           allOf:
-          - $ref: '#/components/schemas/CategoryGroupEnum'
+          - $ref: '#/components/schemas/BudgetCategoryGroupEnum'
           default: main
         periodType:
           allOf:
-          - $ref: '#/components/schemas/PeriodTypeEnum'
+          - $ref: '#/components/schemas/BudgetPeriodTypeEnum'
           default: month
         periodStart:
           type: string
@@ -7389,9 +7438,11 @@ components:
           type: string
           format: date
         limitRub:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
         currency:
           type: string
           minLength: 1
@@ -7399,7 +7450,7 @@ components:
           maxLength: 3
         kind:
           allOf:
-          - $ref: '#/components/schemas/Kind44aEnum'
+          - $ref: '#/components/schemas/BudgetKindEnum'
           default: expense
         rollover:
           type: boolean
@@ -7734,16 +7785,6 @@ components:
           type: boolean
           title: Статус суперпользователя
           description: Указывает, что пользователь имеет все права без явного их назначения.
-    PeriodTypeEnum:
-      enum:
-      - month
-      - quarter
-      - year
-      type: string
-      description: |-
-        * `month` - Месяц
-        * `quarter` - Квартал
-        * `year` - Год
     PlannedCalendarDayBadge:
       type: object
       properties:
@@ -8978,9 +9019,11 @@ components:
         categoryId:
           type: integer
         limitRub:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
         periodStart:
           type: string
           format: date
@@ -9094,6 +9137,10 @@ tags:
 - name: finance-accounts
   description: 'Финансовые счета: список, создание, редактирование, архивирование,
     сводка балансов, история операций по счёту и справочники для формы.'
+- name: finance-budgets
+  description: 'Бюджеты и лимиты: список, создание, редактирование, удаление, пауза,
+    возобновление, расчёт прогресса, предупреждения, детальная статистика и справочники
+    для формы.'
 - name: finance-goals
   description: 'Финансовые цели: список, создание, редактирование, архивирование,
     завершение, отмена, восстановление, сводка прогресса, история пополнений и справочники

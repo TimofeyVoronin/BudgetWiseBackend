@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.finance.budgets import (
@@ -74,6 +76,7 @@ class BudgetSerializer(serializers.ModelSerializer):
         max_digits=14,
         decimal_places=2,
         min_value=Decimal("0.01"),
+        coerce_to_string=False,
     )
     spentRub = serializers.SerializerMethodField(read_only=True)
     currency = serializers.CharField(max_length=3, required=False, default="RUB")
@@ -184,19 +187,24 @@ class BudgetSerializer(serializers.ModelSerializer):
 
         return data
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_periodLabel(self, obj: Budget) -> str:
         return get_period_label(obj)
 
+    @extend_schema_field(OpenApiTypes.NUMBER)
     def get_spentRub(self, obj: Budget) -> float:
         return decimal_to_number(get_budget_usage(obj).spent_amount)
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_usageStatus(self, obj: Budget) -> str:
         return get_budget_usage(obj).usage_status
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_usageStatusLabel(self, obj: Budget) -> str:
         usage_status = get_budget_usage(obj).usage_status
         return BudgetUsageStatus(usage_status).label
 
+    @extend_schema_field(OpenApiTypes.NUMBER)
     def get_usagePercent(self, obj: Budget) -> float:
         return percent_to_number(get_budget_usage(obj).usage_percent)
 
@@ -365,6 +373,7 @@ class ValidateBudgetFormSerializer(serializers.Serializer):
         max_digits=14,
         decimal_places=2,
         min_value=Decimal("0.01"),
+        coerce_to_string=False,
     )
     periodStart = serializers.DateField()
     periodEnd = serializers.DateField()
@@ -390,6 +399,11 @@ class BudgetWarningItemSerializer(serializers.Serializer):
 class BudgetWarningsResponseSerializer(serializers.Serializer):
     items = BudgetWarningItemSerializer(many=True)
     attentionCount = serializers.IntegerField()
+
+
+class DeleteBudgetResponseSerializer(serializers.Serializer):
+    deleted = serializers.BooleanField()
+    id = serializers.CharField()
 
 
 class BudgetOptionSerializer(serializers.Serializer):
