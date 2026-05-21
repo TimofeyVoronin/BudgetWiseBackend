@@ -125,6 +125,18 @@ class BudgetUsageStatus(models.TextChoices):
     EXCEEDED = "exceeded", "Превышен"
 
 
+class TransactionTemplateStatus(models.TextChoices):
+    ACTIVE = "active", "Активный"
+    ARCHIVED = "archived", "В архиве"
+
+
+class TransactionTemplateIconTone(models.TextChoices):
+    PRIMARY = "primary", "Основной"
+    SUCCESS = "success", "Успех"
+    WARNING = "warning", "Предупреждение"
+    INFO = "info", "Информация"
+
+
 NOTIFICATION_QUIET_HOURS_DAYS = {
     "mon",
     "tue",
@@ -818,6 +830,209 @@ class Transaction(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.type}: {self.amount} {self.account.currency}"
+
+
+class TransactionTemplate(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="transaction_templates",
+        verbose_name="Пользователь",
+    )
+    name = models.CharField(
+        max_length=120,
+        verbose_name="Название шаблона",
+    )
+    normalized_name = models.CharField(
+        max_length=120,
+        blank=True,
+        editable=False,
+        verbose_name="Нормализованное название шаблона",
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=TransactionType.choices,
+        verbose_name="Тип операции",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма",
+    )
+    currency = models.CharField(
+        max_length=3,
+        default="RUB",
+        validators=[
+            RegexValidator(
+                regex=r"^[A-Z]{3}$",
+                message="Валюта должна быть указана в формате ISO-кода, например RUB.",
+            )
+        ],
+        verbose_name="Валюта",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="transaction_templates",
+        verbose_name="Счёт",
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name="transaction_templates",
+        verbose_name="Категория",
+    )
+    tags = models.ManyToManyField(
+        Tag,
+        blank=True,
+        related_name="transaction_templates",
+        verbose_name="Теги шаблона",
+    )
+    note = models.TextField(
+        blank=True,
+        verbose_name="Примечание",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=TransactionTemplateStatus.choices,
+        default=TransactionTemplateStatus.ACTIVE,
+        verbose_name="Статус шаблона",
+    )
+    is_default = models.BooleanField(
+        default=False,
+        verbose_name="Шаблон по умолчанию",
+    )
+    use_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Количество использований",
+    )
+    last_used_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последнего использования",
+    )
+
+    class Meta:
+        verbose_name = "Шаблон операции"
+        verbose_name_plural = "Шаблоны операций"
+        ordering = ["status", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(name__regex=r"\S"),
+                name="transaction_template_name_not_blank",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="transaction_template_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind__in=TransactionType.values),
+                name="transaction_template_kind_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=TransactionTemplateStatus.values),
+                name="transaction_template_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(currency__regex=r"^[A-Z]{3}$"),
+                name="transaction_template_currency_code_format",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "normalized_name"],
+                condition=models.Q(status=TransactionTemplateStatus.ACTIVE),
+                name="unique_active_transaction_template_name_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "kind"],
+                condition=models.Q(
+                    status=TransactionTemplateStatus.ACTIVE,
+                    is_default=True,
+                ),
+                name="unique_default_transaction_template_per_kind",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_tx_tpl_user"),
+            models.Index(fields=["user", "status"], name="idx_tx_tpl_user_status"),
+            models.Index(fields=["user", "kind"], name="idx_tx_tpl_user_kind"),
+            models.Index(fields=["user", "category"], name="idx_tx_tpl_user_category"),
+            models.Index(fields=["user", "account"], name="idx_tx_tpl_user_account"),
+            models.Index(fields=["user", "normalized_name"], name="idx_tx_tpl_user_norm_name"),
+            models.Index(fields=["user", "use_count"], name="idx_tx_tpl_user_use_count"),
+            models.Index(fields=["user", "last_used_at"], name="idx_tx_tpl_user_last_used"),
+        ]
+
+    @property
+    def is_archived(self) -> bool:
+        return self.status == TransactionTemplateStatus.ARCHIVED
+
+    @property
+    def icon(self) -> str:
+        if self.category_id and self.category.icon:
+            return self.category.icon
+
+        return "arrow-up" if self.kind == TransactionType.INCOME else "arrow-down"
+
+    @property
+    def icon_tone(self) -> str:
+        if self.kind == TransactionType.INCOME:
+            return TransactionTemplateIconTone.SUCCESS
+
+        return TransactionTemplateIconTone.WARNING
+
+    def clean(self) -> None:
+        errors = {}
+
+        self.name = self.name.strip()
+        self.normalized_name = normalize_tag_text(self.name)
+        self.currency = self.currency.upper()
+
+        if not self.name:
+            errors["name"] = "Название шаблона не может быть пустым."
+
+        if self.kind not in TransactionType.values:
+            errors["kind"] = "Недопустимый тип шаблона операции."
+
+        if self.status not in TransactionTemplateStatus.values:
+            errors["status"] = "Недопустимый статус шаблона операции."
+
+        if self.amount <= Decimal("0.00"):
+            errors["amount"] = "Сумма шаблона должна быть больше нуля."
+
+        if self.account_id and self.user_id and self.account.user_id != self.user_id:
+            errors["account"] = "Счёт должен принадлежать пользователю шаблона."
+
+        if self.account_id and (self.account.is_archived or not self.account.is_active):
+            errors["account"] = "Для шаблона можно выбрать только активный счёт."
+
+        if self.category_id and self.user_id and self.category.user_id != self.user_id:
+            errors["category"] = "Категория должна принадлежать пользователю шаблона."
+
+        if self.category_id and self.kind and self.category.type != self.kind:
+            errors["category"] = "Тип категории должен совпадать с типом шаблона."
+
+        if self.category_id and (self.category.is_archived or not self.category.is_active):
+            errors["category"] = "Для шаблона можно выбрать только активную категорию."
+
+        if self.status == TransactionTemplateStatus.ARCHIVED:
+            self.is_default = False
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.name = self.name.strip()
+        self.normalized_name = normalize_tag_text(self.name)
+        self.currency = self.currency.upper()
+
+        if self.status == TransactionTemplateStatus.ARCHIVED:
+            self.is_default = False
+
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.kind})"
 
 
 class Budget(TimeStampedModel):

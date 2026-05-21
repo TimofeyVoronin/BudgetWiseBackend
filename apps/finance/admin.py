@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.finance.models import Tag, TagGroup
+from apps.finance.models import Tag, TagGroup, TransactionTemplate
 
 
 @admin.register(TagGroup)
@@ -17,3 +17,33 @@ class TagAdmin(admin.ModelAdmin):
     list_filter = ("is_visible", "is_system", "group")
     search_fields = ("name", "description", "group__name", "user__email")
     readonly_fields = ("normalized_name", "created_at", "updated_at")
+
+
+@admin.register(TransactionTemplate)
+class TransactionTemplateAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "name",
+        "user",
+        "kind",
+        "amount",
+        "currency",
+        "account",
+        "category",
+        "status",
+        "is_default",
+        "use_count",
+        "last_used_at",
+        "created_at",
+    )
+    list_filter = ("kind", "status", "is_default", "currency")
+    search_fields = (
+        "name",
+        "note",
+        "account__name",
+        "category__name",
+        "tags__name",
+        "user__email",
+    )
+    readonly_fields = ("normalized_name", "use_count", "last_used_at", "created_at", "updated_at")
+    filter_horizontal = ("tags",)
