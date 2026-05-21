@@ -444,3 +444,70 @@ def get_tag_group_payload(user, *, include_empty_group: bool = False) -> list[di
     )
 
     return groups
+
+
+class TagTransactionsReportTagSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    groupId = serializers.IntegerField(allow_null=True)
+    groupName = serializers.CharField()
+    color = serializers.CharField()
+    icon = serializers.CharField()
+    isVisible = serializers.BooleanField()
+
+
+class TagTransactionsReportSummarySerializer(serializers.Serializer):
+    transactionsCount = serializers.IntegerField()
+    totalIncome = serializers.CharField()
+    totalExpense = serializers.CharField()
+    netAmount = serializers.CharField()
+    averageAmount = serializers.CharField()
+
+
+class TagTransactionsCategoryBreakdownSerializer(serializers.Serializer):
+    categoryId = serializers.IntegerField(allow_null=True)
+    categoryName = serializers.CharField()
+    categoryIcon = serializers.CharField(allow_blank=True)
+    categoryColor = serializers.CharField(allow_blank=True)
+    income = serializers.CharField()
+    expense = serializers.CharField()
+    netAmount = serializers.CharField()
+    transactionsCount = serializers.IntegerField()
+    percent = serializers.FloatField()
+
+
+class TagTransactionsAccountBreakdownSerializer(serializers.Serializer):
+    accountId = serializers.IntegerField(allow_null=True)
+    accountName = serializers.CharField()
+    currency = serializers.CharField()
+    income = serializers.CharField()
+    expense = serializers.CharField()
+    netAmount = serializers.CharField()
+    transactionsCount = serializers.IntegerField()
+    percent = serializers.FloatField()
+
+
+class TagTransactionsDynamicsPointSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    income = serializers.CharField()
+    expense = serializers.CharField()
+    netAmount = serializers.CharField()
+    transactionsCount = serializers.IntegerField()
+
+
+class TagTransactionsPaginationSerializer(serializers.Serializer):
+    page = serializers.IntegerField()
+    perPage = serializers.IntegerField()
+    totalItems = serializers.IntegerField()
+    totalPages = serializers.IntegerField()
+
+
+class TagTransactionsReportResponseSerializer(serializers.Serializer):
+    tag = TagTransactionsReportTagSerializer()
+    summary = TagTransactionsReportSummarySerializer()
+    categories = TagTransactionsCategoryBreakdownSerializer(many=True)
+    accounts = TagTransactionsAccountBreakdownSerializer(many=True)
+    dynamics = TagTransactionsDynamicsPointSerializer(many=True)
+    items = serializers.ListField(child=serializers.DictField())
+    pagination = TagTransactionsPaginationSerializer()
+

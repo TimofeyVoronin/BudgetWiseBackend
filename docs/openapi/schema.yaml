@@ -4009,6 +4009,169 @@ paths:
               schema:
                 $ref: '#/components/schemas/RenameTagResponse'
           description: ''
+  /api/v1/finance/tags/{id}/transactions/:
+    get:
+      operationId: finance_tags_transactions_retrieve
+      description: 'Возвращает страницу операций, связанных с выбранным тегом, и связанные
+        агрегаты: количество операций, суммы доходов и расходов, чистую сумму, распределение
+        по категориям и счетам, а также динамику по дням. Endpoint используется для
+        страницы Transactions by Tag. Если операций нет, возвращается 200 с пустыми
+        items, categories, accounts и dynamics.'
+      summary: Получить операции и отчёт по тегу
+      parameters:
+      - in: query
+        name: accountIds
+        schema:
+          type: string
+        description: Alias для accounts.
+      - in: query
+        name: accounts
+        schema:
+          type: string
+        description: ID счетов через запятую, например accounts=1,2.
+      - in: query
+        name: categories
+        schema:
+          type: string
+        description: ID категорий через запятую, например categories=3,4.
+      - in: query
+        name: categoryIds
+        schema:
+          type: string
+        description: Alias для categories.
+      - in: query
+        name: dateFrom
+        schema:
+          type: string
+          format: date
+        description: Дата начала периода в формате YYYY-MM-DD.
+      - in: query
+        name: dateTo
+        schema:
+          type: string
+          format: date
+        description: Дата окончания периода в формате YYYY-MM-DD.
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: query
+        name: kind
+        schema:
+          type: string
+        description: 'Alias для type: income, expense или all.'
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Frontend alias для perPage.
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'Сортировка: date, -date, amount, -amount, category, account,
+          createdAt.'
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы. По умолчанию 1.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Backend alias для perPage.
+      - in: query
+        name: perPage
+        schema:
+          type: integer
+        description: Размер страницы. По умолчанию 20, максимум 100.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по описанию операции, категории, счёту и тегам.
+      - in: query
+        name: type
+        schema:
+          type: string
+        description: 'Тип операции: income или expense.'
+      tags:
+      - finance-tags
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagTransactionsReportResponse'
+              examples:
+                ОтчётПоТегу:
+                  value:
+                    tag:
+                      id: 1
+                      name: Продукты
+                      groupId: 1
+                      groupName: Покупки
+                      color: '#66BB6A'
+                      icon: cart
+                      isVisible: true
+                    summary:
+                      transactionsCount: 12
+                      totalIncome: '0.00'
+                      totalExpense: '18600.00'
+                      netAmount: '-18600.00'
+                      averageAmount: '1550.00'
+                    categories:
+                    - categoryId: 3
+                      categoryName: Продукты
+                      categoryIcon: cart
+                      categoryColor: '#66BB6A'
+                      income: '0.00'
+                      expense: '15600.00'
+                      netAmount: '-15600.00'
+                      transactionsCount: 9
+                      percent: 83.87
+                    accounts:
+                    - accountId: 1
+                      accountName: Основная карта
+                      currency: RUB
+                      income: '0.00'
+                      expense: '18600.00'
+                      netAmount: '-18600.00'
+                      transactionsCount: 12
+                      percent: 100.0
+                    dynamics:
+                    - date: '2026-05-01'
+                      income: '0.00'
+                      expense: '1200.00'
+                      netAmount: '-1200.00'
+                      transactionsCount: 1
+                    items: []
+                    pagination:
+                      page: 1
+                      perPage: 20
+                      totalItems: 12
+                      totalPages: 1
+                  summary: Отчёт по тегу
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/v1/finance/tags/{id}/visibility/:
     patch:
       operationId: finance_tags_visibility_partial_update
@@ -9483,6 +9646,184 @@ components:
       - icon
       - title
       - value
+    TagTransactionsAccountBreakdown:
+      type: object
+      properties:
+        accountId:
+          type: integer
+          nullable: true
+        accountName:
+          type: string
+        currency:
+          type: string
+        income:
+          type: string
+        expense:
+          type: string
+        netAmount:
+          type: string
+        transactionsCount:
+          type: integer
+        percent:
+          type: number
+          format: double
+      required:
+      - accountId
+      - accountName
+      - currency
+      - expense
+      - income
+      - netAmount
+      - percent
+      - transactionsCount
+    TagTransactionsCategoryBreakdown:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+          nullable: true
+        categoryName:
+          type: string
+        categoryIcon:
+          type: string
+        categoryColor:
+          type: string
+        income:
+          type: string
+        expense:
+          type: string
+        netAmount:
+          type: string
+        transactionsCount:
+          type: integer
+        percent:
+          type: number
+          format: double
+      required:
+      - categoryColor
+      - categoryIcon
+      - categoryId
+      - categoryName
+      - expense
+      - income
+      - netAmount
+      - percent
+      - transactionsCount
+    TagTransactionsDynamicsPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        income:
+          type: string
+        expense:
+          type: string
+        netAmount:
+          type: string
+        transactionsCount:
+          type: integer
+      required:
+      - date
+      - expense
+      - income
+      - netAmount
+      - transactionsCount
+    TagTransactionsPagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        perPage:
+          type: integer
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+      - page
+      - perPage
+      - totalItems
+      - totalPages
+    TagTransactionsReportResponse:
+      type: object
+      properties:
+        tag:
+          $ref: '#/components/schemas/TagTransactionsReportTag'
+        summary:
+          $ref: '#/components/schemas/TagTransactionsReportSummary'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagTransactionsCategoryBreakdown'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagTransactionsAccountBreakdown'
+        dynamics:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagTransactionsDynamicsPoint'
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        pagination:
+          $ref: '#/components/schemas/TagTransactionsPagination'
+      required:
+      - accounts
+      - categories
+      - dynamics
+      - items
+      - pagination
+      - summary
+      - tag
+    TagTransactionsReportSummary:
+      type: object
+      properties:
+        transactionsCount:
+          type: integer
+        totalIncome:
+          type: string
+        totalExpense:
+          type: string
+        netAmount:
+          type: string
+        averageAmount:
+          type: string
+      required:
+      - averageAmount
+      - netAmount
+      - totalExpense
+      - totalIncome
+      - transactionsCount
+    TagTransactionsReportTag:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        groupId:
+          type: integer
+          nullable: true
+        groupName:
+          type: string
+        color:
+          type: string
+        icon:
+          type: string
+        isVisible:
+          type: boolean
+      required:
+      - color
+      - groupId
+      - groupName
+      - icon
+      - id
+      - isVisible
+      - name
     TagsGroupsResponse:
       type: object
       properties:
