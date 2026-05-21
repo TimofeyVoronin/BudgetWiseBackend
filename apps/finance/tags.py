@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from django.db.models import Count, Q, QuerySet, Value, IntegerField
+from rest_framework.exceptions import ValidationError
 
 from apps.finance.models import Tag, TagGroup, normalize_tag_text
 
@@ -96,6 +97,57 @@ def get_accessible_tags(user) -> QuerySet[Tag]:
         return queryset.annotate(operations_count=Count("transactions", distinct=True))
 
     return queryset.annotate(operations_count=Value(0, output_field=IntegerField()))
+
+
+
+
+def get_tag_ids_query_param(query_params, *names: str) -> list[int]:
+    raw_values: list[str] = []
+    used_name = names[0] if names else "tags"
+
+    for name in names:
+        values = []
+
+        if hasattr(query_params, "getlist"):
+            values = query_params.getlist(name)
+        else:
+            value = query_params.get(name) if hasattr(query_params, "get") else None
+            values = value if isinstance(value, list) else [value]
+
+        values = [value for value in values if value not in (None, "")]
+
+        if values:
+            raw_values = values
+            used_name = name
+            break
+
+    if not raw_values:
+        return []
+
+    tag_ids: list[int] = []
+
+    for raw_value in raw_values:
+        for item in str(raw_value).split(","):
+            item = item.strip()
+
+            if not item:
+                continue
+
+            try:
+                tag_id = int(item)
+            except ValueError as exc:
+                raise ValidationError(
+                    {used_name: "Параметр должен содержать ID тегов через запятую."}
+                ) from exc
+
+            if tag_id <= 0:
+                raise ValidationError(
+                    {used_name: "ID тега должен быть положительным целым числом."}
+                )
+
+            tag_ids.append(tag_id)
+
+    return list(dict.fromkeys(tag_ids))
 
 
 def get_tag_group_options(user) -> list[dict]:

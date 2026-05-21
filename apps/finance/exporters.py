@@ -34,6 +34,7 @@ TRANSACTION_EXPORT_COLUMNS = [
     "Описание",
     "Категория",
     "Счёт",
+    "Теги",
     "Дата создания",
 ]
 
@@ -97,6 +98,7 @@ def _build_export_rows(transactions) -> list[dict[str, str]]:
             "Описание": transaction.description,
             "Категория": transaction.category.name,
             "Счёт": transaction.account.name,
+            "Теги": _get_transaction_tags_label(transaction),
             "Дата создания": timezone.localtime(transaction.created_at).strftime(
                 "%Y-%m-%d %H:%M:%S"
             ),
@@ -104,6 +106,15 @@ def _build_export_rows(transactions) -> list[dict[str, str]]:
         for transaction in transactions
     ]
 
+
+
+def _get_transaction_tags_label(transaction) -> str:
+    tags_manager = getattr(transaction, "tags", None)
+
+    if tags_manager is None:
+        return ""
+
+    return ", ".join(tag.name for tag in tags_manager.all())
 
 def _get_transaction_type_label(transaction_type: str) -> str:
     if transaction_type == TransactionType.INCOME:
@@ -225,14 +236,15 @@ def _build_pdf(rows: list[dict[str, str]]) -> bytes:
         table_data,
         repeatRows=1,
         colWidths=[
-            26 * mm,
-            22 * mm,
             24 * mm,
             18 * mm,
-            70 * mm,
-            45 * mm,
-            45 * mm,
-            35 * mm,
+            22 * mm,
+            16 * mm,
+            58 * mm,
+            34 * mm,
+            34 * mm,
+            42 * mm,
+            33 * mm,
         ],
     )
     table.setStyle(

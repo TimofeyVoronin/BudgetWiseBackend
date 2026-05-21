@@ -6,9 +6,33 @@ from rest_framework import serializers
 from apps.finance.models import (
     Account,
     Category,
+    Tag,
     Transaction,
     TransactionType,
 )
+from apps.finance.tags import get_accessible_tags
+
+
+class TransactionTagSerializer(serializers.ModelSerializer):
+    groupId = serializers.IntegerField(source="group_id", read_only=True, allow_null=True)
+    groupName = serializers.SerializerMethodField(read_only=True)
+    isVisible = serializers.BooleanField(source="is_visible", read_only=True)
+
+    class Meta:
+        model = Tag
+        fields = [
+            "id",
+            "name",
+            "groupId",
+            "groupName",
+            "color",
+            "icon",
+            "isVisible",
+        ]
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_groupName(self, obj: Tag) -> str:
+        return obj.group.name if obj.group_id else "Без группы"
 
 
 class TransactionSerializer(serializers.ModelSerializer):
@@ -42,6 +66,12 @@ class TransactionSerializer(serializers.ModelSerializer):
         source="account.currency",
         read_only=True,
     )
+    tagIds = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        write_only=True,
+    )
+    tags = TransactionTagSerializer(many=True, read_only=True)
 
     class Meta:
         model = Transaction
@@ -64,6 +94,8 @@ class TransactionSerializer(serializers.ModelSerializer):
             "date",
             "created_at",
             "updated_at",
+            "tagIds",
+            "tags",
         ]
         read_only_fields = [
             "id",
@@ -78,7 +110,69 @@ class TransactionSerializer(serializers.ModelSerializer):
             "date",
             "created_at",
             "updated_at",
+            "tags",
         ]
+
+    def to_internal_value(self, data):
+        mutable_data = data.copy()
+
+        alias_map = {
+            "tag_ids": "tagIds",
+            "tags": "tagIds",
+        }
+
+        for alias, field_name in alias_map.items():
+            if alias in mutable_data and field_name not in mutable_data:
+                mutable_data[field_name] = mutable_data[alias]
+
+        tag_ids = mutable_data.get("tagIds")
+
+        if isinstance(tag_ids, str):
+            mutable_data["tagIds"] = [
+                item.strip()
+                for item in tag_ids.split(",")
+                if item.strip()
+            ]
+
+        return super().to_internal_value(mutable_data)
+
+    def _validate_tag_ids(self, tag_ids: list[int]) -> list[Tag]:
+        request = self.context.get("request")
+
+        if not request or not request.user or not request.user.is_authenticated:
+            raise serializers.ValidationError(
+                {
+                    "tagIds": "Пользователь должен быть авторизован для выбора тегов."
+                }
+            )
+
+        unique_tag_ids = list(dict.fromkeys(tag_ids))
+
+        if not unique_tag_ids:
+            return []
+
+        tags_queryset = (
+            get_accessible_tags(request.user)
+            .filter(pk__in=unique_tag_ids, is_visible=True)
+            .order_by("name", "id")
+        )
+        tags_by_id = {tag.pk: tag for tag in tags_queryset}
+        missing_tag_ids = [tag_id for tag_id in unique_tag_ids if tag_id not in tags_by_id]
+
+        if missing_tag_ids:
+            raise serializers.ValidationError(
+                {
+                    "tagIds": [
+                        (
+                            "Недоступные, скрытые или несуществующие теги: "
+                            + ", ".join(str(tag_id) for tag_id in missing_tag_ids)
+                            + "."
+                        )
+                    ]
+                }
+            )
+
+        return [tags_by_id[tag_id] for tag_id in unique_tag_ids]
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_amount_abs(self, obj) -> str:
@@ -114,6 +208,12 @@ class TransactionSerializer(serializers.ModelSerializer):
         return category
 
     def validate(self, attrs):
+        tag_ids = attrs.pop("tagIds", None)
+        self._validated_tags = None
+
+        if tag_ids is not None:
+            self._validated_tags = self._validate_tag_ids(tag_ids)
+
         account = attrs.get("account", getattr(self.instance, "account", None))
         category = attrs.get("category", getattr(self.instance, "category", None))
         transaction_type = attrs.get("type", getattr(self.instance, "type", None))
@@ -172,5 +272,21 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context["request"]
+        tags = getattr(self, "_validated_tags", None)
+
         validated_data["user"] = request.user
-        return super().create(validated_data)
+        transaction = super().create(validated_data)
+
+        if tags is not None:
+            transaction.tags.set(tags)
+
+        return transaction
+
+    def update(self, instance, validated_data):
+        tags = getattr(self, "_validated_tags", None)
+        transaction = super().update(instance, validated_data)
+
+        if tags is not None:
+            transaction.tags.set(tags)
+
+        return transaction

@@ -40,6 +40,7 @@ def get_cached_dashboard_summary(
     date_to: date | None = None,
     currency: str = DEFAULT_DASHBOARD_CURRENCY,
     recent_limit: int = DEFAULT_DASHBOARD_RECENT_LIMIT,
+    tag_ids: list[int] | None = None,
 ) -> dict:
     cache_key = build_dashboard_summary_cache_key(
         user_id=user.id,
@@ -48,6 +49,7 @@ def get_cached_dashboard_summary(
         date_to=date_to,
         currency=currency,
         recent_limit=recent_limit,
+        tag_ids=tag_ids,
     )
     cached_value = cache.get(cache_key)
 
@@ -61,6 +63,7 @@ def get_cached_dashboard_summary(
         date_to=date_to,
         currency=currency,
         recent_limit=recent_limit,
+        tag_ids=tag_ids,
     )
     cache.set(
         cache_key,
@@ -79,6 +82,7 @@ def build_dashboard_summary(
     date_to: date | None = None,
     currency: str = DEFAULT_DASHBOARD_CURRENCY,
     recent_limit: int = DEFAULT_DASHBOARD_RECENT_LIMIT,
+    tag_ids: list[int] | None = None,
 ) -> dict:
     resolved_date_from, resolved_date_to = resolve_dashboard_period(
         period_type=period_type,
@@ -97,6 +101,7 @@ def build_dashboard_summary(
         transaction_type=TransactionType.INCOME,
         date_from=resolved_date_from,
         date_to=resolved_date_to,
+        tag_ids=tag_ids,
     )
     expense = _get_period_amount(
         user=user,
@@ -104,6 +109,7 @@ def build_dashboard_summary(
         transaction_type=TransactionType.EXPENSE,
         date_from=resolved_date_from,
         date_to=resolved_date_to,
+        tag_ids=tag_ids,
     )
 
     return {
@@ -123,12 +129,14 @@ def build_dashboard_summary(
             user=user,
             currency=normalized_currency,
             limit=recent_limit,
+            tag_ids=tag_ids,
         ),
         "top_expense_categories": _get_top_expense_categories(
             user=user,
             currency=normalized_currency,
             date_from=resolved_date_from,
             date_to=resolved_date_to,
+            tag_ids=tag_ids,
         ),
         "reminders": _get_reserved_reminders_block(),
     }
@@ -186,33 +194,43 @@ def _get_period_amount(
     transaction_type: str,
     date_from: date,
     date_to: date,
+    tag_ids: list[int] | None = None,
 ) -> Decimal:
-    value = (
-        Transaction.objects
-        .filter(
-            user=user,
-            account__currency=currency,
-            type=transaction_type,
-            operation_date__gte=date_from,
-            operation_date__lte=date_to,
-        )
-        .aggregate(total=Sum("amount"))
-        .get("total")
+    queryset = Transaction.objects.filter(
+        user=user,
+        account__currency=currency,
+        type=transaction_type,
+        operation_date__gte=date_from,
+        operation_date__lte=date_to,
     )
+
+    queryset = _filter_transactions_by_tags(queryset, tag_ids)
+
+    value = queryset.aggregate(total=Sum("amount")).get("total")
 
     return value or Decimal("0.00")
 
 
-def _get_recent_transactions(*, user, currency: str, limit: int):
-    return (
+def _get_recent_transactions(
+    *,
+    user,
+    currency: str,
+    limit: int,
+    tag_ids: list[int] | None = None,
+):
+    queryset = (
         Transaction.objects
         .filter(
             user=user,
             account__currency=currency,
         )
         .select_related("account", "category")
-        .order_by("-operation_date", "-created_at", "-id")[:limit]
+        .prefetch_related("tags__group")
     )
+
+    queryset = _filter_transactions_by_tags(queryset, tag_ids)
+
+    return queryset.order_by("-operation_date", "-created_at", "-id")[:limit]
 
 
 def _get_top_expense_categories(
@@ -221,16 +239,20 @@ def _get_top_expense_categories(
     currency: str,
     date_from: date,
     date_to: date,
+    tag_ids: list[int] | None = None,
 ) -> list[dict]:
+    queryset = Transaction.objects.filter(
+        user=user,
+        account__currency=currency,
+        type=TransactionType.EXPENSE,
+        operation_date__gte=date_from,
+        operation_date__lte=date_to,
+    )
+
+    queryset = _filter_transactions_by_tags(queryset, tag_ids)
+
     rows = (
-        Transaction.objects
-        .filter(
-            user=user,
-            account__currency=currency,
-            type=TransactionType.EXPENSE,
-            operation_date__gte=date_from,
-            operation_date__lte=date_to,
-        )
+        queryset
         .values(
             "category_id",
             "category__name",
@@ -255,6 +277,13 @@ def _get_top_expense_categories(
     ]
 
 
+
+def _filter_transactions_by_tags(queryset, tag_ids: list[int] | None):
+    if not tag_ids:
+        return queryset
+
+    return queryset.filter(tags__id__in=tag_ids).distinct()
+
 def _get_reserved_reminders_block() -> dict:
     return {
         "title": "Напоминания",
@@ -276,6 +305,7 @@ def build_dashboard_summary_cache_key(
     date_to: date | None,
     currency: str,
     recent_limit: int,
+    tag_ids: list[int] | None = None,
 ) -> str:
     payload = {
         "user_id": user_id,
@@ -284,6 +314,7 @@ def build_dashboard_summary_cache_key(
         "date_to": date_to.isoformat() if date_to else None,
         "currency": currency.upper(),
         "recent_limit": recent_limit,
+        "tag_ids": sorted(tag_ids or []),
     }
     raw_key = json.dumps(payload, sort_keys=True, ensure_ascii=True)
     digest = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()

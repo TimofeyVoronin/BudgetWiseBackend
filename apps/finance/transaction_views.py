@@ -32,6 +32,7 @@ from apps.finance.accounting import (
 )
 from apps.finance.models import Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
+from apps.finance.tags import get_tag_ids_query_param
 from apps.finance.transaction_serializers import TransactionSerializer
 
 
@@ -178,6 +179,7 @@ def get_transaction_queryset_for_request(request):
         Transaction.objects
         .filter(user=request.user)
         .select_related("account", "category")
+        .prefetch_related("tags__group")
     )
 
     query_params = request.query_params
@@ -219,6 +221,12 @@ def get_transaction_queryset_for_request(request):
         query_params,
         "only_with_comment",
         "onlyWithComment",
+    )
+    tag_ids = get_tag_ids_query_param(
+        query_params,
+        "tags",
+        "tagIds",
+        "tag_ids",
     )
     search = query_params.get("search")
     ordering_fields = get_transaction_ordering_fields(query_params)
@@ -263,6 +271,9 @@ def get_transaction_queryset_for_request(request):
     if only_with_comment is False:
         queryset = queryset.filter(description="")
 
+    if tag_ids:
+        queryset = queryset.filter(tags__id__in=tag_ids).distinct()
+
     if search:
         search_value = search.strip()
 
@@ -283,7 +294,8 @@ def get_transaction_queryset_for_request(request):
                 Q(description__icontains=search_value)
                 | Q(category__name__icontains=search_value)
                 | Q(account__name__icontains=search_value)
-            )
+                | Q(tags__name__icontains=search_value)
+            ).distinct()
 
     if ordering_fields:
         queryset = queryset.order_by(*ordering_fields)
@@ -300,7 +312,7 @@ class TransactionExportView(APIView):
         summary="Экспортировать список операций",
         description=(
             "Экспортирует операции текущего пользователя с учётом тех же фильтров, "
-            "которые используются в списке операций. Поддерживаются форматы CSV, "
+            "которые используются в списке операций, включая фильтр по тегам. Поддерживаются форматы CSV, "
             "XLSX и PDF. Для защиты от слишком тяжёлых выгрузок действует лимит "
             f"{MAX_TRANSACTION_EXPORT_ROWS} операций."
         ),
@@ -328,6 +340,8 @@ class TransactionExportView(APIView):
             OpenApiParameter("search", OpenApiTypes.STR),
             OpenApiParameter("only_with_comment", OpenApiTypes.BOOL),
             OpenApiParameter("onlyWithComment", OpenApiTypes.BOOL),
+            OpenApiParameter("tags", OpenApiTypes.STR, description="ID тегов через запятую, например tags=1,2."),
+            OpenApiParameter("tagIds", OpenApiTypes.STR, description="Frontend-friendly alias для tags."),
             OpenApiParameter("ordering", OpenApiTypes.STR),
             OpenApiParameter("sortBy", OpenApiTypes.STR),
             OpenApiParameter("sortDir", OpenApiTypes.STR),
@@ -387,8 +401,8 @@ class TransactionExportView(APIView):
         description=(
             "Возвращает операции текущего пользователя с пагинацией. "
             "Поддерживает backend-параметры и frontend-friendly alias-параметры "
-            "для фильтров, поиска и сортировки. Поиск выполняется по описанию "
-            "операции, названию категории и названию счёта."
+            "для фильтров, поиска и сортировки, включая фильтр по тегам. Поиск выполняется по описанию "
+            "операции, названию категории, названию счёта и тегам."
         ),
         parameters=[
             OpenApiParameter(
@@ -497,10 +511,23 @@ class TransactionExportView(APIView):
                 description="Frontend-friendly alias для only_with_comment.",
             ),
             OpenApiParameter(
+                "tags",
+                OpenApiTypes.STR,
+                description=(
+                    "Фильтр по ID тегов через запятую. Например: tags=1,2. "
+                    "Операция попадает в результат, если содержит хотя бы один из переданных тегов."
+                ),
+            ),
+            OpenApiParameter(
+                "tagIds",
+                OpenApiTypes.STR,
+                description="Frontend-friendly alias для tags, например tagIds=1,2.",
+            ),
+            OpenApiParameter(
                 "search",
                 OpenApiTypes.STR,
                 description=(
-                    "Поиск по описанию операции, названию категории и названию счёта. "
+                    "Поиск по описанию операции, названию категории, названию счёта и тегам. "
                     "Максимальная длина 100 символов."
                 ),
             ),
@@ -556,6 +583,17 @@ class TransactionExportView(APIView):
                             "date": "2026-05-15",
                             "created_at": "2026-05-15T12:00:00+0300",
                             "updated_at": "2026-05-15T12:00:00+0300",
+                            "tags": [
+                                {
+                                    "id": 1,
+                                    "name": "Продукты",
+                                    "groupId": 1,
+                                    "groupName": "Покупки",
+                                    "color": "#66BB6A",
+                                    "icon": "cart",
+                                    "isVisible": True,
+                                }
+                            ],
                         }
                     ],
                 },
@@ -569,7 +607,8 @@ class TransactionExportView(APIView):
         description=(
             "Создаёт финансовую операцию текущего пользователя. "
             "Счёт и категория должны принадлежать текущему пользователю. "
-            "Тип категории должен совпадать с типом операции."
+            "Тип категории должен совпадать с типом операции. "
+            "Теги передаются через tagIds и должны быть видимыми для выбора."
         ),
         request=TransactionSerializer,
         responses={201: TransactionSerializer},
@@ -583,6 +622,7 @@ class TransactionExportView(APIView):
                     "amount": "1500.00",
                     "description": "Покупка продуктов",
                     "operation_date": "2026-05-15",
+                    "tagIds": [1, 2],
                 },
                 request_only=True,
             )
@@ -615,6 +655,7 @@ class TransactionExportView(APIView):
                     "amount": "1245.00",
                     "description": "Покупка в супермаркете",
                     "operation_date": "2026-05-15",
+                    "tagIds": [1],
                 },
                 request_only=True,
             )
@@ -635,6 +676,7 @@ class TransactionExportView(APIView):
                 "Обновление описания операции",
                 value={
                     "description": "Покупка продуктов и бытовых товаров",
+                    "tagIds": [1, 3],
                 },
                 request_only=True,
             )

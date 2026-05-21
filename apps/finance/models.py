@@ -752,6 +752,12 @@ class Transaction(TimeStampedModel):
     operation_date = models.DateField(
         verbose_name="Дата операции",
     )
+    tags = models.ManyToManyField(
+        Tag,
+        blank=True,
+        related_name="transactions",
+        verbose_name="Теги операции",
+    )
 
     class Meta:
         verbose_name = "Операция"
