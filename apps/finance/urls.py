@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from apps.finance.account_views import AccountViewSet
+from apps.finance.budget_views import BudgetViewSet
 from apps.finance.category_views import CategoryViewSet
 from apps.finance.dashboard_views import DashboardSummaryView
 from apps.finance.goal_views import GoalViewSet
@@ -18,6 +19,7 @@ app_name = "finance"
 
 router = DefaultRouter()
 router.register("accounts", AccountViewSet, basename="account")
+router.register("budgets", BudgetViewSet, basename="budget")
 router.register("categories", CategoryViewSet, basename="category")
 router.register("goals", GoalViewSet, basename="goal")
 router.register("notifications", NotificationViewSet, basename="notification")
