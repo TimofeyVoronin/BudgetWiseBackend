@@ -1,3 +1,4 @@
+import re
 from datetime import time
 from decimal import Decimal
 
@@ -152,6 +153,10 @@ hex_color_validator = RegexValidator(
     regex=r"^#[0-9A-Fa-f]{6}$",
     message="Цвет должен быть указан в HEX-формате, например #4F46E5.",
 )
+
+
+def normalize_tag_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip()).casefold()
 
 
 class Account(TimeStampedModel):
@@ -488,6 +493,226 @@ class Category(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.type})"
+
+
+class TagGroup(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="tag_groups",
+        verbose_name="Пользователь",
+    )
+    name = models.CharField(
+        max_length=80,
+        verbose_name="Название группы тегов",
+    )
+    normalized_name = models.CharField(
+        max_length=80,
+        blank=True,
+        editable=False,
+        verbose_name="Нормализованное название группы",
+    )
+    is_system = models.BooleanField(
+        default=False,
+        verbose_name="Системная группа",
+    )
+
+    class Meta:
+        verbose_name = "Группа тегов"
+        verbose_name_plural = "Группы тегов"
+        ordering = ["is_system", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(name__regex=r"\S"),
+                name="tag_group_name_not_blank",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_system=True, user__isnull=True)
+                    | models.Q(is_system=False, user__isnull=False)
+                ),
+                name="tag_group_owner_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "normalized_name"],
+                condition=models.Q(user__isnull=False),
+                name="unique_tag_group_name_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["normalized_name"],
+                condition=models.Q(is_system=True),
+                name="unique_system_tag_group_name",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "name"], name="idx_tag_group_user_name"),
+            models.Index(fields=["user", "is_system"], name="idx_tag_group_user_system"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        self.name = self.name.strip()
+        self.normalized_name = normalize_tag_text(self.name)
+
+        if not self.name:
+            errors["name"] = "Название группы тегов не может быть пустым."
+
+        if self.is_system and self.user_id is not None:
+            errors["user"] = "Системная группа тегов не должна быть привязана к пользователю."
+
+        if not self.is_system and self.user_id is None:
+            errors["user"] = "Пользовательская группа тегов должна быть привязана к пользователю."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.name = self.name.strip()
+        self.normalized_name = normalize_tag_text(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Tag(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="tags",
+        verbose_name="Пользователь",
+    )
+    group = models.ForeignKey(
+        TagGroup,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tags",
+        verbose_name="Группа тегов",
+    )
+    name = models.CharField(
+        max_length=80,
+        verbose_name="Название тега",
+    )
+    normalized_name = models.CharField(
+        max_length=80,
+        blank=True,
+        editable=False,
+        verbose_name="Нормализованное название тега",
+    )
+    color = models.CharField(
+        max_length=7,
+        default="#4F46E5",
+        validators=[hex_color_validator],
+        verbose_name="Цвет",
+    )
+    icon = models.CharField(
+        max_length=50,
+        default="tag",
+        verbose_name="Иконка",
+    )
+    is_visible = models.BooleanField(
+        default=True,
+        verbose_name="Показывать в формах операций",
+    )
+    is_system = models.BooleanField(
+        default=False,
+        verbose_name="Системный тег",
+    )
+    description = models.TextField(
+        blank=True,
+        verbose_name="Описание",
+    )
+
+    class Meta:
+        verbose_name = "Тег операции"
+        verbose_name_plural = "Теги операций"
+        ordering = ["is_system", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(name__regex=r"\S"),
+                name="tag_name_not_blank",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(color__regex=r"^#[0-9A-Fa-f]{6}$"),
+                name="tag_color_hex_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(icon__regex=r"\S"),
+                name="tag_icon_not_blank",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_system=True, user__isnull=True)
+                    | models.Q(is_system=False, user__isnull=False)
+                ),
+                name="tag_owner_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "normalized_name"],
+                condition=models.Q(user__isnull=False),
+                name="unique_tag_name_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["normalized_name"],
+                condition=models.Q(is_system=True),
+                name="unique_system_tag_name",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_tag_user"),
+            models.Index(fields=["user", "group"], name="idx_tag_user_group"),
+            models.Index(fields=["user", "is_visible"], name="idx_tag_user_visible"),
+            models.Index(fields=["user", "normalized_name"], name="idx_tag_user_norm_name"),
+            models.Index(fields=["user", "created_at"], name="idx_tag_user_created"),
+            models.Index(fields=["is_system"], name="idx_tag_system"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        self.name = self.name.strip()
+        self.icon = self.icon.strip()
+        self.color = self.color.upper()
+        self.normalized_name = normalize_tag_text(self.name)
+
+        if not self.name:
+            errors["name"] = "Название тега не может быть пустым."
+
+        if not self.icon:
+            errors["icon"] = "Иконка тега не может быть пустой."
+
+        if self.is_system and self.user_id is not None:
+            errors["user"] = "Системный тег не должен быть привязан к пользователю."
+
+        if not self.is_system and self.user_id is None:
+            errors["user"] = "Пользовательский тег должен быть привязан к пользователю."
+
+        if self.group_id:
+            if self.group.is_system:
+                pass
+            elif self.user_id and self.group.user_id != self.user_id:
+                errors["group"] = "Группа тега должна принадлежать тому же пользователю."
+            elif self.is_system:
+                errors["group"] = "Системный тег может быть связан только с системной группой."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.name = self.name.strip()
+        self.icon = self.icon.strip()
+        self.color = self.color.upper()
+        self.normalized_name = normalize_tag_text(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class Transaction(TimeStampedModel):
