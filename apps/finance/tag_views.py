@@ -14,8 +14,11 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.common.domain_errors import DomainConflictError
+
 from apps.finance.models import Tag
 from apps.finance.tag_serializers import (
+    DeleteTagConflictResponseSerializer,
     DeleteTagResponseSerializer,
     MoveTagGroupSerializer,
     RenameTagResponseSerializer,
@@ -40,6 +43,7 @@ from apps.finance.tags import (
     build_tags_summary,
     get_accessible_tag_groups,
     get_accessible_tags,
+    get_tag_operations_count,
 )
 
 
@@ -182,11 +186,14 @@ from apps.finance.tags import (
         tags=["finance-tags"],
         summary="Удалить тег операции",
         description=(
-            "Удаляет пользовательский тег. В текущей подзадаче связь тегов "
-            "с операциями ещё не подключена, поэтому пользовательский тег удаляется физически. "
-            "После интеграции с операциями используемые теги будут защищены от удаления."
+            "Удаляет пользовательский тег, если он не используется в операциях. "
+            "Если тег связан с операциями, API возвращает 409 Conflict и предлагает "
+            "скрыть тег из форм вместо удаления."
         ),
-        responses={200: DeleteTagResponseSerializer},
+        responses={
+            200: DeleteTagResponseSerializer,
+            409: DeleteTagConflictResponseSerializer,
+        },
     ),
 )
 class TagViewSet(viewsets.ModelViewSet):
@@ -308,6 +315,23 @@ class TagViewSet(viewsets.ModelViewSet):
 
         if instance.is_system:
             raise PermissionDenied("Системный тег нельзя удалить.")
+
+        operations_count = get_tag_operations_count(instance)
+
+        if operations_count > 0:
+            raise DomainConflictError(
+                code="tag_has_operations",
+                message=(
+                    "Тег нельзя удалить, так как он используется в операциях. "
+                    "Скройте тег из форм, если он больше не нужен для новых операций."
+                ),
+                detail={
+                    "code": "HAS_OPERATIONS",
+                    "message": "Тег используется в операциях.",
+                    "operationsCount": operations_count,
+                    "canHide": True,
+                },
+            )
 
         self.perform_destroy(instance)
 

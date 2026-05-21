@@ -3893,9 +3893,9 @@ paths:
           description: ''
     delete:
       operationId: finance_tags_destroy
-      description: Удаляет пользовательский тег. В текущей подзадаче связь тегов с
-        операциями ещё не подключена, поэтому пользовательский тег удаляется физически.
-        После интеграции с операциями используемые теги будут защищены от удаления.
+      description: Удаляет пользовательский тег, если он не используется в операциях.
+        Если тег связан с операциями, API возвращает 409 Conflict и предлагает скрыть
+        тег из форм вместо удаления.
       summary: Удалить тег операции
       parameters:
       - in: path
@@ -3914,6 +3914,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeleteTagResponse'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteTagConflictResponse'
           description: ''
   /api/v1/finance/tags/{id}/group/:
     patch:
@@ -6394,6 +6400,22 @@ components:
       required:
       - deleted
       - id
+    DeleteTagConflictResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        operationsCount:
+          type: integer
+        canHide:
+          type: boolean
+      required:
+      - canHide
+      - code
+      - message
+      - operationsCount
     DeleteTagResponse:
       type: object
       properties:
@@ -9825,6 +9847,9 @@ components:
         excludeId:
           type: integer
           nullable: true
+        description:
+          type: string
+          maxLength: 500
       required:
       - name
     ValidateTagResponse:

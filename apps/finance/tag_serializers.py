@@ -3,13 +3,22 @@ from __future__ import annotations
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from rest_framework.exceptions import ErrorDetail
 
 from apps.finance.models import Tag, TagGroup
 from apps.finance.tags import (
     DEFAULT_TAG_COLOR,
     DEFAULT_TAG_ICON,
+    MAX_TAG_DESCRIPTION_LENGTH,
+    MAX_TAG_ICON_LENGTH,
+    MAX_TAG_NAME_LENGTH,
     TAG_COLOR_OPTIONS,
     TAG_ICON_OPTIONS,
+    is_valid_tag_color,
+    is_valid_tag_icon,
+    is_valid_tag_name,
+    normalize_tag_color,
+    normalize_tag_name,
     get_accessible_tag_groups,
     tag_duplicate_exists,
 )
@@ -101,21 +110,73 @@ class TagSerializer(serializers.ModelSerializer):
         return int(getattr(obj, "operations_count", 0) or 0)
 
     def validate_name(self, value: str) -> str:
-        normalized_value = value.strip()
+        normalized_value = normalize_tag_name(value)
 
         if not normalized_value:
-            raise serializers.ValidationError("Название тега не может быть пустым.")
+            raise serializers.ValidationError(
+                "Название тега не может быть пустым.",
+                code="tag_name_blank",
+            )
+
+        if len(normalized_value) > MAX_TAG_NAME_LENGTH:
+            raise serializers.ValidationError(
+                f"Название тега не может быть длиннее {MAX_TAG_NAME_LENGTH} символов.",
+                code="tag_name_too_long",
+            )
+
+        if not is_valid_tag_name(normalized_value):
+            raise serializers.ValidationError(
+                (
+                    "Название тега может содержать буквы, цифры, пробелы "
+                    "и символы - _ . , & ( ) + №."
+                ),
+                code="tag_name_invalid_chars",
+            )
 
         return normalized_value
 
     def validate_color(self, value: str) -> str:
-        return value.upper()
+        normalized_value = normalize_tag_color(value)
+
+        if not is_valid_tag_color(normalized_value):
+            raise serializers.ValidationError(
+                "Цвет должен быть указан в HEX-формате, например #66BB6A.",
+                code="tag_color_invalid",
+            )
+
+        return normalized_value
 
     def validate_icon(self, value: str) -> str:
-        normalized_value = value.strip()
+        normalized_value = str(value or "").strip()
 
         if not normalized_value:
-            raise serializers.ValidationError("Иконка тега не может быть пустой.")
+            raise serializers.ValidationError(
+                "Иконка тега не может быть пустой.",
+                code="tag_icon_blank",
+            )
+
+        if len(normalized_value) > MAX_TAG_ICON_LENGTH:
+            raise serializers.ValidationError(
+                f"Иконка тега не может быть длиннее {MAX_TAG_ICON_LENGTH} символов.",
+                code="tag_icon_too_long",
+            )
+
+        if not is_valid_tag_icon(normalized_value):
+            raise serializers.ValidationError(
+                "Выберите иконку из справочника тегов.",
+                code="tag_icon_invalid",
+            )
+
+        return normalized_value
+
+    def validate_description(self, value: str) -> str:
+        normalized_value = str(value or "").strip()
+
+        if len(normalized_value) > MAX_TAG_DESCRIPTION_LENGTH:
+            raise serializers.ValidationError(
+                f"Описание тега не может быть длиннее {MAX_TAG_DESCRIPTION_LENGTH} символов.",
+                code="tag_description_too_long",
+            )
 
         return normalized_value
 
@@ -145,7 +206,10 @@ class TagSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {
                         "name": [
-                            "Тег с таким названием уже существует."
+                            ErrorDetail(
+                                "Тег с таким названием уже существует.",
+                                code="duplicate_tag_name",
+                            )
                         ]
                     }
                 )
@@ -202,7 +266,27 @@ class TagsGroupsResponseSerializer(serializers.Serializer):
 
 
 class RenameTagSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=80)
+    name = serializers.CharField(max_length=MAX_TAG_NAME_LENGTH)
+
+    def validate_name(self, value: str) -> str:
+        normalized_value = normalize_tag_name(value)
+
+        if not normalized_value:
+            raise serializers.ValidationError(
+                "Название тега не может быть пустым.",
+                code="tag_name_blank",
+            )
+
+        if not is_valid_tag_name(normalized_value):
+            raise serializers.ValidationError(
+                (
+                    "Название тега может содержать буквы, цифры, пробелы "
+                    "и символы - _ . , & ( ) + №."
+                ),
+                code="tag_name_invalid_chars",
+            )
+
+        return normalized_value
 
 
 class RenameTagResponseSerializer(serializers.Serializer):
@@ -223,12 +307,24 @@ class DeleteTagResponseSerializer(serializers.Serializer):
     id = serializers.IntegerField()
 
 
+class DeleteTagConflictResponseSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    message = serializers.CharField()
+    operationsCount = serializers.IntegerField()
+    canHide = serializers.BooleanField()
+
+
 class ValidateTagSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=80, allow_blank=True)
+    name = serializers.CharField(max_length=MAX_TAG_NAME_LENGTH, allow_blank=True)
     groupId = serializers.IntegerField(required=False, allow_null=True)
     color = serializers.CharField(max_length=7, required=False, default=DEFAULT_TAG_COLOR)
-    icon = serializers.CharField(max_length=50, required=False, default=DEFAULT_TAG_ICON)
+    icon = serializers.CharField(max_length=MAX_TAG_ICON_LENGTH, required=False, default=DEFAULT_TAG_ICON)
     excludeId = serializers.IntegerField(required=False, allow_null=True)
+    description = serializers.CharField(
+        max_length=MAX_TAG_DESCRIPTION_LENGTH,
+        required=False,
+        allow_blank=True,
+    )
 
 
 class ValidateTagResponseSerializer(serializers.Serializer):
@@ -243,6 +339,8 @@ class TagConflictResponseSerializer(serializers.Serializer):
         child=serializers.CharField(),
         required=False,
     )
+    operationsCount = serializers.IntegerField(required=False)
+    canHide = serializers.BooleanField(required=False)
 
 
 class TagOptionSerializer(serializers.Serializer):
@@ -260,24 +358,46 @@ def serializer_errors_to_field_errors(errors) -> dict[str, str]:
     field_errors = {}
 
     for field_name, field_errors_value in errors.items():
-        if isinstance(field_errors_value, list):
-            field_errors[field_name] = str(field_errors_value[0])
-        else:
-            field_errors[field_name] = str(field_errors_value)
+        field_errors[field_name] = _first_error_message(field_errors_value)
 
     return field_errors
 
 
+def _first_error_message(error_value) -> str:
+    if isinstance(error_value, dict):
+        if not error_value:
+            return "Некорректное значение."
+
+        first_key = next(iter(error_value))
+        return _first_error_message(error_value[first_key])
+
+    if isinstance(error_value, list):
+        if not error_value:
+            return "Некорректное значение."
+
+        return _first_error_message(error_value[0])
+
+    return str(error_value)
+
+
 def validate_tag_form(*, user, data: dict) -> dict[str, str]:
     errors = {}
-    name = str(data.get("name", "")).strip()
+    name = normalize_tag_name(data.get("name", ""))
     group_id = data.get("groupId")
-    color = str(data.get("color", DEFAULT_TAG_COLOR)).strip()
+    color = normalize_tag_color(data.get("color", DEFAULT_TAG_COLOR))
     icon = str(data.get("icon", DEFAULT_TAG_ICON)).strip()
+    description = str(data.get("description", "")).strip()
     exclude_id = data.get("excludeId")
 
     if not name:
         errors["name"] = "Введите название тега."
+    elif len(name) > MAX_TAG_NAME_LENGTH:
+        errors["name"] = f"Название тега не может быть длиннее {MAX_TAG_NAME_LENGTH} символов."
+    elif not is_valid_tag_name(name):
+        errors["name"] = (
+            "Название тега может содержать буквы, цифры, пробелы "
+            "и символы - _ . , & ( ) + №."
+        )
     elif tag_duplicate_exists(user=user, name=name, exclude_id=exclude_id):
         errors["name"] = "Тег с таким названием уже существует."
 
@@ -285,11 +405,18 @@ def validate_tag_form(*, user, data: dict) -> dict[str, str]:
         if not get_accessible_tag_groups(user).filter(pk=group_id).exists():
             errors["groupId"] = "Выберите существующую группу тегов."
 
-    if not color.startswith("#") or len(color) != 7:
-        errors["color"] = "Цвет должен быть указан в HEX-формате."
+    if not is_valid_tag_color(color):
+        errors["color"] = "Цвет должен быть указан в HEX-формате, например #66BB6A."
 
     if not icon:
         errors["icon"] = "Выберите иконку тега."
+    elif len(icon) > MAX_TAG_ICON_LENGTH:
+        errors["icon"] = f"Иконка тега не может быть длиннее {MAX_TAG_ICON_LENGTH} символов."
+    elif not is_valid_tag_icon(icon):
+        errors["icon"] = "Выберите иконку из справочника тегов."
+
+    if len(description) > MAX_TAG_DESCRIPTION_LENGTH:
+        errors["description"] = f"Описание тега не может быть длиннее {MAX_TAG_DESCRIPTION_LENGTH} символов."
 
     return errors
 
