@@ -19,7 +19,7 @@ from rest_framework.response import Response
 
 from apps.common.domain_errors import DomainConflictError
 
-from apps.finance.models import Tag, Transaction, TransactionType
+from apps.finance.models import Account, Category, Tag, Transaction, TransactionType
 from apps.finance.tag_serializers import (
     DeleteTagConflictResponseSerializer,
     DeleteTagResponseSerializer,
@@ -676,7 +676,75 @@ class TagViewSet(viewsets.ModelViewSet):
                     },
                 },
                 response_only=True,
-            )
+            ),
+            OpenApiExample(
+                "Пустой отчёт по тегу",
+                value={
+                    "tag": {
+                        "id": 1,
+                        "name": "Продукты",
+                        "groupId": 1,
+                        "groupName": "Покупки",
+                        "color": "#66BB6A",
+                        "icon": "cart",
+                        "isVisible": False,
+                    },
+                    "summary": {
+                        "transactionsCount": 0,
+                        "totalIncome": "0.00",
+                        "totalExpense": "0.00",
+                        "netAmount": "0.00",
+                        "averageAmount": "0.00",
+                    },
+                    "categories": [],
+                    "accounts": [],
+                    "dynamics": [],
+                    "items": [],
+                    "pagination": {
+                        "page": 1,
+                        "perPage": 20,
+                        "totalItems": 0,
+                        "totalPages": 1,
+                    },
+                },
+                response_only=True,
+            ),
+            OpenApiExample(
+                "Некорректный фильтр отчёта",
+                value={
+                    "success": False,
+                    "error": {
+                        "status_code": 400,
+                        "code": "validation_error",
+                        "message": "Некорректные данные запроса.",
+                        "field_errors": {
+                            "accounts": [
+                                "Некоторые счета не найдены или недоступны текущему пользователю."
+                            ]
+                        },
+                        "detail": None,
+                        "trace_id": None,
+                    },
+                },
+                response_only=True,
+                status_codes=["400"],
+            ),
+            OpenApiExample(
+                "Тег не найден или недоступен",
+                value={
+                    "success": False,
+                    "error": {
+                        "status_code": 404,
+                        "code": "not_found",
+                        "message": "Объект не найден.",
+                        "field_errors": None,
+                        "detail": "No Tag matches the given query.",
+                        "trace_id": None,
+                    },
+                },
+                response_only=True,
+                status_codes=["404"],
+            ),
         ],
     )
     @action(detail=True, methods=["get"], url_path="transactions")
@@ -733,6 +801,10 @@ class TagViewSet(viewsets.ModelViewSet):
         transaction_type = self._get_transaction_type_query_param()
         account_ids = self._get_int_list_query_param("accounts", "accountIds", "account_ids")
         category_ids = self._get_int_list_query_param("categories", "categoryIds", "category_ids")
+        self._validate_report_related_filters(
+            account_ids=account_ids,
+            category_ids=category_ids,
+        )
         search = query_params.get("search")
         ordering = self._get_report_ordering()
 
@@ -766,6 +838,53 @@ class TagViewSet(viewsets.ModelViewSet):
                 ).distinct()
 
         return queryset.order_by(*ordering)
+
+
+    def _validate_report_related_filters(
+        self,
+        *,
+        account_ids: list[int],
+        category_ids: list[int],
+    ) -> None:
+        """
+        Проверяет, что фильтры отчёта ссылаются только на сущности текущего пользователя.
+
+        Без этой проверки чужие или несуществующие счета/категории просто давали бы
+        пустой отчёт. Для страницы Transactions by Tag это плохой UX: фронт не сможет
+        отличить реальное отсутствие операций от некорректного фильтра.
+        """
+        field_errors: dict[str, list[str]] = {}
+
+        if account_ids:
+            existing_account_ids = set(
+                Account.objects.filter(
+                    user=self.request.user,
+                    pk__in=account_ids,
+                ).values_list("pk", flat=True)
+            )
+            missing_account_ids = sorted(set(account_ids) - existing_account_ids)
+
+            if missing_account_ids:
+                field_errors["accounts"] = [
+                    "Некоторые счета не найдены или недоступны текущему пользователю."
+                ]
+
+        if category_ids:
+            existing_category_ids = set(
+                Category.objects.filter(
+                    user=self.request.user,
+                    pk__in=category_ids,
+                ).values_list("pk", flat=True)
+            )
+            missing_category_ids = sorted(set(category_ids) - existing_category_ids)
+
+            if missing_category_ids:
+                field_errors["categories"] = [
+                    "Некоторые категории не найдены или недоступны текущему пользователю."
+                ]
+
+        if field_errors:
+            raise ValidationError(field_errors)
 
     def _get_date_query_param(self, *names: str):
         from django.utils.dateparse import parse_date

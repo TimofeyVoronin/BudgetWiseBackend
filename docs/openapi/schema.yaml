@@ -4157,6 +4157,32 @@ paths:
                       totalItems: 12
                       totalPages: 1
                   summary: Отчёт по тегу
+                ПустойОтчётПоТегу:
+                  value:
+                    tag:
+                      id: 1
+                      name: Продукты
+                      groupId: 1
+                      groupName: Покупки
+                      color: '#66BB6A'
+                      icon: cart
+                      isVisible: false
+                    summary:
+                      transactionsCount: 0
+                      totalIncome: '0.00'
+                      totalExpense: '0.00'
+                      netAmount: '0.00'
+                      averageAmount: '0.00'
+                    categories: []
+                    accounts: []
+                    dynamics: []
+                    items: []
+                    pagination:
+                      page: 1
+                      perPage: 20
+                      totalItems: 0
+                      totalPages: 1
+                  summary: Пустой отчёт по тегу
           description: ''
         '400':
           content:
@@ -4164,6 +4190,20 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+              examples:
+                НекорректныйФильтрОтчёта:
+                  value:
+                    success: false
+                    error:
+                      status_code: 400
+                      code: validation_error
+                      message: Некорректные данные запроса.
+                      field_errors:
+                        accounts:
+                        - Некоторые счета не найдены или недоступны текущему пользователю.
+                      detail: null
+                      trace_id: null
+                  summary: Некорректный фильтр отчёта
           description: ''
         '404':
           content:
@@ -4171,6 +4211,18 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+              examples:
+                ТегНеНайденИлиНедоступен:
+                  value:
+                    success: false
+                    error:
+                      status_code: 404
+                      code: not_found
+                      message: Объект не найден.
+                      field_errors: null
+                      detail: No Tag matches the given query.
+                      trace_id: null
+                  summary: Тег не найден или недоступен
           description: ''
   /api/v1/finance/tags/{id}/visibility/:
     patch:
