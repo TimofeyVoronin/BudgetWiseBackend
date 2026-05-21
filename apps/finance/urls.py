@@ -3,6 +3,13 @@ from rest_framework.routers import DefaultRouter
 
 from apps.finance.account_views import AccountViewSet
 from apps.finance.budget_views import BudgetViewSet
+from apps.finance.budget_notification_views import (
+    BudgetNotificationMetaView,
+    BudgetNotificationPreviewView,
+    BudgetNotificationSettingsView,
+    BudgetNotificationTestView,
+    BudgetNotificationThresholdValidationView,
+)
 from apps.finance.category_views import CategoryViewSet
 from apps.finance.dashboard_views import DashboardSummaryView
 from apps.finance.goal_views import GoalViewSet
@@ -32,6 +39,32 @@ router.register("transaction-templates", TransactionTemplateViewSet, basename="t
 router.register("transactions", TransactionViewSet, basename="transaction")
 
 urlpatterns = [
+
+    path(
+        "budget-notifications/settings/",
+        BudgetNotificationSettingsView.as_view(),
+        name="budget-notification-settings",
+    ),
+    path(
+        "budget-notifications/settings/validate-thresholds/",
+        BudgetNotificationThresholdValidationView.as_view(),
+        name="budget-notification-validate-thresholds",
+    ),
+    path(
+        "budget-notifications/settings/test/",
+        BudgetNotificationTestView.as_view(),
+        name="budget-notification-test",
+    ),
+    path(
+        "budget-notifications/settings/preview/",
+        BudgetNotificationPreviewView.as_view(),
+        name="budget-notification-preview",
+    ),
+    path(
+        "budget-notifications/meta/",
+        BudgetNotificationMetaView.as_view(),
+        name="budget-notification-meta",
+    ),
     path(
         "dashboard/summary/",
         DashboardSummaryView.as_view(),
