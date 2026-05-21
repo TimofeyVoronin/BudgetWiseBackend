@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, бюджетами, финансовыми целями, уведомлениями, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, бюджетами, тегами операций, финансовыми целями, уведомлениями, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -1699,8 +1699,9 @@ paths:
         активных счетов, сумму доходов и расходов за текущий месяц, чистый результат,
         последние операции и топ категорий расходов. Блок reminders зарезервирован
         для будущего эпика напоминаний и пока возвращается с пустым списком rows.
-        Результат кэшируется на короткое время по пользователю, периоду, диапазону
-        дат, валюте и limit.'
+        Можно ограничить расчёты конкретными тегами через tags/tagIds. Результат кэшируется
+        на короткое время по пользователю, периоду, диапазону дат, валюте, limit и
+        набору тегов.'
       summary: Получить агрегированные данные главного дашборда
       parameters:
       - in: query
@@ -1733,6 +1734,17 @@ paths:
           type: string
         description: 'Период dashboard: week, month, year или custom. По умолчанию
           month.'
+      - in: query
+        name: tagIds
+        schema:
+          type: string
+        description: Frontend-friendly alias для tags, например tagIds=1,2.
+      - in: query
+        name: tags
+        schema:
+          type: string
+        description: 'ID тегов через запятую для фильтрации доходов, расходов, последних
+          операций и топа категорий. Например: tags=1,2.'
       tags:
       - finance-dashboard
       security:
@@ -1775,6 +1787,14 @@ paths:
                       date: '2026-05-17'
                       created_at: 2026-05-17T12:00:00+0300
                       updated_at: 2026-05-17T12:00:00+0300
+                      tags:
+                      - id: 1
+                        name: Продукты
+                        groupId: 1
+                        groupName: Покупки
+                        color: '#66BB6A'
+                        icon: cart
+                        isVisible: true
                     top_expense_categories:
                     - category: 2
                       category_name: Продукты
@@ -3664,13 +3684,453 @@ paths:
               schema:
                 $ref: '#/components/schemas/RecurringScheduleValidationResponse'
           description: ''
+  /api/v1/finance/tags/:
+    get:
+      operationId: finance_tags_list
+      description: Возвращает теги текущего пользователя и системные теги. Список
+        используется на странице централизованного управления тегами операций, в фильтрах
+        и формах выбора тегов. Ответ содержит строки тегов, сводку и список групп.
+      summary: Получить список тегов операций
+      parameters:
+      - in: query
+        name: groupId
+        schema:
+          type: integer
+        description: ID группы тегов. Для тегов без группы передайте null или none.
+      - in: query
+        name: includeHidden
+        schema:
+          type: boolean
+        description: true - включить теги, скрытые из форм операций.
+      - in: query
+        name: onlyWithOperations
+        schema:
+          type: boolean
+        description: true - вернуть только теги, связанные хотя бы с одной операцией.
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию тега, группе или описанию.
+      - in: query
+        name: sortBy
+        schema:
+          type: string
+        description: 'Поле сортировки: name, operationsCount, createdAt, updatedAt
+          или isVisible.'
+      - in: query
+        name: sortOrder
+        schema:
+          type: string
+        description: 'Порядок сортировки: asc, desc, asc-nulls-first, desc-nulls-first,
+          asc-nulls-last, desc-nulls-last.'
+      - in: query
+        name: tagIds
+        schema:
+          type: string
+        description: Список ID тегов через запятую, например 1,2,3.
+      tags:
+      - finance-tags
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTagsListResponseList'
+              examples:
+                СписокТегов:
+                  value:
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - items:
+                      - id: 1
+                        name: Продукты
+                        groupId: 1
+                        groupName: Покупки
+                        color: '#66BB6A'
+                        icon: cart
+                        operationsCount: 0
+                        createdAt: 2026-05-21T10:00:00+0300
+                        updatedAt: 2026-05-21T10:00:00+0300
+                        isVisible: true
+                        isSystem: false
+                        description: Повседневные покупки продуктов
+                      summary:
+                        totalCount: 1
+                        withOperationsCount: 0
+                        withoutOperationsCount: 1
+                      groups:
+                      - id: null
+                        name: Без группы
+                      - id: 1
+                        name: Покупки
+                  summary: Список тегов
+          description: ''
+    post:
+      operationId: finance_tags_create
+      description: Создаёт пользовательский тег для операций. Название тега должно
+        быть уникальным в пределах пользователя с учётом регистра и лишних пробелов.
+      summary: Создать тег операции
+      tags:
+      - finance-tags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagRequest'
+            examples:
+              СозданиеТега:
+                value:
+                  name: Продукты
+                  groupId: 1
+                  color: '#66BB6A'
+                  icon: cart
+                  isVisible: true
+                  description: Повседневные покупки продуктов
+                summary: Создание тега
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TagRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TagRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+          description: ''
+  /api/v1/finance/tags/{id}/:
+    get:
+      operationId: finance_tags_retrieve
+      description: Возвращает пользовательский или системный тег по ID.
+      summary: Получить тег операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-tags
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+          description: ''
+    put:
+      operationId: finance_tags_update
+      description: Полностью обновляет пользовательский тег операции.
+      summary: Полностью обновить тег операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-tags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TagRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TagRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TagRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+          description: ''
+    patch:
+      operationId: finance_tags_partial_update
+      description: 'Частично обновляет пользовательский тег: название, группу, цвет,
+        иконку, видимость в формах и описание.'
+      summary: Частично обновить тег операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-tags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTagRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTagRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTagRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+          description: ''
+    delete:
+      operationId: finance_tags_destroy
+      description: Удаляет пользовательский тег, если он не используется в операциях.
+        Если тег связан с операциями, API возвращает 409 Conflict и предлагает скрыть
+        тег из форм вместо удаления.
+      summary: Удалить тег операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-tags
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteTagResponse'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteTagConflictResponse'
+          description: ''
+  /api/v1/finance/tags/{id}/group/:
+    patch:
+      operationId: finance_tags_group_partial_update
+      description: Обновляет только группу пользовательского тега.
+      summary: Переместить тег в группу
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-tags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedMoveTagGroupRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedMoveTagGroupRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedMoveTagGroupRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+          description: ''
+  /api/v1/finance/tags/{id}/rename/:
+    patch:
+      operationId: finance_tags_rename_partial_update
+      description: Обновляет только название пользовательского тега.
+      summary: Переименовать тег
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-tags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRenameTagRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRenameTagRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRenameTagRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenameTagResponse'
+          description: ''
+  /api/v1/finance/tags/{id}/visibility/:
+    patch:
+      operationId: finance_tags_visibility_partial_update
+      description: Скрывает или показывает пользовательский тег в формах операций
+        и фильтрах.
+      summary: Изменить видимость тега
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-tags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSetTagVisibilityRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSetTagVisibilityRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSetTagVisibilityRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tag'
+          description: ''
+  /api/v1/finance/tags/groups/:
+    get:
+      operationId: finance_tags_groups_retrieve
+      description: Возвращает системные и пользовательские группы тегов для фильтров
+        и форм.
+      summary: Получить группы тегов
+      tags:
+      - finance-tags
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagsGroupsResponse'
+          description: ''
+  /api/v1/finance/tags/meta/:
+    get:
+      operationId: finance_tags_meta_retrieve
+      description: Возвращает группы, цвета и иконки для формы создания и редактирования
+        тега.
+      summary: Получить справочники тегов
+      tags:
+      - finance-tags
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagsMetaResponse'
+          description: ''
+  /api/v1/finance/tags/select-options/:
+    get:
+      operationId: finance_tags_select_options_retrieve
+      description: Возвращает сокращённый список видимых тегов для форм операций,
+        шаблонов и фильтров.
+      summary: Получить теги для селектов
+      tags:
+      - finance-tags
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagsSelectOptionsResponse'
+          description: ''
+  /api/v1/finance/tags/validate/:
+    post:
+      operationId: finance_tags_validate_create
+      description: Проверяет форму создания или редактирования тега без сохранения.
+        Используется фронтом для отображения ошибок до отправки основной формы.
+      summary: Проверить форму тега
+      tags:
+      - finance-tags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateTagRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ValidateTagRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateTagRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateTagResponse'
+          description: ''
   /api/v1/finance/transactions/:
     get:
       operationId: finance_transactions_list
       description: Возвращает операции текущего пользователя с пагинацией. Поддерживает
         backend-параметры и frontend-friendly alias-параметры для фильтров, поиска
-        и сортировки. Поиск выполняется по описанию операции, названию категории и
-        названию счёта.
+        и сортировки, включая фильтр по тегам. Поиск выполняется по описанию операции,
+        названию категории, названию счёта и тегам.
       summary: Получить список операций
       parameters:
       - in: query
@@ -3781,8 +4241,8 @@ paths:
         name: search
         schema:
           type: string
-        description: Поиск по описанию операции, названию категории и названию счёта.
-          Максимальная длина 100 символов.
+        description: Поиск по описанию операции, названию категории, названию счёта
+          и тегам. Максимальная длина 100 символов.
       - in: query
         name: sortBy
         schema:
@@ -3794,6 +4254,17 @@ paths:
         schema:
           type: string
         description: 'Frontend-friendly направление сортировки: asc или desc.'
+      - in: query
+        name: tagIds
+        schema:
+          type: string
+        description: Frontend-friendly alias для tags, например tagIds=1,2.
+      - in: query
+        name: tags
+        schema:
+          type: string
+        description: 'Фильтр по ID тегов через запятую. Например: tags=1,2. Операция
+          попадает в результат, если содержит хотя бы один из переданных тегов.'
       - in: query
         name: type
         schema:
@@ -3838,13 +4309,22 @@ paths:
                         date: '2026-05-15'
                         created_at: 2026-05-15T12:00:00+0300
                         updated_at: 2026-05-15T12:00:00+0300
+                        tags:
+                        - id: 1
+                          name: Продукты
+                          groupId: 1
+                          groupName: Покупки
+                          color: '#66BB6A'
+                          icon: cart
+                          isVisible: true
                   summary: Список операций
           description: ''
     post:
       operationId: finance_transactions_create
       description: Создаёт финансовую операцию текущего пользователя. Счёт и категория
         должны принадлежать текущему пользователю. Тип категории должен совпадать
-        с типом операции.
+        с типом операции. Теги передаются через tagIds и должны быть видимыми для
+        выбора.
       summary: Создать операцию
       tags:
       - finance-transactions
@@ -3862,6 +4342,9 @@ paths:
                   amount: '1500.00'
                   description: Покупка продуктов
                   operation_date: '2026-05-15'
+                  tagIds:
+                  - 1
+                  - 2
                 summary: Создание расходной операции
           application/x-www-form-urlencoded:
             schema:
@@ -3932,6 +4415,8 @@ paths:
                   amount: '1245.00'
                   description: Покупка в супермаркете
                   operation_date: '2026-05-15'
+                  tagIds:
+                  - 1
                 summary: Полное обновление операции
           application/x-www-form-urlencoded:
             schema:
@@ -3973,6 +4458,9 @@ paths:
               ОбновлениеОписанияОперации:
                 value:
                   description: Покупка продуктов и бытовых товаров
+                  tagIds:
+                  - 1
+                  - 3
                 summary: Обновление описания операции
           application/x-www-form-urlencoded:
             schema:
@@ -4012,8 +4500,9 @@ paths:
     get:
       operationId: finance_transactions_export_retrieve
       description: Экспортирует операции текущего пользователя с учётом тех же фильтров,
-        которые используются в списке операций. Поддерживаются форматы CSV, XLSX и
-        PDF. Для защиты от слишком тяжёлых выгрузок действует лимит 5000 операций.
+        которые используются в списке операций, включая фильтр по тегам. Поддерживаются
+        форматы CSV, XLSX и PDF. Для защиты от слишком тяжёлых выгрузок действует
+        лимит 5000 операций.
       summary: Экспортировать список операций
       parameters:
       - in: query
@@ -4102,6 +4591,16 @@ paths:
         name: sortDir
         schema:
           type: string
+      - in: query
+        name: tagIds
+        schema:
+          type: string
+        description: Frontend-friendly alias для tags.
+      - in: query
+        name: tags
+        schema:
+          type: string
+        description: ID тегов через запятую, например tags=1,2.
       - in: query
         name: type
         schema:
@@ -5960,6 +6459,32 @@ components:
       required:
       - deleted
       - id
+    DeleteTagConflictResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        operationsCount:
+          type: integer
+        canHide:
+          type: boolean
+      required:
+      - canHide
+      - code
+      - message
+      - operationsCount
+    DeleteTagResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+        id:
+          type: integer
+      required:
+      - deleted
+      - id
     ForgotPassword:
       type: object
       properties:
@@ -7305,6 +7830,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RecurringTransaction'
+    PaginatedTagsListResponseList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagsListResponse'
     PaginatedTransactionList:
       type: object
       required:
@@ -7567,6 +8115,12 @@ components:
         comment:
           type: string
           title: Комментарий
+    PatchedMoveTagGroupRequest:
+      type: object
+      properties:
+        groupId:
+          type: integer
+          nullable: true
     PatchedNotificationSettingsRequest:
       type: object
       properties:
@@ -7718,6 +8272,46 @@ components:
           allOf:
           - $ref: '#/components/schemas/RecurringScheduleRequest'
           writeOnly: true
+    PatchedRenameTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+    PatchedSetTagVisibilityRequest:
+      type: object
+      properties:
+        isVisible:
+          type: boolean
+    PatchedTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название тега
+          maxLength: 80
+        groupId:
+          type: integer
+          nullable: true
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        isVisible:
+          type: boolean
+          default: true
+        description:
+          type: string
+          title: Описание
     PatchedTransactionRequest:
       type: object
       properties:
@@ -7743,6 +8337,12 @@ components:
           type: string
           format: date
           title: Дата операции
+        tagIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          writeOnly: true
     PatchedUserRequest:
       type: object
       properties:
@@ -8726,6 +9326,16 @@ components:
       - email
       - password
       - password_confirm
+    RenameTagResponse:
+      type: object
+      properties:
+        tag:
+          $ref: '#/components/schemas/Tag'
+        operationsCount:
+          type: integer
+      required:
+      - operationsCount
+      - tag
     ResetPassword:
       type: object
       properties:
@@ -8753,6 +9363,193 @@ components:
       - password
       - password_confirm
       - token
+    Tag:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название тега
+          maxLength: 80
+        groupId:
+          type: integer
+          nullable: true
+        groupName:
+          type: string
+          readOnly: true
+        color:
+          type: string
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        icon:
+          type: string
+          title: Иконка
+          maxLength: 50
+        operationsCount:
+          type: integer
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+        isVisible:
+          type: boolean
+          default: true
+        isSystem:
+          type: boolean
+          readOnly: true
+        description:
+          type: string
+          title: Описание
+      required:
+      - createdAt
+      - groupName
+      - id
+      - isSystem
+      - name
+      - operationsCount
+      - updatedAt
+    TagGroup:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        name:
+          type: string
+      required:
+      - id
+      - name
+    TagOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+      required:
+      - title
+      - value
+    TagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название тега
+          maxLength: 80
+        groupId:
+          type: integer
+          nullable: true
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+        isVisible:
+          type: boolean
+          default: true
+        description:
+          type: string
+          title: Описание
+      required:
+      - name
+    TagSelectOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: integer
+        color:
+          type: string
+        icon:
+          type: string
+      required:
+      - color
+      - icon
+      - title
+      - value
+    TagsGroupsResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagGroup'
+      required:
+      - groups
+    TagsListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        summary:
+          $ref: '#/components/schemas/TagsListSummary'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagGroup'
+      required:
+      - groups
+      - items
+      - summary
+    TagsListSummary:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        withOperationsCount:
+          type: integer
+        withoutOperationsCount:
+          type: integer
+      required:
+      - totalCount
+      - withOperationsCount
+      - withoutOperationsCount
+    TagsMetaResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagGroup'
+        colors:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagOption'
+        icons:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagOption'
+      required:
+      - colors
+      - groups
+      - icons
+    TagsSelectOptionsResponse:
+      type: object
+      properties:
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagSelectOption'
+      required:
+      - options
     TokenRefresh:
       type: object
       properties:
@@ -8848,6 +9645,11 @@ components:
           format: date-time
           readOnly: true
           title: Дата обновления
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTag'
+          readOnly: true
       required:
       - account
       - account_currency
@@ -8864,6 +9666,7 @@ components:
       - kind
       - operation_date
       - signed_amount
+      - tags
       - type
       - updated_at
     TransactionRequest:
@@ -8891,12 +9694,74 @@ components:
           type: string
           format: date
           title: Дата операции
+        tagIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          writeOnly: true
       required:
       - account
       - amount
       - category
       - operation_date
       - type
+    TransactionTag:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название тега
+          maxLength: 80
+        groupId:
+          type: integer
+          readOnly: true
+          nullable: true
+        groupName:
+          type: string
+          readOnly: true
+        color:
+          type: string
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        icon:
+          type: string
+          title: Иконка
+          maxLength: 50
+        isVisible:
+          type: boolean
+          readOnly: true
+      required:
+      - groupId
+      - groupName
+      - id
+      - isVisible
+      - name
+    TransactionTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название тега
+          maxLength: 80
+        color:
+          type: string
+          minLength: 1
+          title: Цвет
+          pattern: ^#[0-9A-Fa-f]{6}$
+          maxLength: 7
+        icon:
+          type: string
+          minLength: 1
+          title: Иконка
+          maxLength: 50
+      required:
+      - name
     TransactionTypeEnum:
       enum:
       - income
@@ -9093,6 +9958,45 @@ components:
       required:
       - frequency
       - startDate
+    ValidateTagRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        groupId:
+          type: integer
+          nullable: true
+        color:
+          type: string
+          minLength: 1
+          default: '#4F46E5'
+          maxLength: 7
+        icon:
+          type: string
+          minLength: 1
+          default: tag
+          maxLength: 50
+        excludeId:
+          type: integer
+          nullable: true
+        description:
+          type: string
+          maxLength: 500
+      required:
+      - name
+    ValidateTagResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - fieldErrors
+      - ok
     VerifyEmail:
       type: object
       properties:
@@ -9159,6 +10063,10 @@ tags:
 - name: finance-categories
   description: 'Финансовые категории: список, создание, дерево категорий, избранное,
     архивирование, drag and drop порядок и подсказки категорий по описанию операции.'
+- name: finance-tags
+  description: 'Теги операций: централизованное управление тегами, группы, поиск,
+    создание, редактирование, удаление, видимость в формах и справочники для выбора
+    тегов в операциях и отчётах.'
 - name: finance-transactions
   description: 'Финансовые операции: список, фильтрация, пагинация, создание, обновление,
     удаление и экспорт операций в CSV, XLSX и PDF.'

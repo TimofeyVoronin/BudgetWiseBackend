@@ -23,6 +23,7 @@ from apps.finance.dashboard import (
     get_cached_dashboard_summary,
 )
 from apps.finance.dashboard_serializers import DashboardSummarySerializer
+from apps.finance.tags import get_tag_ids_query_param
 
 
 def get_dashboard_recent_limit(query_params) -> int:
@@ -117,6 +118,7 @@ def get_dashboard_query_params(query_params) -> dict:
         "date_to": date_to,
         "currency": get_dashboard_currency_query_param(query_params),
         "recent_limit": get_dashboard_recent_limit(query_params),
+        "tag_ids": get_tag_ids_query_param(query_params, "tags", "tagIds", "tag_ids"),
     }
 
 
@@ -132,8 +134,9 @@ class DashboardSummaryView(APIView):
             "чистый результат, последние операции и топ категорий расходов. "
             "Блок reminders зарезервирован для будущего эпика напоминаний "
             "и пока возвращается с пустым списком rows. "
+            "Можно ограничить расчёты конкретными тегами через tags/tagIds. "
             "Результат кэшируется на короткое время по пользователю, периоду, "
-            "диапазону дат, валюте и limit."
+            "диапазону дат, валюте, limit и набору тегов."
         ),
         parameters=[
             OpenApiParameter(
@@ -175,6 +178,19 @@ class DashboardSummaryView(APIView):
                     f"максимум {MAX_DASHBOARD_RECENT_LIMIT}."
                 ),
             ),
+            OpenApiParameter(
+                "tags",
+                OpenApiTypes.STR,
+                description=(
+                    "ID тегов через запятую для фильтрации доходов, расходов, "
+                    "последних операций и топа категорий. Например: tags=1,2."
+                ),
+            ),
+            OpenApiParameter(
+                "tagIds",
+                OpenApiTypes.STR,
+                description="Frontend-friendly alias для tags, например tagIds=1,2.",
+            ),
         ],
         responses={200: DashboardSummarySerializer},
         examples=[
@@ -213,6 +229,17 @@ class DashboardSummaryView(APIView):
                             "date": "2026-05-17",
                             "created_at": "2026-05-17T12:00:00+0300",
                             "updated_at": "2026-05-17T12:00:00+0300",
+                            "tags": [
+                                {
+                                    "id": 1,
+                                    "name": "Продукты",
+                                    "groupId": 1,
+                                    "groupName": "Покупки",
+                                    "color": "#66BB6A",
+                                    "icon": "cart",
+                                    "isVisible": True,
+                                }
+                            ],
                         }
                     ],
                     "top_expense_categories": [
