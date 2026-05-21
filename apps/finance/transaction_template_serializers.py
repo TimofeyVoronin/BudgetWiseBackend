@@ -147,6 +147,10 @@ class TransactionTemplateSerializer(serializers.ModelSerializer):
             if alias in mutable_data and field_name not in mutable_data:
                 mutable_data[field_name] = mutable_data[alias]
 
+        currency = mutable_data.get("currency")
+        if currency not in (None, ""):
+            mutable_data["currency"] = str(currency).strip().upper()
+
         tag_ids = mutable_data.get("tagIds")
 
         if isinstance(tag_ids, str):
