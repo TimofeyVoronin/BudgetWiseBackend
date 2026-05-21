@@ -4339,6 +4339,641 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateTagResponse'
           description: ''
+  /api/v1/finance/transaction-templates/:
+    get:
+      operationId: finance_transaction_templates_list
+      description: Возвращает сохранённые шаблоны операций текущего пользователя.
+        Ответ содержит items, summary и pagination для страницы шаблонов.
+      summary: Получить список шаблонов операций
+      parameters:
+      - in: query
+        name: accounts
+        schema:
+          type: string
+        description: ID счетов через запятую.
+      - in: query
+        name: categories
+        schema:
+          type: string
+        description: ID категорий через запятую.
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: Backend-сортировка, например -useCount,name.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: perPage
+        schema:
+          type: integer
+        description: 'Размер страницы. Alias: page_size, limit.'
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по названию, примечанию, категории, счёту или тегу.
+      - in: query
+        name: sortBy
+        schema:
+          type: string
+        description: 'Поле сортировки: name, useCount, lastUsedAt, createdAt, updatedAt.'
+      - in: query
+        name: sortOrder
+        schema:
+          type: string
+        description: 'Направление сортировки: asc или desc.'
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: 'Статус шаблона: active или archived.'
+      - in: query
+        name: tagIds
+        schema:
+          type: string
+        description: ID тегов через запятую.
+      - in: query
+        name: tagQuery
+        schema:
+          type: string
+        description: Поиск по названию тега.
+      tags:
+      - finance-transaction-templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTransactionTemplateListResponseList'
+              examples:
+                СписокШаблонов:
+                  value:
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - items:
+                      - id: 1
+                        name: Обед в офисе
+                        kind: expense
+                        amountRub: 450.0
+                        currency: RUB
+                        categoryId: 2
+                        categoryName: Продукты
+                        categoryIcon: cart
+                        categoryColor: '#66BB6A'
+                        accountId: 1
+                        accountName: Основная карта
+                        tags:
+                        - id: 3
+                          name: обед
+                          groupId: null
+                          groupName: Без группы
+                          color: '#66BB6A'
+                          icon: cart
+                          isVisible: true
+                        note: Рабочий обед
+                        status: active
+                        isDefault: false
+                        useCount: 5
+                        lastUsedAt: 2026-05-21T16:00:00+0300
+                        icon: cart
+                        iconTone: warning
+                      summary:
+                        totalCount: 1
+                        frequentCount: 1
+                        lastUsedLabel: Сегодня
+                      pagination:
+                        page: 1
+                        perPage: 20
+                        totalItems: 1
+                        totalPages: 1
+                  summary: Список шаблонов
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    post:
+      operationId: finance_transaction_templates_create
+      description: Создаёт шаблон операции. Счёт, категория и теги должны принадлежать
+        текущему пользователю, категория должна соответствовать типу шаблона.
+      summary: Создать шаблон операции
+      tags:
+      - finance-transaction-templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+            examples:
+              СозданиеШаблона:
+                value:
+                  name: Кофе
+                  kind: expense
+                  amountRub: 180.0
+                  accountId: 1
+                  categoryId: 2
+                  tagIds:
+                  - 3
+                  note: Кофе перед работой
+                summary: Создание шаблона
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplate'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/transaction-templates/{id}/:
+    get:
+      operationId: finance_transaction_templates_retrieve
+      summary: Получить шаблон операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-transaction-templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplate'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    put:
+      operationId: finance_transaction_templates_update
+      summary: Полностью обновить шаблон операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-transaction-templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplate'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    patch:
+      operationId: finance_transaction_templates_partial_update
+      summary: Обновить шаблон операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-transaction-templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTransactionTemplateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTransactionTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTransactionTemplateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplate'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    delete:
+      operationId: finance_transaction_templates_destroy
+      summary: Удалить шаблон операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-transaction-templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplateDeleteResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/transaction-templates/{id}/apply/:
+    post:
+      operationId: finance_transaction_templates_apply_create
+      description: Создаёт финансовую операцию на основе шаблона. Можно переопределить
+        дату, сумму, счёт, категорию, теги и примечание. После успешного создания
+        операции обновляет useCount и lastUsedAt шаблона.
+      summary: Применить шаблон операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-transaction-templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateApplyRequest'
+            examples:
+              ПрименениеШаблона:
+                value:
+                  operationDate: '2026-05-21'
+                  amountRub: 450.0
+                  note: 'Обед в офисе #обед'
+                summary: Применение шаблона
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateApplyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateApplyRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplateApplyResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/transaction-templates/{id}/apply-draft/:
+    get:
+      operationId: finance_transaction_templates_apply_draft_retrieve
+      description: Возвращает данные, которые фронт может подставить в форму новой
+        операции. Архивные шаблоны нельзя применить.
+      summary: Получить черновик операции по шаблону
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-transaction-templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplateApplyDraft'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/transaction-templates/{id}/archive/:
+    post:
+      operationId: finance_transaction_templates_archive_create
+      summary: Архивировать шаблон операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-transaction-templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplateActionResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/transaction-templates/{id}/duplicate/:
+    post:
+      operationId: finance_transaction_templates_duplicate_create
+      description: Создаёт активную копию шаблона с новым названием.
+      summary: Дублировать шаблон операции
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-transaction-templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplate'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/transaction-templates/{id}/restore/:
+    post:
+      operationId: finance_transaction_templates_restore_create
+      summary: Восстановить шаблон операции из архива
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-transaction-templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplateActionResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/transaction-templates/check-name/:
+    get:
+      operationId: finance_transaction_templates_check_name_retrieve
+      summary: Проверить уникальность названия шаблона
+      parameters:
+      - in: query
+        name: excludeId
+        schema:
+          type: integer
+        description: ID шаблона, который нужно исключить при редактировании.
+      - in: query
+        name: name
+        schema:
+          type: string
+        description: Название шаблона.
+      tags:
+      - finance-transaction-templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplateCheckNameResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/transaction-templates/meta/:
+    get:
+      operationId: finance_transaction_templates_meta_retrieve
+      summary: Получить справочники для формы шаблона
+      tags:
+      - finance-transaction-templates
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplateMetaResponse'
+          description: ''
+  /api/v1/finance/transaction-templates/validate/:
+    post:
+      operationId: finance_transaction_templates_validate_create
+      summary: Проверить форму шаблона без сохранения
+      tags:
+      - finance-transaction-templates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateValidateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateValidateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TransactionTemplateValidateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionTemplateValidateResponse'
+          description: ''
   /api/v1/finance/transactions/:
     get:
       operationId: finance_transactions_list
@@ -8091,6 +8726,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Transaction'
+    PaginatedTransactionTemplateListResponseList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTemplateListResponse'
     PaginatedUserList:
       type: object
       required:
@@ -8558,6 +9216,50 @@ components:
             type: integer
             minimum: 1
           writeOnly: true
+    PatchedTransactionTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название шаблона
+          maxLength: 120
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          title: Тип операции
+        amountRub:
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
+        currency:
+          type: string
+          minLength: 1
+          title: Валюта
+          pattern: ^[A-Z]{3}$
+          maxLength: 3
+        accountId:
+          type: integer
+        categoryId:
+          type: integer
+        tagIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          writeOnly: true
+        note:
+          type: string
+          nullable: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTemplateStatusEnum'
+          default: active
+        isDefault:
+          type: boolean
+          default: false
     PatchedUserRequest:
       type: object
       properties:
@@ -10155,6 +10857,423 @@ components:
           maxLength: 50
       required:
       - name
+    TransactionTemplate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название шаблона
+          maxLength: 120
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          title: Тип операции
+        amountRub:
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
+        currency:
+          type: string
+          title: Валюта
+          pattern: ^[A-Z]{3}$
+          maxLength: 3
+        accountId:
+          type: integer
+        accountName:
+          type: string
+          readOnly: true
+        categoryId:
+          type: integer
+        categoryName:
+          type: string
+          readOnly: true
+        categoryIcon:
+          type: string
+          readOnly: true
+        categoryColor:
+          type: string
+          readOnly: true
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTag'
+          readOnly: true
+        note:
+          type: string
+          nullable: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTemplateStatusEnum'
+          default: active
+        isDefault:
+          type: boolean
+          default: false
+        useCount:
+          type: integer
+          readOnly: true
+        lastUsedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        icon:
+          type: string
+          readOnly: true
+        iconTone:
+          type: string
+          readOnly: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - accountId
+      - accountName
+      - amountRub
+      - categoryColor
+      - categoryIcon
+      - categoryId
+      - categoryName
+      - createdAt
+      - icon
+      - iconTone
+      - id
+      - kind
+      - lastUsedAt
+      - name
+      - tags
+      - updatedAt
+      - useCount
+    TransactionTemplateActionResponse:
+      type: object
+      properties:
+        template:
+          $ref: '#/components/schemas/TransactionTemplate'
+      required:
+      - template
+    TransactionTemplateApplyDraft:
+      type: object
+      properties:
+        templateId:
+          type: integer
+        templateName:
+          type: string
+        kind:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        amountRub:
+          type: number
+          format: double
+        currency:
+          type: string
+        categoryId:
+          type: integer
+        categoryName:
+          type: string
+        categoryIcon:
+          type: string
+        categoryColor:
+          type: string
+        accountId:
+          type: integer
+        accountName:
+          type: string
+        tagIds:
+          type: array
+          items:
+            type: integer
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTag'
+        note:
+          type: string
+        description:
+          type: string
+        operationDate:
+          type: string
+          format: date
+      required:
+      - accountId
+      - accountName
+      - amountRub
+      - categoryColor
+      - categoryIcon
+      - categoryId
+      - categoryName
+      - currency
+      - description
+      - kind
+      - note
+      - operationDate
+      - tagIds
+      - tags
+      - templateId
+      - templateName
+    TransactionTemplateApplyRequest:
+      type: object
+      properties:
+        operationDate:
+          type: string
+          format: date
+        amountRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        accountId:
+          type: integer
+        categoryId:
+          type: integer
+        tagIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+        note:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+    TransactionTemplateApplyResponse:
+      type: object
+      properties:
+        template:
+          $ref: '#/components/schemas/TransactionTemplate'
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+      required:
+      - template
+      - transaction
+    TransactionTemplateCheckNameResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+        message:
+          type: string
+      required:
+      - available
+    TransactionTemplateDeleteResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+        id:
+          type: integer
+      required:
+      - deleted
+      - id
+    TransactionTemplateKindOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+      required:
+      - title
+      - value
+    TransactionTemplateListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTemplate'
+        summary:
+          $ref: '#/components/schemas/TransactionTemplateSummary'
+        pagination:
+          $ref: '#/components/schemas/TransactionTemplatePagination'
+      required:
+      - items
+      - pagination
+      - summary
+    TransactionTemplateMetaResponse:
+      type: object
+      properties:
+        kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTemplateKindOption'
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTemplateKindOption'
+        defaultCurrency:
+          type: string
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTemplateOption'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTemplateOption'
+        sortOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTemplateKindOption'
+      required:
+      - accounts
+      - categories
+      - defaultCurrency
+      - kinds
+      - sortOptions
+      - statuses
+    TransactionTemplateOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: integer
+        icon:
+          type: string
+        color:
+          type: string
+        currency:
+          type: string
+        kind:
+          type: string
+      required:
+      - title
+      - value
+    TransactionTemplatePagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        perPage:
+          type: integer
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+      - page
+      - perPage
+      - totalItems
+      - totalPages
+    TransactionTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название шаблона
+          maxLength: 120
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTypeEnum'
+          title: Тип операции
+        amountRub:
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: 0.01
+          exclusiveMaximum: true
+        currency:
+          type: string
+          minLength: 1
+          title: Валюта
+          pattern: ^[A-Z]{3}$
+          maxLength: 3
+        accountId:
+          type: integer
+        categoryId:
+          type: integer
+        tagIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          writeOnly: true
+        note:
+          type: string
+          nullable: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/TransactionTemplateStatusEnum'
+          default: active
+        isDefault:
+          type: boolean
+          default: false
+      required:
+      - accountId
+      - amountRub
+      - categoryId
+      - kind
+      - name
+    TransactionTemplateStatusEnum:
+      enum:
+      - active
+      - archived
+      type: string
+      description: |-
+        * `active` - Активный
+        * `archived` - В архиве
+    TransactionTemplateSummary:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        frequentCount:
+          type: integer
+        lastUsedLabel:
+          type: string
+      required:
+      - frequentCount
+      - lastUsedLabel
+      - totalCount
+    TransactionTemplateValidateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          $ref: '#/components/schemas/TransactionTypeEnum'
+        amountRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        accountId:
+          type: integer
+        categoryId:
+          type: integer
+        tagIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+        note:
+          type: string
+          nullable: true
+        excludeId:
+          type: integer
+          nullable: true
+      required:
+      - name
+    TransactionTemplateValidateResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - fieldErrors
+      - ok
     TransactionTypeEnum:
       enum:
       - income
@@ -10460,6 +11579,10 @@ tags:
   description: 'Теги операций: централизованное управление тегами, группы, поиск,
     создание, редактирование, удаление, видимость в формах и справочники для выбора
     тегов в операциях и отчётах.'
+- name: finance-transaction-templates
+  description: 'Шаблоны операций: сохранённые заготовки доходов и расходов, создание,
+    редактирование, архивирование, дублирование, черновик применения и создание операции
+    из шаблона.'
 - name: finance-transactions
   description: 'Финансовые операции: список, фильтрация, пагинация, создание, обновление,
     удаление и экспорт операций в CSV, XLSX и PDF.'

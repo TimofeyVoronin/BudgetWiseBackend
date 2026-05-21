@@ -10,6 +10,7 @@ from apps.finance.notification_views import NotificationViewSet
 from apps.finance.planned_transaction_views import PlannedTransactionViewSet
 from apps.finance.recurring_transaction_views import RecurringTransactionViewSet
 from apps.finance.tag_views import TagViewSet
+from apps.finance.transaction_template_views import TransactionTemplateViewSet
 from apps.finance.transaction_views import (
     TransactionExportView,
     TransactionViewSet,
@@ -27,6 +28,7 @@ router.register("notifications", NotificationViewSet, basename="notification")
 router.register("planned-transactions", PlannedTransactionViewSet, basename="planned-transaction")
 router.register("recurring-transactions", RecurringTransactionViewSet, basename="recurring-transaction")
 router.register("tags", TagViewSet, basename="tag")
+router.register("transaction-templates", TransactionTemplateViewSet, basename="transaction-template")
 router.register("transactions", TransactionViewSet, basename="transaction")
 
 urlpatterns = [
