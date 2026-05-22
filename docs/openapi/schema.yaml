@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, бюджетами, тегами операций, финансовыми целями, уведомлениями, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, бюджетами, тегами операций, финансовыми целями, уведомлениями, финансовыми калькуляторами, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -1485,6 +1485,190 @@ paths:
               schema:
                 $ref: '#/components/schemas/BudgetWarningsResponse'
           description: ''
+  /api/v1/finance/calculators/:
+    get:
+      operationId: finance_calculators_retrieve
+      description: Возвращает список доступных stateless-калькуляторов для страницы
+        финансовых калькуляторов. Расчёты не сохраняются в базе данных. Все расчёты
+        выполняются в рублях.
+      summary: Получить каталог финансовых калькуляторов
+      parameters:
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Поиск по названию, описанию или идентификатору калькулятора.
+      tags:
+      - finance-calculators
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorsHubListResponse'
+              examples:
+                КаталогКалькуляторов:
+                  value:
+                    items:
+                    - id: credit
+                      title: Кредит
+                      description: Рассчитайте ежемесячный платёж и переплату по кредиту
+                      icon: percent
+                      iconBg: '#F3E8FF'
+                      iconColor: '#4F46E5'
+                      category: credit
+                      routeTitle: Кредитный калькулятор
+                      subtitle: Рассчитайте ежемесячный платёж и переплату по кредиту
+                    totalCount: 6
+                  summary: Каталог калькуляторов
+          description: ''
+  /api/v1/finance/calculators/{calc_id}/calculate/:
+    post:
+      operationId: finance_calculators_calculate_create
+      description: 'Выполняет расчёт по выбранному калькулятору. Endpoint не сохраняет
+        результат в базе. Схема тела запроса зависит от calcId: credit, mortgage,
+        installment, deposit, pension, inflation. Все суммы рассчитываются в рублях.'
+      summary: Выполнить расчёт финансового калькулятора
+      parameters:
+      - in: path
+        name: calc_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - finance-calculators
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalculatorCalculateRequestRequest'
+            examples:
+              РасчётКредита:
+                value:
+                  amount: 1500000
+                  ratePct: 12.5
+                  termMonths: 36
+                  paymentType: annuity
+                  issueDate: '2026-05-22'
+                summary: Расчёт кредита
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CalculatorCalculateRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CalculatorCalculateRequestRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorCalculateResponse'
+              examples:
+                РезультатКредита:
+                  value:
+                    monthlyPayment: 50180.0
+                    firstPayment: 50180.0
+                    lastPayment: 50180.0
+                    totalPayment: 1806480.0
+                    overpayment: 306480.0
+                    schedule:
+                    - month: 1
+                      date: '2026-06-22'
+                      payment: 50180.0
+                      principalPart: 34555.0
+                      interestPart: 15625.0
+                      remaining: 1465445.0
+                  summary: Результат кредита
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorAPIErrorResponse'
+              examples:
+                ОшибкаВалидации:
+                  value:
+                    success: false
+                    error:
+                      status_code: 400
+                      code: VALIDATION_FAILED
+                      message: Проверьте параметры калькулятора.
+                      field_errors:
+                        amount:
+                        - Сумма должна быть больше нуля.
+                        termMonths:
+                        - Срок должен быть не меньше 1 месяца.
+                      detail:
+                        calculatorId: credit
+                      trace_id: null
+                  summary: Ошибка валидации
+          description: Ошибка валидации входных параметров.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorAPIErrorResponse'
+          description: Калькулятор не найден.
+  /api/v1/finance/calculators/{calc_id}/defaults/:
+    get:
+      operationId: finance_calculators_defaults_retrieve
+      description: 'Возвращает стартовые параметры формы выбранного калькулятора.
+        Поддерживаемые calcId: credit, mortgage, installment, deposit, pension, inflation.'
+      summary: Получить значения по умолчанию для калькулятора
+      parameters:
+      - in: path
+        name: calc_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - finance-calculators
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorDefaultsResponse'
+              examples:
+                ЗначенияПоУмолчаниюДляКредита:
+                  value:
+                    calculatorId: credit
+                    defaults:
+                      amount: 1500000
+                      ratePct: 12.5
+                      termMonths: 36
+                      paymentType: annuity
+                      issueDate: '2026-05-22'
+                  summary: Значения по умолчанию для кредита
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorAPIErrorResponse'
+              examples:
+                КалькуляторНеНайден:
+                  value:
+                    success: false
+                    error:
+                      status_code: 404
+                      code: calculator_not_found
+                      message: Калькулятор не найден.
+                      field_errors:
+                        calcId:
+                        - 'Поддерживаются: credit, deposit, inflation, installment,
+                          mortgage, pension.'
+                      detail:
+                        calculatorId: unknown
+                      trace_id: null
+                  summary: Калькулятор не найден
+          description: Калькулятор не найден.
   /api/v1/finance/categories/:
     get:
       operationId: finance_categories_list
@@ -7083,6 +7267,7 @@ components:
         code:
           type: string
           minLength: 1
+          description: Код валюты из каталога, например USD.
           maxLength: 3
       required:
       - code
@@ -8046,6 +8231,165 @@ components:
       - kinds
       - periodTypes
       - usageStatuses
+    CalculatorAPIErrorInner:
+      type: object
+      properties:
+        status_code:
+          type: integer
+          readOnly: true
+        code:
+          type: string
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+        field_errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          readOnly: true
+          nullable: true
+        detail:
+          readOnly: true
+          nullable: true
+        trace_id:
+          type: string
+          readOnly: true
+          nullable: true
+      required:
+      - code
+      - detail
+      - field_errors
+      - message
+      - status_code
+      - trace_id
+    CalculatorAPIErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          readOnly: true
+        error:
+          allOf:
+          - $ref: '#/components/schemas/CalculatorAPIErrorInner'
+          readOnly: true
+      required:
+      - error
+      - success
+    CalculatorCalculateRequestRequest:
+      oneOf:
+      - $ref: '#/components/schemas/CreditCalculatorInputRequest'
+      - $ref: '#/components/schemas/MortgageCalculatorInputRequest'
+      - $ref: '#/components/schemas/InstallmentCalculatorInputRequest'
+      - $ref: '#/components/schemas/DepositCalculatorInputRequest'
+      - $ref: '#/components/schemas/PensionCalculatorInputRequest'
+      - $ref: '#/components/schemas/InflationCalculatorInputRequest'
+    CalculatorCalculateResponse:
+      oneOf:
+      - $ref: '#/components/schemas/CreditCalculationResult'
+      - $ref: '#/components/schemas/MortgageCalculationResult'
+      - $ref: '#/components/schemas/InstallmentCalculationResult'
+      - $ref: '#/components/schemas/DepositCalculationResult'
+      - $ref: '#/components/schemas/PensionCalculationResult'
+      - $ref: '#/components/schemas/InflationCalculationResult'
+    CalculatorCatalogItem:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+          description: Идентификатор калькулятора.
+        title:
+          type: string
+          readOnly: true
+          description: Название карточки калькулятора.
+        description:
+          type: string
+          readOnly: true
+          description: Короткое описание калькулятора.
+        icon:
+          type: string
+          readOnly: true
+          description: Код иконки для карточки.
+        iconBg:
+          type: string
+          readOnly: true
+          description: HEX-фон плашки иконки.
+        iconColor:
+          type: string
+          readOnly: true
+          description: HEX-цвет иконки.
+        category:
+          allOf:
+          - $ref: '#/components/schemas/CalculatorCatalogItemCategoryEnum'
+          readOnly: true
+          description: |-
+            Категория калькулятора для группировки на странице.
+
+            * `credit` - Кредиты
+            * `saving` - Сбережения
+            * `pension` - Пенсия
+        routeTitle:
+          type: string
+          readOnly: true
+          description: Заголовок страницы калькулятора.
+        subtitle:
+          type: string
+          readOnly: true
+          description: Подзаголовок страницы калькулятора.
+      required:
+      - category
+      - description
+      - icon
+      - iconBg
+      - iconColor
+      - id
+      - routeTitle
+      - subtitle
+      - title
+    CalculatorCatalogItemCategoryEnum:
+      enum:
+      - credit
+      - saving
+      - pension
+      type: string
+      description: |-
+        * `credit` - Кредиты
+        * `saving` - Сбережения
+        * `pension` - Пенсия
+    CalculatorDefaultsResponse:
+      type: object
+      properties:
+        calculatorId:
+          type: string
+          readOnly: true
+          description: Идентификатор калькулятора.
+        defaults:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+          description: Значения формы по умолчанию.
+      required:
+      - calculatorId
+      - defaults
+    CalculatorsHubListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalculatorCatalogItem'
+          readOnly: true
+          description: Доступные финансовые калькуляторы.
+        totalCount:
+          type: integer
+          readOnly: true
+          description: Количество калькуляторов после фильтрации.
+      required:
+      - items
+      - totalCount
     Category:
       type: object
       properties:
@@ -8473,8 +8817,10 @@ components:
       properties:
         available:
           type: boolean
+          description: Можно ли использовать код валюты.
         message:
           type: string
+          description: Пояснение, если код недоступен.
       required:
       - available
     CheckPlannedDuplicateRequest:
@@ -8543,22 +8889,103 @@ components:
         code:
           type: string
           minLength: 1
+          description: Код пользовательской валюты из 3 латинских букв.
           maxLength: 3
         name:
           type: string
           minLength: 1
+          description: Название пользовательской валюты.
           maxLength: 100
         symbol:
           type: string
           minLength: 1
+          description: Символ пользовательской валюты.
           maxLength: 12
         isVisible:
           type: boolean
           default: true
+          description: Показывать валюту в интерфейсе.
       required:
       - code
       - name
       - symbol
+    CreditCalculationResult:
+      type: object
+      properties:
+        monthlyPayment:
+          type: number
+          format: double
+          readOnly: true
+          description: Основной месячный платёж для отображения, ₽.
+        firstPayment:
+          type: number
+          format: double
+          readOnly: true
+          description: Первый платёж по графику, ₽.
+        lastPayment:
+          type: number
+          format: double
+          readOnly: true
+          description: Последний платёж по графику, ₽.
+        totalPayment:
+          type: number
+          format: double
+          readOnly: true
+          description: Общая сумма выплат, ₽.
+        overpayment:
+          type: number
+          format: double
+          readOnly: true
+          description: Переплата по кредиту, ₽.
+        schedule:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentScheduleRow'
+          readOnly: true
+          description: График платежей.
+      required:
+      - firstPayment
+      - lastPayment
+      - monthlyPayment
+      - overpayment
+      - schedule
+      - totalPayment
+    CreditCalculatorInputRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Сумма кредита в рублях.
+        ratePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Годовая ставка по кредиту, %.
+        termMonths:
+          type: integer
+          maximum: 600
+          minimum: 1
+          description: Срок кредита в месяцах, от 1 до 600.
+        paymentType:
+          allOf:
+          - $ref: '#/components/schemas/LoanPaymentTypeEnum'
+          description: |-
+            Тип платежа: annuity или differentiated.
+
+            * `annuity` - Аннуитетный
+            * `differentiated` - Дифференцированный
+        issueDate:
+          type: string
+          format: date
+          description: Дата выдачи кредита в формате YYYY-MM-DD.
+      required:
+      - amount
+      - issueDate
+      - paymentType
+      - ratePct
+      - termMonths
     CurrenciesCatalogResponse:
       type: object
       properties:
@@ -8566,6 +8993,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CurrencyCatalogItem'
+          description: Список валют из статического каталога.
       required:
       - items
     CurrenciesListResponse:
@@ -8575,8 +9003,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CurrencyListRow'
+          description: Список валют пользователя.
         summary:
-          $ref: '#/components/schemas/CurrenciesListSummary'
+          allOf:
+          - $ref: '#/components/schemas/CurrenciesListSummary'
+          description: Сводка для страницы управления валютами.
       required:
       - items
       - summary
@@ -8585,10 +9016,13 @@ components:
       properties:
         totalCount:
           type: integer
+          description: Общее количество валют пользователя.
         primaryCode:
           type: string
+          description: Код основной валюты пользователя.
         hiddenCount:
           type: integer
+          description: Количество скрытых валют.
       required:
       - hiddenCount
       - primaryCode
@@ -8598,10 +9032,12 @@ components:
       properties:
         primaryCode:
           type: string
+          description: Код основной валюты пользователя.
         options:
           type: array
           items:
             $ref: '#/components/schemas/CurrencySelectOption'
+          description: Видимые валюты для форм.
       required:
       - options
       - primaryCode
@@ -8610,14 +9046,19 @@ components:
       properties:
         code:
           type: string
+          description: Код валюты из каталога.
         name:
           type: string
+          description: Название валюты из каталога.
         symbol:
           type: string
+          description: Символ валюты.
         flagIcon:
           type: string
+          description: Код иконки валюты.
         popular:
           type: boolean
+          description: Популярная валюта для быстрого выбора.
       required:
       - code
       - flagIcon
@@ -8628,12 +9069,16 @@ components:
       properties:
         code:
           type: string
+          description: Ошибка поля code.
         name:
           type: string
+          description: Ошибка поля name.
         symbol:
           type: string
+          description: Ошибка поля symbol.
         general:
           type: string
+          description: Общая ошибка формы.
     CurrencyListRow:
       type: object
       properties:
@@ -8643,12 +9088,15 @@ components:
         code:
           type: string
           readOnly: true
+          description: Код валюты, например RUB, USD или BTC.
         name:
           type: string
           readOnly: true
+          description: Пользовательское или системное название валюты.
         symbol:
           type: string
           readOnly: true
+          description: Символ валюты, который показывается в интерфейсе.
         rateToPrimary:
           type: number
           format: double
@@ -8657,21 +9105,28 @@ components:
           exclusiveMaximum: true
           exclusiveMinimum: true
           readOnly: true
+          description: Курс к основной валюте пользователя. Для основной валюты всегда
+            1.0.
         isPrimary:
           type: boolean
           readOnly: true
+          description: Является ли валюта основной.
         isVisible:
           type: boolean
           readOnly: true
+          description: Показывается ли валюта в интерфейсе и формах.
         isCustom:
           type: boolean
           readOnly: true
+          description: Является ли валюта пользовательской.
         operationsCount:
           type: integer
           readOnly: true
+          description: Количество связанных объектов пользователя с этой валютой.
         flagIcon:
           type: string
           readOnly: true
+          description: Код иконки валюты для интерфейса.
       required:
       - code
       - flagIcon
@@ -8688,12 +9143,16 @@ components:
       properties:
         title:
           type: string
+          description: Подпись валюты для select-поля.
         value:
           type: string
+          description: Код валюты.
         symbol:
           type: string
+          description: Символ валюты.
         isPrimary:
           type: boolean
+          description: Является ли валюта основной.
       required:
       - title
       - value
@@ -8904,12 +9363,16 @@ components:
       properties:
         code:
           type: string
+          description: Код конфликта удаления.
         message:
           type: string
+          description: Пояснение для пользователя.
         operationsCount:
           type: integer
+          description: Количество связанных объектов с этой валютой.
         canHide:
           type: boolean
+          description: Можно ли скрыть валюту вместо удаления.
       required:
       - code
       - message
@@ -8918,8 +9381,10 @@ components:
       properties:
         deleted:
           type: boolean
+          description: Признак успешного удаления.
         id:
           type: integer
+          description: ID удалённой валюты пользователя.
       required:
       - deleted
       - id
@@ -8949,6 +9414,123 @@ components:
       required:
       - deleted
       - id
+    DepositCalculationResult:
+      type: object
+      properties:
+        income:
+          type: number
+          format: double
+          readOnly: true
+          description: Процентный доход по вкладу, ₽.
+        finalAmount:
+          type: number
+          format: double
+          readOnly: true
+          description: Итоговая сумма вклада, ₽.
+        effectiveRatePct:
+          type: number
+          format: double
+          readOnly: true
+          description: Эффективная годовая ставка, %.
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/DepositGrowthPoint'
+          readOnly: true
+          description: Точки графика роста вклада.
+      required:
+      - effectiveRatePct
+      - finalAmount
+      - income
+      - series
+    DepositCalculatorInputRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Начальная сумма вклада в рублях.
+        ratePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Годовая ставка по вкладу, %.
+        termMonths:
+          type: integer
+          maximum: 600
+          minimum: 1
+          description: Срок вклада в месяцах, от 1 до 600.
+        capitalization:
+          allOf:
+          - $ref: '#/components/schemas/DepositCapitalizationEnum'
+          description: |-
+            Периодичность капитализации процентов.
+
+            * `none` - Нет
+            * `monthly` - Ежемесячно
+            * `quarterly` - Ежеквартально
+            * `yearly` - Ежегодно
+        topUp:
+          allOf:
+          - $ref: '#/components/schemas/DepositTopUpEnum'
+          description: |-
+            Тип пополнения вклада.
+
+            * `none` - Нет
+            * `monthly` - Ежемесячно
+        monthlyTopUp:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          default: '0.00'
+          description: Ежемесячное пополнение в рублях, если topUp=monthly.
+      required:
+      - amount
+      - capitalization
+      - ratePct
+      - termMonths
+      - topUp
+    DepositCapitalizationEnum:
+      enum:
+      - none
+      - monthly
+      - quarterly
+      - yearly
+      type: string
+      description: |-
+        * `none` - Нет
+        * `monthly` - Ежемесячно
+        * `quarterly` - Ежеквартально
+        * `yearly` - Ежегодно
+    DepositGrowthPoint:
+      type: object
+      properties:
+        month:
+          type: integer
+          readOnly: true
+          description: Номер месяца роста вклада.
+        label:
+          type: string
+          readOnly: true
+          description: Подпись точки графика.
+        total:
+          type: number
+          format: double
+          readOnly: true
+          description: Итоговая сумма вклада на этом месяце, ₽.
+      required:
+      - label
+      - month
+      - total
+    DepositTopUpEnum:
+      enum:
+      - none
+      - monthly
+      type: string
+      description: |-
+        * `none` - Нет
+        * `monthly` - Ежемесячно
     ForgotPassword:
       type: object
       properties:
@@ -9384,6 +9966,161 @@ components:
       - status
       - timestamp
       - version
+    InflationCalculationResult:
+      type: object
+      properties:
+        futureValue:
+          type: number
+          format: double
+          readOnly: true
+          description: Покупательная способность суммы через указанный срок, ₽.
+        purchasingPowerLoss:
+          type: number
+          format: double
+          readOnly: true
+          description: Потеря покупательной способности, ₽.
+        lossPct:
+          type: number
+          format: double
+          readOnly: true
+          description: Потеря покупательной способности, %.
+      required:
+      - futureValue
+      - lossPct
+      - purchasingPowerLoss
+    InflationCalculatorInputRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Сумма сбережений в рублях.
+        years:
+          type: integer
+          maximum: 100
+          minimum: 1
+          description: Срок расчёта инфляции в годах, от 1 до 100.
+        inflationPct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Годовая инфляция, %.
+      required:
+      - amount
+      - inflationPct
+      - years
+    InstallmentCalculationResult:
+      type: object
+      properties:
+        installment:
+          allOf:
+          - $ref: '#/components/schemas/InstallmentCalculationSlice'
+          readOnly: true
+          description: Расчёт рассрочки.
+        creditCard:
+          allOf:
+          - $ref: '#/components/schemas/InstallmentCalculationSlice'
+          readOnly: true
+          description: Сравнение с кредитной картой.
+        comparisonMeta:
+          allOf:
+          - $ref: '#/components/schemas/InstallmentCardComparisonMeta'
+          readOnly: true
+          description: Метаданные сравнения.
+      required:
+      - comparisonMeta
+      - creditCard
+      - installment
+    InstallmentCalculationSlice:
+      type: object
+      properties:
+        monthlyPayment:
+          type: number
+          format: double
+          readOnly: true
+          description: Платёж в месяц, ₽.
+        totalToPay:
+          type: number
+          format: double
+          readOnly: true
+          description: Итоговая сумма к оплате, ₽.
+        overpayment:
+          type: number
+          format: double
+          readOnly: true
+          description: Переплата, ₽.
+        overpaymentPct:
+          type: number
+          format: double
+          readOnly: true
+          description: Переплата в процентах.
+      required:
+      - monthlyPayment
+      - overpayment
+      - overpaymentPct
+      - totalToPay
+    InstallmentCalculatorInputRequest:
+      type: object
+      properties:
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Цена товара в рублях.
+        termMonths:
+          type: integer
+          maximum: 120
+          minimum: 1
+          description: Срок рассрочки в месяцах, от 1 до 120.
+        bankFeePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Комиссия банка в процентах.
+        downPayment:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Первый взнос в рублях.
+        zeroOverpayment:
+          type: boolean
+          description: Считать рассрочку без переплаты.
+      required:
+      - bankFeePct
+      - downPayment
+      - price
+      - termMonths
+      - zeroOverpayment
+    InstallmentCardComparisonMeta:
+      type: object
+      properties:
+        annualRatePct:
+          type: number
+          format: double
+          readOnly: true
+          description: Ставка кредитной карты для сравнения, %.
+        minPaymentPct:
+          type: number
+          format: double
+          readOnly: true
+          description: Минимальный платёж кредитной карты, %.
+        footerNote:
+          type: string
+          readOnly: true
+          description: Пояснение к сравнению с кредитной картой.
+      required:
+      - annualRatePct
+      - footerNote
+      - minPaymentPct
+    LoanPaymentTypeEnum:
+      enum:
+      - annuity
+      - differentiated
+      type: string
+      description: |-
+        * `annuity` - Аннуитетный
+        * `differentiated` - Дифференцированный
     Login:
       type: object
       properties:
@@ -9449,6 +10186,89 @@ components:
       - last_name
       - role
       - username
+    MortgageCalculationResult:
+      type: object
+      properties:
+        loanAmount:
+          type: number
+          format: double
+          readOnly: true
+          description: Сумма ипотечного кредита после первоначального взноса, ₽.
+        monthlyPayment:
+          type: number
+          format: double
+          readOnly: true
+          description: Ежемесячный платёж, ₽.
+        recommendedIncome:
+          type: number
+          format: double
+          readOnly: true
+          description: Рекомендуемый месячный доход, ₽.
+        totalPayment:
+          type: number
+          format: double
+          readOnly: true
+          description: Общая сумма выплат, ₽.
+        totalInterest:
+          type: number
+          format: double
+          readOnly: true
+          description: Переплата за весь срок, ₽.
+        principalShare:
+          type: number
+          format: double
+          readOnly: true
+          description: Доля основного долга в общей сумме выплат.
+        interestShare:
+          type: number
+          format: double
+          readOnly: true
+          description: Доля процентов и страхования в общей сумме выплат.
+      required:
+      - interestShare
+      - loanAmount
+      - monthlyPayment
+      - principalShare
+      - recommendedIncome
+      - totalInterest
+      - totalPayment
+    MortgageCalculatorInputRequest:
+      type: object
+      properties:
+        propertyPrice:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Стоимость жилья в рублях.
+        downPaymentPct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,3})?$
+          description: Первоначальный взнос в процентах от стоимости жилья, от 0 до
+            90.
+        ratePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Годовая ставка по ипотеке, %.
+        termYears:
+          type: integer
+          maximum: 50
+          minimum: 1
+          description: Срок ипотеки в годах, от 1 до 50.
+        withInsurance:
+          type: boolean
+          description: Учитывать условную стоимость страхования.
+        isFamilyMortgage:
+          type: boolean
+          description: Флаг семейной ипотеки для интерфейса.
+      required:
+      - downPaymentPct
+      - isFamilyMortgage
+      - propertyPrice
+      - ratePct
+      - termYears
+      - withInsurance
     Notification:
       type: object
       properties:
@@ -10793,6 +11613,7 @@ components:
       properties:
         isVisible:
           type: boolean
+          description: Показывать валюту в интерфейсе и формах.
     PatchedSetTagVisibilityRequest:
       type: object
       properties:
@@ -10934,13 +11755,16 @@ components:
         name:
           type: string
           minLength: 1
+          description: Новое название пользовательской валюты.
           maxLength: 100
         symbol:
           type: string
           minLength: 1
+          description: Новый символ пользовательской валюты.
           maxLength: 12
         isVisible:
           type: boolean
+          description: Показывать валюту в интерфейсе.
     PatchedUserRequest:
       type: object
       properties:
@@ -10983,6 +11807,135 @@ components:
           type: boolean
           title: Статус суперпользователя
           description: Указывает, что пользователь имеет все права без явного их назначения.
+    PaymentScheduleRow:
+      type: object
+      properties:
+        month:
+          type: integer
+          readOnly: true
+          description: Номер месяца платежа.
+        date:
+          type: string
+          format: date
+          readOnly: true
+          description: Дата платежа, если она рассчитана.
+        payment:
+          type: number
+          format: double
+          readOnly: true
+          description: Сумма платежа за месяц, ₽.
+        principalPart:
+          type: number
+          format: double
+          readOnly: true
+          description: Часть платежа, которая гасит основной долг, ₽.
+        interestPart:
+          type: number
+          format: double
+          readOnly: true
+          description: Процентная часть платежа, ₽.
+        remaining:
+          type: number
+          format: double
+          readOnly: true
+          description: Остаток долга после платежа, ₽.
+      required:
+      - date
+      - interestPart
+      - month
+      - payment
+      - principalPart
+      - remaining
+    PensionCalculationResult:
+      type: object
+      properties:
+        capitalAtRetirement:
+          type: number
+          format: double
+          readOnly: true
+          description: Номинальный капитал к пенсионному возрасту, ₽.
+        monthlyPensionReal:
+          type: number
+          format: double
+          readOnly: true
+          description: Оценка ежемесячной пенсии в реальных ценах, ₽.
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/PensionCapitalPoint'
+          readOnly: true
+          description: Динамика капитала по возрастам.
+      required:
+      - capitalAtRetirement
+      - monthlyPensionReal
+      - series
+    PensionCalculatorInputRequest:
+      type: object
+      properties:
+        currentAge:
+          type: integer
+          maximum: 100
+          minimum: 14
+          description: Текущий возраст пользователя.
+        retireAge:
+          type: integer
+          maximum: 100
+          minimum: 15
+          description: Возраст выхода на пенсию.
+        monthlyContribution:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Ежемесячный взнос в пенсионные накопления.
+        returnRatePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Ожидаемая годовая доходность, %.
+        inflationPct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Ожидаемая годовая инфляция, %.
+        initialSaved:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Уже накопленная сумма в рублях.
+      required:
+      - currentAge
+      - inflationPct
+      - initialSaved
+      - monthlyContribution
+      - retireAge
+      - returnRatePct
+    PensionCapitalPoint:
+      type: object
+      properties:
+        age:
+          type: integer
+          readOnly: true
+          description: Возраст на точке графика.
+        contributions:
+          type: number
+          format: double
+          readOnly: true
+          description: Накопленные взносы, ₽.
+        growth:
+          type: number
+          format: double
+          readOnly: true
+          description: Инвестиционный доход, ₽.
+        total:
+          type: number
+          format: double
+          readOnly: true
+          description: Итоговый капитал, ₽.
+      required:
+      - age
+      - contributions
+      - growth
+      - total
     PlannedCalendarDayBadge:
       type: object
       properties:
@@ -13035,13 +13988,16 @@ components:
         name:
           type: string
           minLength: 1
+          description: Новое название пользовательской валюты.
           maxLength: 100
         symbol:
           type: string
           minLength: 1
+          description: Новый символ пользовательской валюты.
           maxLength: 12
         isVisible:
           type: boolean
+          description: Показывать валюту в интерфейсе.
     User:
       type: object
       properties:
@@ -13211,23 +14167,30 @@ components:
       properties:
         code:
           type: string
+          description: Код проверяемой валюты.
           maxLength: 3
         name:
           type: string
+          description: Название проверяемой валюты.
           maxLength: 100
         symbol:
           type: string
+          description: Символ проверяемой валюты.
           maxLength: 12
         excludeId:
           type: integer
           nullable: true
+          description: ID валюты, которую нужно исключить при проверке дубля.
     ValidateCustomCurrencyResponse:
       type: object
       properties:
         ok:
           type: boolean
+          description: Форма прошла проверку.
         fieldErrors:
-          $ref: '#/components/schemas/CurrencyFormValidationErrors'
+          allOf:
+          - $ref: '#/components/schemas/CurrencyFormValidationErrors'
+          description: Ошибки по полям формы.
       required:
       - fieldErrors
       - ok
@@ -13377,6 +14340,15 @@ tags:
   description: 'Настройки уведомлений о бюджетах и целях: включение, пороги, типы
     событий, каналы доставки, защита от дублей, предпросмотр и тестовая отправка.
     На текущем этапе реально доступен in-app канал.'
+- name: finance-currencies
+  description: 'Управление валютами пользователя: список доступных валют, каталог
+    системных валют, пользовательские валюты, основная валюта, видимость в интерфейсе
+    и select-options для финансовых форм.'
+- name: finance-calculators
+  description: 'Финансовые калькуляторы без сохранения результата в базе: кредит,
+    ипотека, рассрочка, вклад, пенсионные накопления и инфляция. Endpoints возвращают
+    значения по умолчанию, выполняют расчёт и показывают ошибки валидации входных
+    параметров.'
 - name: finance-recurring-transactions
   description: 'Регулярные операции: список, создание, редактирование, удаление, пауза,
     возобновление, завершение, справочники, сводка, история списаний и проверка расписания.'

@@ -19,21 +19,22 @@ from apps.finance.models import UserCurrency
 
 
 class CurrencyListRowSerializer(serializers.ModelSerializer):
-    code = serializers.SerializerMethodField()
-    name = serializers.SerializerMethodField()
-    symbol = serializers.SerializerMethodField()
+    code = serializers.SerializerMethodField(help_text="Код валюты, например RUB, USD или BTC.")
+    name = serializers.SerializerMethodField(help_text="Пользовательское или системное название валюты.")
+    symbol = serializers.SerializerMethodField(help_text="Символ валюты, который показывается в интерфейсе.")
     rateToPrimary = serializers.DecimalField(
         source="rate_to_primary",
         max_digits=20,
         decimal_places=8,
         coerce_to_string=False,
         read_only=True,
+        help_text="Курс к основной валюте пользователя. Для основной валюты всегда 1.0.",
     )
-    isPrimary = serializers.BooleanField(source="is_primary", read_only=True)
-    isVisible = serializers.BooleanField(source="is_visible", read_only=True)
-    isCustom = serializers.BooleanField(source="is_custom", read_only=True)
-    operationsCount = serializers.SerializerMethodField()
-    flagIcon = serializers.CharField(source="flag_icon", read_only=True)
+    isPrimary = serializers.BooleanField(source="is_primary", read_only=True, help_text="Является ли валюта основной.")
+    isVisible = serializers.BooleanField(source="is_visible", read_only=True, help_text="Показывается ли валюта в интерфейсе и формах.")
+    isCustom = serializers.BooleanField(source="is_custom", read_only=True, help_text="Является ли валюта пользовательской.")
+    operationsCount = serializers.SerializerMethodField(help_text="Количество связанных объектов пользователя с этой валютой.")
+    flagIcon = serializers.CharField(source="flag_icon", read_only=True, help_text="Код иконки валюты для интерфейса.")
 
     class Meta:
         model = UserCurrency
@@ -75,42 +76,42 @@ class CurrencyListRowSerializer(serializers.ModelSerializer):
 
 
 class CurrenciesListSummarySerializer(serializers.Serializer):
-    totalCount = serializers.IntegerField()
-    primaryCode = serializers.CharField()
-    hiddenCount = serializers.IntegerField()
+    totalCount = serializers.IntegerField(help_text="Общее количество валют пользователя.")
+    primaryCode = serializers.CharField(help_text="Код основной валюты пользователя.")
+    hiddenCount = serializers.IntegerField(help_text="Количество скрытых валют.")
 
 
 class CurrenciesListResponseSerializer(serializers.Serializer):
-    items = CurrencyListRowSerializer(many=True)
-    summary = CurrenciesListSummarySerializer()
+    items = CurrencyListRowSerializer(many=True, help_text="Список валют пользователя.")
+    summary = CurrenciesListSummarySerializer(help_text="Сводка для страницы управления валютами.")
 
 
 class CurrencySelectOptionSerializer(serializers.Serializer):
-    title = serializers.CharField()
-    value = serializers.CharField()
-    symbol = serializers.CharField(required=False)
-    isPrimary = serializers.BooleanField(required=False)
+    title = serializers.CharField(help_text="Подпись валюты для select-поля.")
+    value = serializers.CharField(help_text="Код валюты.")
+    symbol = serializers.CharField(required=False, help_text="Символ валюты.")
+    isPrimary = serializers.BooleanField(required=False, help_text="Является ли валюта основной.")
 
 
 class CurrenciesSelectOptionsResponseSerializer(serializers.Serializer):
-    primaryCode = serializers.CharField()
-    options = CurrencySelectOptionSerializer(many=True)
+    primaryCode = serializers.CharField(help_text="Код основной валюты пользователя.")
+    options = CurrencySelectOptionSerializer(many=True, help_text="Видимые валюты для форм.")
 
 
 class CurrencyCatalogItemSerializer(serializers.Serializer):
-    code = serializers.CharField()
-    name = serializers.CharField()
-    symbol = serializers.CharField()
-    flagIcon = serializers.CharField()
-    popular = serializers.BooleanField(required=False)
+    code = serializers.CharField(help_text="Код валюты из каталога.")
+    name = serializers.CharField(help_text="Название валюты из каталога.")
+    symbol = serializers.CharField(help_text="Символ валюты.")
+    flagIcon = serializers.CharField(help_text="Код иконки валюты.")
+    popular = serializers.BooleanField(required=False, help_text="Популярная валюта для быстрого выбора.")
 
 
 class CurrenciesCatalogResponseSerializer(serializers.Serializer):
-    items = CurrencyCatalogItemSerializer(many=True)
+    items = CurrencyCatalogItemSerializer(many=True, help_text="Список валют из статического каталога.")
 
 
 class AddCurrencyFromCatalogSerializer(serializers.Serializer):
-    code = serializers.CharField(max_length=3)
+    code = serializers.CharField(max_length=3, help_text="Код валюты из каталога, например USD.")
 
     def validate_code(self, value: str) -> str:
         normalized = normalize_currency_code(value)
@@ -126,10 +127,10 @@ class AddCurrencyFromCatalogSerializer(serializers.Serializer):
 
 
 class CreateCustomCurrencySerializer(serializers.Serializer):
-    code = serializers.CharField(max_length=3)
-    name = serializers.CharField(max_length=100)
-    symbol = serializers.CharField(max_length=12)
-    isVisible = serializers.BooleanField(default=True, required=False)
+    code = serializers.CharField(max_length=3, help_text="Код пользовательской валюты из 3 латинских букв.")
+    name = serializers.CharField(max_length=100, help_text="Название пользовательской валюты.")
+    symbol = serializers.CharField(max_length=12, help_text="Символ пользовательской валюты.")
+    isVisible = serializers.BooleanField(default=True, required=False, help_text="Показывать валюту в интерфейсе.")
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -162,9 +163,9 @@ class CreateCustomCurrencySerializer(serializers.Serializer):
 
 
 class UpdateCurrencySerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=100, required=False)
-    symbol = serializers.CharField(max_length=12, required=False)
-    isVisible = serializers.BooleanField(required=False)
+    name = serializers.CharField(max_length=100, required=False, help_text="Новое название пользовательской валюты.")
+    symbol = serializers.CharField(max_length=12, required=False, help_text="Новый символ пользовательской валюты.")
+    isVisible = serializers.BooleanField(required=False, help_text="Показывать валюту в интерфейсе.")
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -192,7 +193,7 @@ class UpdateCurrencySerializer(serializers.Serializer):
 
 
 class SetCurrencyVisibilitySerializer(serializers.Serializer):
-    isVisible = serializers.BooleanField()
+    isVisible = serializers.BooleanField(help_text="Показывать валюту в интерфейсе и формах.")
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -202,22 +203,22 @@ class SetCurrencyVisibilitySerializer(serializers.Serializer):
 
 
 class DeleteCurrencyResponseSerializer(serializers.Serializer):
-    deleted = serializers.BooleanField()
-    id = serializers.IntegerField()
+    deleted = serializers.BooleanField(help_text="Признак успешного удаления.")
+    id = serializers.IntegerField(help_text="ID удалённой валюты пользователя.")
 
 
 class DeleteCurrencyConflictResponseSerializer(serializers.Serializer):
-    code = serializers.CharField()
-    message = serializers.CharField()
-    operationsCount = serializers.IntegerField(required=False)
-    canHide = serializers.BooleanField(required=False)
+    code = serializers.CharField(help_text="Код конфликта удаления.")
+    message = serializers.CharField(help_text="Пояснение для пользователя.")
+    operationsCount = serializers.IntegerField(required=False, help_text="Количество связанных объектов с этой валютой.")
+    canHide = serializers.BooleanField(required=False, help_text="Можно ли скрыть валюту вместо удаления.")
 
 
 class ValidateCustomCurrencySerializer(serializers.Serializer):
-    code = serializers.CharField(max_length=3, required=False, allow_blank=True)
-    name = serializers.CharField(max_length=100, required=False, allow_blank=True)
-    symbol = serializers.CharField(max_length=12, required=False, allow_blank=True)
-    excludeId = serializers.IntegerField(required=False, allow_null=True)
+    code = serializers.CharField(max_length=3, required=False, allow_blank=True, help_text="Код проверяемой валюты.")
+    name = serializers.CharField(max_length=100, required=False, allow_blank=True, help_text="Название проверяемой валюты.")
+    symbol = serializers.CharField(max_length=12, required=False, allow_blank=True, help_text="Символ проверяемой валюты.")
+    excludeId = serializers.IntegerField(required=False, allow_null=True, help_text="ID валюты, которую нужно исключить при проверке дубля.")
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -227,20 +228,20 @@ class ValidateCustomCurrencySerializer(serializers.Serializer):
 
 
 class CurrencyFormValidationErrorsSerializer(serializers.Serializer):
-    code = serializers.CharField(required=False)
-    name = serializers.CharField(required=False)
-    symbol = serializers.CharField(required=False)
-    general = serializers.CharField(required=False)
+    code = serializers.CharField(required=False, help_text="Ошибка поля code.")
+    name = serializers.CharField(required=False, help_text="Ошибка поля name.")
+    symbol = serializers.CharField(required=False, help_text="Ошибка поля symbol.")
+    general = serializers.CharField(required=False, help_text="Общая ошибка формы.")
 
 
 class ValidateCustomCurrencyResponseSerializer(serializers.Serializer):
-    ok = serializers.BooleanField()
-    fieldErrors = CurrencyFormValidationErrorsSerializer()
+    ok = serializers.BooleanField(help_text="Форма прошла проверку.")
+    fieldErrors = CurrencyFormValidationErrorsSerializer(help_text="Ошибки по полям формы.")
 
 
 class CheckCurrencyCodeResponseSerializer(serializers.Serializer):
-    available = serializers.BooleanField()
-    message = serializers.CharField(required=False)
+    available = serializers.BooleanField(help_text="Можно ли использовать код валюты.")
+    message = serializers.CharField(required=False, help_text="Пояснение, если код недоступен.")
 
 
 def build_select_options_payload(user) -> dict:
