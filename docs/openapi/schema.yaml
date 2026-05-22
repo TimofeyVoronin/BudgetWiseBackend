@@ -2565,7 +2565,6 @@ paths:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/ValidateCustomCurrencyRequest'
-        required: true
       security:
       - jwtAuth: []
       responses:
@@ -13212,23 +13211,16 @@ components:
       properties:
         code:
           type: string
-          minLength: 1
           maxLength: 3
         name:
           type: string
-          minLength: 1
           maxLength: 100
         symbol:
           type: string
-          minLength: 1
           maxLength: 12
         excludeId:
           type: integer
           nullable: true
-      required:
-      - code
-      - name
-      - symbol
     ValidateCustomCurrencyResponse:
       type: object
       properties:

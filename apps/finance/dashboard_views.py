@@ -77,7 +77,7 @@ def get_dashboard_currency_query_param(query_params, user) -> str:
         user,
         currency,
         field_name="currency",
-        require_visible=False,
+        require_visible=True,
     )
 
 

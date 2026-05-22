@@ -214,9 +214,9 @@ class DeleteCurrencyConflictResponseSerializer(serializers.Serializer):
 
 
 class ValidateCustomCurrencySerializer(serializers.Serializer):
-    code = serializers.CharField(max_length=3)
-    name = serializers.CharField(max_length=100)
-    symbol = serializers.CharField(max_length=12)
+    code = serializers.CharField(max_length=3, required=False, allow_blank=True)
+    name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    symbol = serializers.CharField(max_length=12, required=False, allow_blank=True)
     excludeId = serializers.IntegerField(required=False, allow_null=True)
 
     def to_internal_value(self, data):
