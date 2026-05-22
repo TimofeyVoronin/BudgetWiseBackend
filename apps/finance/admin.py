@@ -1,6 +1,17 @@
 from django.contrib import admin
 
-from apps.finance.models import BudgetNotificationEvent, BudgetNotificationSettings, Currency, Tag, TagGroup, TransactionTemplate, UserCurrency
+from apps.finance.models import (
+    BudgetNotificationEvent,
+    BudgetNotificationSettings,
+    Currency,
+    Receipt,
+    ReceiptAuditLog,
+    ReceiptItem,
+    Tag,
+    TagGroup,
+    TransactionTemplate,
+    UserCurrency,
+)
 
 
 @admin.register(TagGroup)
@@ -17,6 +28,77 @@ class TagAdmin(admin.ModelAdmin):
     list_filter = ("is_visible", "is_system", "group")
     search_fields = ("name", "description", "group__name", "user__email")
     readonly_fields = ("normalized_name", "created_at", "updated_at")
+
+
+
+
+class ReceiptItemInline(admin.TabularInline):
+    model = ReceiptItem
+    extra = 0
+    readonly_fields = (
+        "line_number",
+        "name",
+        "quantity",
+        "price",
+        "amount",
+        "suggested_category",
+        "mapping_confidence",
+        "mapping_reason",
+        "created_at",
+        "updated_at",
+    )
+    can_delete = False
+
+
+class ReceiptAuditLogInline(admin.TabularInline):
+    model = ReceiptAuditLog
+    extra = 0
+    readonly_fields = (
+        "action",
+        "status",
+        "message",
+        "provider_name",
+        "metadata",
+        "created_at",
+    )
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Receipt)
+class ReceiptAdmin(admin.ModelAdmin):
+    inlines = (ReceiptItemInline, ReceiptAuditLogInline)
+    list_display = (
+        "id",
+        "user",
+        "fiscal_drive_number",
+        "fiscal_document_number",
+        "fiscal_sign",
+        "total_amount",
+        "status",
+        "store_name",
+        "created_at",
+    )
+    list_filter = ("status", "provider_name", "operation_type")
+    search_fields = (
+        "user__email",
+        "user__username",
+        "fiscal_drive_number",
+        "fiscal_document_number",
+        "fiscal_sign",
+        "deduplication_key",
+        "store_name",
+        "seller_inn",
+    )
+    readonly_fields = (
+        "raw_hash",
+        "deduplication_key",
+        "fiscal_key",
+        "created_at",
+        "updated_at",
+    )
 
 
 @admin.register(TransactionTemplate)
@@ -109,5 +191,64 @@ class UserCurrencyAdmin(admin.ModelAdmin):
         "currency__code",
         "currency__name",
         "custom_name",
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ReceiptAuditLog)
+class ReceiptAuditLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "receipt",
+        "user",
+        "action",
+        "status",
+        "provider_name",
+        "created_at",
+    )
+    list_filter = ("action", "status", "provider_name", "created_at")
+    search_fields = (
+        "receipt__fiscal_drive_number",
+        "receipt__fiscal_document_number",
+        "receipt__fiscal_sign",
+        "receipt__store_name",
+        "user__email",
+        "user__username",
+        "message",
+        "fiscal_key",
+        "qr_raw_hash",
+    )
+    readonly_fields = (
+        "user",
+        "receipt",
+        "action",
+        "status",
+        "message",
+        "qr_raw_hash",
+        "fiscal_key",
+        "provider_name",
+        "metadata",
+        "created_at",
+    )
+
+
+@admin.register(ReceiptItem)
+class ReceiptItemAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "receipt",
+        "line_number",
+        "name",
+        "amount",
+        "suggested_category",
+        "mapping_confidence",
+    )
+    list_filter = ("suggested_category",)
+    search_fields = (
+        "name",
+        "receipt__store_name",
+        "receipt__fiscal_drive_number",
+        "receipt__fiscal_document_number",
+        "receipt__user__email",
     )
     readonly_fields = ("created_at", "updated_at")

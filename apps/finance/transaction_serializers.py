@@ -73,6 +73,8 @@ class TransactionSerializer(serializers.ModelSerializer):
         write_only=True,
     )
     tags = TransactionTagSerializer(many=True, read_only=True)
+    receiptId = serializers.IntegerField(source="receipt_id", read_only=True, allow_null=True)
+    receiptItemId = serializers.IntegerField(source="receipt_item_id", read_only=True, allow_null=True)
 
     class Meta:
         model = Transaction
@@ -97,6 +99,8 @@ class TransactionSerializer(serializers.ModelSerializer):
             "updated_at",
             "tagIds",
             "tags",
+            "receiptId",
+            "receiptItemId",
         ]
         read_only_fields = [
             "id",
@@ -112,6 +116,8 @@ class TransactionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "tags",
+            "receiptId",
+            "receiptItemId",
         ]
 
     def to_internal_value(self, data):

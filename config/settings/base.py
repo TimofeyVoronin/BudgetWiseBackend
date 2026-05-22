@@ -17,6 +17,21 @@ SECRET_KEY = env("SECRET_KEY", default="django-insecure-budgetwise-dev-secret-ke
 METRICS_ACCESS_TOKEN = env("METRICS_ACCESS_TOKEN", default="")
 
 
+PROVERKACHEKA_API_TOKEN = env("PROVERKACHEKA_API_TOKEN", default="")
+PROVERKACHEKA_API_URL = env(
+    "PROVERKACHEKA_API_URL",
+    default="https://proverkacheka.com/api/v1/check/get",
+)
+PROVERKACHEKA_TIMEOUT_SECONDS = env.int(
+    "PROVERKACHEKA_TIMEOUT_SECONDS",
+    default=10,
+)
+PROVERKACHEKA_ENABLED = env.bool(
+    "PROVERKACHEKA_ENABLED",
+    default=False,
+)
+
+
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
     default="django.core.mail.backends.console.EmailBackend",
@@ -544,6 +559,14 @@ SPECTACULAR_SETTINGS = {
             "description": (
                 "Финансовые операции: список, фильтрация, пагинация, создание, "
                 "обновление, удаление и экспорт операций в CSV, XLSX и PDF."
+            ),
+        },
+        {
+            "name": "finance-receipts",
+            "description": (
+                "Фискальные чеки: импорт данных из QR-кода, защита от дублей, "
+                "сопоставление позиций с категориями и создание одной или нескольких "
+                "финансовых операций из исходного чека."
             ),
         },
         {

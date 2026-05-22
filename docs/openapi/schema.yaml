@@ -4311,6 +4311,73 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlannedValidationResponse'
           description: ''
+  /api/v1/finance/receipts/{receipt_id}/create-transactions/:
+    post:
+      operationId: finance_receipts_create_transactions_create
+      description: Создаёт одну или несколько финансовых операций из импортированного
+        чека. В режиме single создаётся одна операция на всю сумму чека. В режиме
+        by_items создаются отдельные операции по выбранным позициям. После успешного
+        создания чек получает статус imported, повторное создание операций запрещено.
+      summary: Создать операции из чека
+      parameters:
+      - in: path
+        name: receipt_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - finance-receipts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReceiptTransactionsRequest'
+            examples:
+              ОднаОперацияНаВесьЧек:
+                value:
+                  accountId: 1
+                  mode: single
+                  categoryId: 2
+                  description: Пятёрочка · чек от 22.05.2026
+                summary: Одна операция на весь чек
+              ОперацииПоПозициям:
+                value:
+                  accountId: 1
+                  mode: by_items
+                  items:
+                  - receiptItemId: 10
+                    categoryId: 2
+                  - receiptItemId: 11
+                    categoryId: 3
+                summary: Операции по позициям
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateReceiptTransactionsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateReceiptTransactionsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateReceiptTransactionsResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+          description: ''
   /api/v1/finance/recurring-transactions/:
     get:
       operationId: finance_recurring_transactions_list
@@ -8909,6 +8976,62 @@ components:
       - code
       - name
       - symbol
+    CreateReceiptTransactionsRequest:
+      type: object
+      properties:
+        accountId:
+          type: integer
+          minimum: 1
+          description: ID счёта, к которому будут привязаны созданные операции.
+        mode:
+          allOf:
+          - $ref: '#/components/schemas/ModeEnum'
+          description: |-
+            Режим создания операций: single или by_items.
+
+            * `single` - Одна операция на весь чек
+            * `by_items` - Одна операция на каждую позицию
+        categoryId:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: ID категории для режима single.
+        description:
+          type: string
+          description: Описание операции в режиме single. Если не передано, backend
+            сформирует описание автоматически.
+          maxLength: 500
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptTransactionItemInputRequest'
+          description: Позиции чека для режима by_items.
+      required:
+      - accountId
+      - mode
+    CreateReceiptTransactionsResponse:
+      type: object
+      properties:
+        receipt:
+          allOf:
+          - $ref: '#/components/schemas/ReceiptBrief'
+          readOnly: true
+        mode:
+          type: string
+          readOnly: true
+        createdCount:
+          type: integer
+          readOnly: true
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+          readOnly: true
+      required:
+      - createdCount
+      - mode
+      - receipt
+      - transactions
     CreditCalculationResult:
       type: object
       properties:
@@ -10186,6 +10309,14 @@ components:
       - last_name
       - role
       - username
+    ModeEnum:
+      enum:
+      - single
+      - by_items
+      type: string
+      description: |-
+        * `single` - Одна операция на весь чек
+        * `by_items` - Одна операция на каждую позицию
     MortgageCalculationResult:
       type: object
       properties:
@@ -12355,6 +12486,145 @@ components:
       required:
       - fieldErrors
       - ok
+    ReceiptBrief:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ReceiptBriefStatusEnum'
+          title: Статус импорта чека
+        store_name:
+          type: string
+          title: Магазин
+          maxLength: 255
+        seller_inn:
+          type: string
+          title: ИНН продавца
+          maxLength: 20
+        receipt_datetime:
+          type: string
+          format: date-time
+          title: Дата и время чека
+        total_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Сумма чека
+        fiscal_drive_number:
+          type: string
+          title: ФН
+          maxLength: 32
+        fiscal_document_number:
+          type: string
+          title: ФД
+          maxLength: 32
+        fiscal_sign:
+          type: string
+          title: ФПД
+          maxLength: 32
+        transactionsCount:
+          type: integer
+          readOnly: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptItemBrief'
+          readOnly: true
+      required:
+      - fiscal_document_number
+      - fiscal_drive_number
+      - fiscal_sign
+      - id
+      - items
+      - receipt_datetime
+      - total_amount
+      - transactionsCount
+    ReceiptBriefStatusEnum:
+      enum:
+      - parsed
+      - fetched
+      - imported
+      - duplicate
+      - error
+      type: string
+      description: |-
+        * `parsed` - Распознан
+        * `fetched` - Получен от провайдера
+        * `imported` - Импортирован
+        * `duplicate` - Дубликат
+        * `error` - Ошибка
+    ReceiptItemBrief:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        line_number:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Номер строки
+        name:
+          type: string
+          title: Название позиции
+          maxLength: 255
+        quantity:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,9}(?:\.\d{0,3})?$
+          title: Количество
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Цена
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          title: Сумма
+        suggestedCategoryId:
+          type: integer
+          readOnly: true
+          nullable: true
+        suggestedCategoryName:
+          type: string
+          readOnly: true
+          nullable: true
+        mappingConfidence:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,2})?$
+          readOnly: true
+        mappingReason:
+          type: string
+          readOnly: true
+      required:
+      - id
+      - line_number
+      - mappingConfidence
+      - mappingReason
+      - name
+      - suggestedCategoryId
+      - suggestedCategoryName
+    ReceiptTransactionItemInputRequest:
+      type: object
+      properties:
+        receiptItemId:
+          type: integer
+          minimum: 1
+          description: ID позиции чека, по которой нужно создать операцию.
+        categoryId:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: ID категории для позиции. Если не передан, backend попробует
+            использовать предложенную категорию позиции чека.
+      required:
+      - receiptItemId
     RecurringFrequencyEnum:
       enum:
       - daily
@@ -13400,6 +13670,14 @@ components:
           items:
             $ref: '#/components/schemas/TransactionTag'
           readOnly: true
+        receiptId:
+          type: integer
+          readOnly: true
+          nullable: true
+        receiptItemId:
+          type: integer
+          readOnly: true
+          nullable: true
       required:
       - account
       - account_currency
@@ -13415,6 +13693,8 @@ components:
       - id
       - kind
       - operation_date
+      - receiptId
+      - receiptItemId
       - signed_amount
       - tags
       - type
@@ -14370,6 +14650,10 @@ tags:
 - name: finance-transactions
   description: 'Финансовые операции: список, фильтрация, пагинация, создание, обновление,
     удаление и экспорт операций в CSV, XLSX и PDF.'
+- name: finance-receipts
+  description: 'Фискальные чеки: импорт данных из QR-кода, защита от дублей, сопоставление
+    позиций с категориями и создание одной или нескольких финансовых операций из исходного
+    чека.'
 - name: finance-dashboard
   description: 'Главный дашборд: агрегированные показатели по счетам, доходам, расходам,
     последним операциям и категориям расходов.'
