@@ -123,6 +123,11 @@ def register_receipt_from_qr(
             is_duplicate=True,
         )
 
+    if provider_details is not None:
+        from apps.finance.receipt_item_mapper import map_receipt_details_to_items
+
+        map_receipt_details_to_items(receipt, provider_details)
+
     return ReceiptRegistrationResult(
         receipt=receipt,
         created=True,

@@ -5,6 +5,7 @@ from apps.finance.models import (
     BudgetNotificationSettings,
     Currency,
     Receipt,
+    ReceiptItem,
     Tag,
     TagGroup,
     TransactionTemplate,
@@ -28,8 +29,29 @@ class TagAdmin(admin.ModelAdmin):
     readonly_fields = ("normalized_name", "created_at", "updated_at")
 
 
+
+
+class ReceiptItemInline(admin.TabularInline):
+    model = ReceiptItem
+    extra = 0
+    readonly_fields = (
+        "line_number",
+        "name",
+        "quantity",
+        "price",
+        "amount",
+        "suggested_category",
+        "mapping_confidence",
+        "mapping_reason",
+        "created_at",
+        "updated_at",
+    )
+    can_delete = False
+
+
 @admin.register(Receipt)
 class ReceiptAdmin(admin.ModelAdmin):
+    inlines = (ReceiptItemInline,)
     list_display = (
         "id",
         "user",
@@ -151,5 +173,27 @@ class UserCurrencyAdmin(admin.ModelAdmin):
         "currency__code",
         "currency__name",
         "custom_name",
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ReceiptItem)
+class ReceiptItemAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "receipt",
+        "line_number",
+        "name",
+        "amount",
+        "suggested_category",
+        "mapping_confidence",
+    )
+    list_filter = ("suggested_category",)
+    search_fields = (
+        "name",
+        "receipt__store_name",
+        "receipt__fiscal_drive_number",
+        "receipt__fiscal_document_number",
+        "receipt__user__email",
     )
     readonly_fields = ("created_at", "updated_at")

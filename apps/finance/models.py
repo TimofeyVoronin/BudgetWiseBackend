@@ -1441,6 +1441,131 @@ class Receipt(TimeStampedModel):
         return f"{self.fiscal_key}: {self.total_amount}"
 
 
+class ReceiptItem(TimeStampedModel):
+    receipt = models.ForeignKey(
+        Receipt,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="Чек",
+    )
+    line_number = models.PositiveIntegerField(
+        verbose_name="Номер строки",
+    )
+    name = models.CharField(
+        max_length=255,
+        verbose_name="Название позиции",
+    )
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        default=Decimal("0.000"),
+        validators=[MinValueValidator(Decimal("0.000"))],
+        verbose_name="Количество",
+    )
+    price = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Цена",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Сумма",
+    )
+    suggested_category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="suggested_receipt_items",
+        verbose_name="Предложенная категория",
+    )
+    mapping_confidence = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[
+            MinValueValidator(Decimal("0.00")),
+        ],
+        verbose_name="Уверенность сопоставления",
+    )
+    mapping_reason = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Причина сопоставления",
+    )
+    provider_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Сырой объект позиции от провайдера",
+    )
+
+    class Meta:
+        verbose_name = "Позиция чека"
+        verbose_name_plural = "Позиции чеков"
+        ordering = ["receipt", "line_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["receipt", "line_number"],
+                name="unique_receipt_item_line",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=0),
+                name="receipt_item_quantity_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(price__gte=0),
+                name="receipt_item_price_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gte=0),
+                name="receipt_item_amount_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(mapping_confidence__gte=0)
+                    & models.Q(mapping_confidence__lte=1)
+                ),
+                name="receipt_item_mapping_confidence_range",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["receipt"], name="idx_receipt_item_receipt"),
+            models.Index(fields=["suggested_category"], name="idx_receipt_item_category"),
+            models.Index(fields=["receipt", "suggested_category"], name="idx_receipt_item_receipt_cat"),
+            models.Index(fields=["name"], name="idx_receipt_item_name"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.name:
+            self.name = self.name.strip()
+
+        if self.suggested_category_id and self.receipt_id:
+            if self.suggested_category.user_id != self.receipt.user_id:
+                errors["suggested_category"] = (
+                    "Предложенная категория должна принадлежать пользователю чека."
+                )
+
+        if self.mapping_confidence < Decimal("0.00") or self.mapping_confidence > Decimal("1.00"):
+            errors["mapping_confidence"] = "Уверенность должна быть от 0 до 1."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.line_number}. {self.name}"
+
+
 class TransactionTemplate(TimeStampedModel):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
