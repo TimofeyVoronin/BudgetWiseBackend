@@ -1489,7 +1489,8 @@ paths:
     get:
       operationId: finance_calculators_retrieve
       description: Возвращает список доступных stateless-калькуляторов для страницы
-        финансовых калькуляторов. Расчёты не сохраняются в базе данных.
+        финансовых калькуляторов. Расчёты не сохраняются в базе данных. Все расчёты
+        выполняются в рублях.
       summary: Получить каталог финансовых калькуляторов
       parameters:
       - in: query
@@ -1528,7 +1529,7 @@ paths:
       operationId: finance_calculators_calculate_create
       description: 'Выполняет расчёт по выбранному калькулятору. Endpoint не сохраняет
         результат в базе. Схема тела запроса зависит от calcId: credit, mortgage,
-        installment, deposit, pension, inflation.'
+        installment, deposit, pension, inflation. Все суммы рассчитываются в рублях.'
       summary: Выполнить расчёт финансового калькулятора
       parameters:
       - in: path
@@ -1584,8 +1585,33 @@ paths:
                   summary: Результат кредита
           description: ''
         '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorAPIErrorResponse'
+              examples:
+                ОшибкаВалидации:
+                  value:
+                    success: false
+                    error:
+                      status_code: 400
+                      code: VALIDATION_FAILED
+                      message: Проверьте параметры калькулятора.
+                      field_errors:
+                        amount:
+                        - Сумма должна быть больше нуля.
+                        termMonths:
+                        - Срок должен быть не меньше 1 месяца.
+                      detail:
+                        calculatorId: credit
+                      trace_id: null
+                  summary: Ошибка валидации
           description: Ошибка валидации входных параметров.
         '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorAPIErrorResponse'
           description: Калькулятор не найден.
   /api/v1/finance/calculators/{calc_id}/defaults/:
     get:
@@ -1622,6 +1648,26 @@ paths:
                   summary: Значения по умолчанию для кредита
           description: ''
         '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorAPIErrorResponse'
+              examples:
+                КалькуляторНеНайден:
+                  value:
+                    success: false
+                    error:
+                      status_code: 404
+                      code: calculator_not_found
+                      message: Калькулятор не найден.
+                      field_errors:
+                        calcId:
+                        - 'Поддерживаются: credit, deposit, inflation, installment,
+                          mortgage, pension.'
+                      detail:
+                        calculatorId: unknown
+                      trace_id: null
+                  summary: Калькулятор не найден
           description: Калькулятор не найден.
   /api/v1/finance/categories/:
     get:
@@ -8184,6 +8230,53 @@ components:
       - kinds
       - periodTypes
       - usageStatuses
+    CalculatorAPIErrorInner:
+      type: object
+      properties:
+        status_code:
+          type: integer
+          readOnly: true
+        code:
+          type: string
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+        field_errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          readOnly: true
+          nullable: true
+        detail:
+          readOnly: true
+          nullable: true
+        trace_id:
+          type: string
+          readOnly: true
+          nullable: true
+      required:
+      - code
+      - detail
+      - field_errors
+      - message
+      - status_code
+      - trace_id
+    CalculatorAPIErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          readOnly: true
+        error:
+          allOf:
+          - $ref: '#/components/schemas/CalculatorAPIErrorInner'
+          readOnly: true
+      required:
+      - error
+      - success
     CalculatorCalculateRequestRequest:
       oneOf:
       - $ref: '#/components/schemas/CreditCalculatorInputRequest'

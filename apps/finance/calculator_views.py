@@ -9,13 +9,18 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from rest_framework import status
-from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.domain_errors import (
+    DomainNotFoundError,
+    DomainValidationError,
+    normalize_error_detail,
+)
 from apps.finance.calculator_serializers import (
     CALCULATOR_INPUT_SERIALIZERS,
+    CalculatorAPIErrorResponseSerializer,
     CalculatorDefaultsResponseSerializer,
     CalculatorsHubListResponseSerializer,
     CreditCalculationResultSerializer,
@@ -38,6 +43,7 @@ from apps.finance.calculators import (
     CALCULATOR_INSTALLMENT,
     CALCULATOR_MORTGAGE,
     CALCULATOR_PENSION,
+    CALCULATOR_IDS,
     CalculatorNotFoundError,
     calculate_financial_calculator,
     get_calculator_defaults,
@@ -46,6 +52,7 @@ from apps.finance.calculators import (
 
 
 CALCULATOR_TAG = "finance-calculators"
+SUPPORTED_CALCULATORS_TEXT = ", ".join(sorted(CALCULATOR_IDS))
 
 CALCULATE_REQUEST_SERIALIZER = PolymorphicProxySerializer(
     component_name="CalculatorCalculateRequest",
@@ -74,6 +81,48 @@ CALCULATE_RESPONSE_SERIALIZER = PolymorphicProxySerializer(
 )
 
 
+def raise_calculator_not_found(calc_id: str) -> None:
+    raise DomainNotFoundError(
+        code="calculator_not_found",
+        message="Калькулятор не найден.",
+        field_errors={
+            "calcId": [f"Поддерживаются: {SUPPORTED_CALCULATORS_TEXT}."]
+        },
+        detail={"calculatorId": calc_id},
+    )
+
+
+def serializer_errors_to_field_errors(errors) -> dict[str, list[str]]:
+    normalized = normalize_error_detail(errors)
+    if not isinstance(normalized, dict):
+        return {"nonFieldErrors": [str(normalized)]}
+
+    field_errors: dict[str, list[str]] = {}
+    for field_name, messages in normalized.items():
+        if isinstance(messages, list):
+            field_errors[field_name] = [str(message) for message in messages]
+        elif isinstance(messages, dict):
+            nested_messages: list[str] = []
+            for nested_value in messages.values():
+                if isinstance(nested_value, list):
+                    nested_messages.extend(str(message) for message in nested_value)
+                else:
+                    nested_messages.append(str(nested_value))
+            field_errors[field_name] = nested_messages or [str(messages)]
+        else:
+            field_errors[field_name] = [str(messages)]
+    return field_errors
+
+
+def raise_calculator_validation_error(calc_id: str, errors) -> None:
+    raise DomainValidationError(
+        code="VALIDATION_FAILED",
+        message="Проверьте параметры калькулятора.",
+        field_errors=serializer_errors_to_field_errors(errors),
+        detail={"calculatorId": calc_id},
+    )
+
+
 class CalculatorsHubView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -82,7 +131,8 @@ class CalculatorsHubView(APIView):
         summary="Получить каталог финансовых калькуляторов",
         description=(
             "Возвращает список доступных stateless-калькуляторов для страницы "
-            "финансовых калькуляторов. Расчёты не сохраняются в базе данных."
+            "финансовых калькуляторов. Расчёты не сохраняются в базе данных. "
+            "Все расчёты выполняются в рублях."
         ),
         parameters=[
             OpenApiParameter(
@@ -132,7 +182,10 @@ class CalculatorDefaultsView(APIView):
         ),
         responses={
             200: CalculatorDefaultsResponseSerializer,
-            404: OpenApiResponse(description="Калькулятор не найден."),
+            404: OpenApiResponse(
+                response=CalculatorAPIErrorResponseSerializer,
+                description="Калькулятор не найден.",
+            ),
         },
         examples=[
             OpenApiExample(
@@ -148,14 +201,32 @@ class CalculatorDefaultsView(APIView):
                     },
                 },
                 response_only=True,
-            )
+            ),
+            OpenApiExample(
+                "Калькулятор не найден",
+                value={
+                    "success": False,
+                    "error": {
+                        "status_code": 404,
+                        "code": "calculator_not_found",
+                        "message": "Калькулятор не найден.",
+                        "field_errors": {
+                            "calcId": ["Поддерживаются: credit, deposit, inflation, installment, mortgage, pension."]
+                        },
+                        "detail": {"calculatorId": "unknown"},
+                        "trace_id": None,
+                    },
+                },
+                response_only=True,
+                status_codes=["404"],
+            ),
         ],
     )
     def get(self, request, calc_id: str):
         try:
             payload = get_calculator_defaults(calc_id)
-        except CalculatorNotFoundError as exc:
-            raise NotFound("Калькулятор не найден.") from exc
+        except CalculatorNotFoundError:
+            raise_calculator_not_found(calc_id)
         return Response(payload)
 
 
@@ -167,13 +238,20 @@ class CalculatorCalculateView(APIView):
         summary="Выполнить расчёт финансового калькулятора",
         description=(
             "Выполняет расчёт по выбранному калькулятору. Endpoint не сохраняет результат в базе. "
-            "Схема тела запроса зависит от calcId: credit, mortgage, installment, deposit, pension, inflation."
+            "Схема тела запроса зависит от calcId: credit, mortgage, installment, deposit, pension, inflation. "
+            "Все суммы рассчитываются в рублях."
         ),
         request=CALCULATE_REQUEST_SERIALIZER,
         responses={
             200: CALCULATE_RESPONSE_SERIALIZER,
-            400: OpenApiResponse(description="Ошибка валидации входных параметров."),
-            404: OpenApiResponse(description="Калькулятор не найден."),
+            400: OpenApiResponse(
+                response=CalculatorAPIErrorResponseSerializer,
+                description="Ошибка валидации входных параметров.",
+            ),
+            404: OpenApiResponse(
+                response=CalculatorAPIErrorResponseSerializer,
+                description="Калькулятор не найден.",
+            ),
         },
         examples=[
             OpenApiExample(
@@ -186,6 +264,25 @@ class CalculatorCalculateView(APIView):
                     "issueDate": "2026-05-22",
                 },
                 request_only=True,
+            ),
+            OpenApiExample(
+                "Ошибка валидации",
+                value={
+                    "success": False,
+                    "error": {
+                        "status_code": 400,
+                        "code": "VALIDATION_FAILED",
+                        "message": "Проверьте параметры калькулятора.",
+                        "field_errors": {
+                            "amount": ["Сумма должна быть больше нуля."],
+                            "termMonths": ["Срок должен быть не меньше 1 месяца."],
+                        },
+                        "detail": {"calculatorId": "credit"},
+                        "trace_id": None,
+                    },
+                },
+                response_only=True,
+                status_codes=["400"],
             ),
             OpenApiExample(
                 "Результат кредита",
@@ -213,9 +310,11 @@ class CalculatorCalculateView(APIView):
     def post(self, request, calc_id: str):
         serializer_class = CALCULATOR_INPUT_SERIALIZERS.get(calc_id)
         if serializer_class is None:
-            raise NotFound("Калькулятор не найден.")
+            raise_calculator_not_found(calc_id)
 
         serializer = serializer_class(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            raise_calculator_validation_error(calc_id, serializer.errors)
+
         result = calculate_financial_calculator(calc_id, serializer.validated_data)
         return Response(result, status=status.HTTP_200_OK)
