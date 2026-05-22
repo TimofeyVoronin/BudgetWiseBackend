@@ -6744,6 +6744,61 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserProfileMe'
           description: ''
+  /api/v1/profile/me/avatar/:
+    post:
+      operationId: profile_me_avatar_upload
+      description: Загружает аватар текущего пользователя через multipart/form-data.
+        Поддерживаются JPEG, PNG и WebP. При успешной загрузке старый файл аватара
+        удаляется из локального media storage.
+      summary: Загрузить или заменить аватар текущего пользователя
+      tags:
+      - users-profile
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserProfileAvatarUploadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserProfileAvatarUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileAvatarResponse'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    avatarUrl: http://localhost:8000/media/avatars/user_1/avatar.jpg
+                    message: Аватар обновлён.
+                  summary: Успешный ответ
+          description: ''
+    delete:
+      operationId: profile_me_avatar_delete
+      description: Удаляет файл аватара из локального media storage и очищает ссылку
+        на аватар в профиле текущего пользователя.
+      summary: Удалить аватар текущего пользователя
+      tags:
+      - users-profile
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileAvatarDeleteResponse'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    deleted: true
+                    avatarUrl: null
+                  summary: Успешный ответ
+          description: ''
   /api/v1/users/:
     get:
       operationId: users_list
@@ -14520,6 +14575,40 @@ components:
       - last_login
       - role
       - username
+    UserProfileAvatarDeleteResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+          description: Флаг успешного удаления аватара.
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: После удаления всегда null.
+      required:
+      - deleted
+    UserProfileAvatarResponse:
+      type: object
+      properties:
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Абсолютный URL нового аватара пользователя.
+        message:
+          type: string
+          description: Короткое сообщение о результате операции.
+    UserProfileAvatarUploadRequest:
+      type: object
+      properties:
+        avatar:
+          type: string
+          format: binary
+          description: Файл аватара пользователя. Поддерживаются JPEG, PNG и WebP.
+            Максимальный размер задаётся настройкой USER_PROFILE_AVATAR_MAX_SIZE_BYTES.
+      required:
+      - avatar
     UserProfileMe:
       type: object
       properties:
@@ -14566,8 +14655,10 @@ components:
           maxLength: 500
         avatarUrl:
           type: string
+          format: uri
           readOnly: true
-          description: URL аватара пользователя. На этапе BUD-1116 всегда null.
+          description: Абсолютный URL аватара пользователя или null, если аватар не
+            загружен.
         isEmailVerified:
           type: boolean
           readOnly: true

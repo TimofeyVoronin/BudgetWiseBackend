@@ -188,8 +188,13 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+USER_PROFILE_AVATAR_MAX_SIZE_BYTES = env.int(
+    "USER_PROFILE_AVATAR_MAX_SIZE_BYTES",
+    default=5 * 1024 * 1024,
+)
 
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)

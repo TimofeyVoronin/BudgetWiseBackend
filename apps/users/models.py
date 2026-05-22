@@ -1,7 +1,15 @@
+import uuid
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+
+
+def user_avatar_upload_to(instance, filename: str) -> str:
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    return f"avatars/user_{instance.pk or 'new'}/{uuid.uuid4().hex}.{suffix}"
+
 
 
 class User(AbstractUser):
@@ -24,6 +32,13 @@ class User(AbstractUser):
     bio = models.TextField(
         blank=True,
         verbose_name="Краткое описание",
+    )
+
+    avatar = models.FileField(
+        upload_to=user_avatar_upload_to,
+        null=True,
+        blank=True,
+        verbose_name="Аватар",
     )
 
     def __str__(self) -> str:

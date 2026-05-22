@@ -96,7 +96,7 @@ class UserProfileMeSerializer(serializers.ModelSerializer):
         help_text="Краткое описание профиля. До 500 символов.",
     )
     avatarUrl = serializers.SerializerMethodField(
-        help_text="URL аватара пользователя. На этапе BUD-1116 всегда null.",
+        help_text="Абсолютный URL аватара пользователя или null, если аватар не загружен.",
     )
     isEmailVerified = serializers.SerializerMethodField(
         help_text=(
@@ -164,9 +164,21 @@ class UserProfileMeSerializer(serializers.ModelSerializer):
     def get_fullName(self, obj) -> str:
         return obj.full_name
 
-    @extend_schema_field(OpenApiTypes.STR)
+    @extend_schema_field(OpenApiTypes.URI)
     def get_avatarUrl(self, obj) -> str | None:
-        return None
+        if not getattr(obj, "avatar", None):
+            return None
+
+        try:
+            avatar_url = obj.avatar.url
+        except ValueError:
+            return None
+
+        request = self.context.get("request")
+        if request is not None:
+            return request.build_absolute_uri(avatar_url)
+
+        return avatar_url
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_isEmailVerified(self, obj) -> bool:
@@ -245,3 +257,70 @@ def _validate_name(value: str, field_title: str) -> str:
         )
 
     return value
+
+
+ALLOWED_AVATAR_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
+
+ALLOWED_AVATAR_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+
+
+class UserProfileAvatarUploadSerializer(serializers.Serializer):
+    avatar = serializers.FileField(
+        required=True,
+        help_text=(
+            "Файл аватара пользователя. Поддерживаются JPEG, PNG и WebP. "
+            "Максимальный размер задаётся настройкой USER_PROFILE_AVATAR_MAX_SIZE_BYTES."
+        ),
+    )
+
+    def validate_avatar(self, value):
+        max_size = settings.USER_PROFILE_AVATAR_MAX_SIZE_BYTES
+        if value.size > max_size:
+            max_size_mb = max_size // (1024 * 1024)
+            raise serializers.ValidationError(
+                f"Размер аватара не должен превышать {max_size_mb} МБ.",
+                code="avatar_too_large",
+            )
+
+        content_type = getattr(value, "content_type", "") or ""
+        if content_type not in ALLOWED_AVATAR_CONTENT_TYPES:
+            raise serializers.ValidationError(
+                "Аватар должен быть изображением JPEG, PNG или WebP.",
+                code="unsupported_avatar_type",
+            )
+
+        extension = value.name.rsplit(".", 1)[-1].lower() if "." in value.name else ""
+        if extension not in ALLOWED_AVATAR_EXTENSIONS:
+            raise serializers.ValidationError(
+                "Расширение файла должно быть .jpg, .jpeg, .png или .webp.",
+                code="unsupported_avatar_extension",
+            )
+
+        return value
+
+
+class UserProfileAvatarResponseSerializer(serializers.Serializer):
+    avatarUrl = serializers.URLField(
+        allow_null=True,
+        required=False,
+        help_text="Абсолютный URL нового аватара пользователя.",
+    )
+    message = serializers.CharField(
+        required=False,
+        help_text="Короткое сообщение о результате операции.",
+    )
+
+
+class UserProfileAvatarDeleteResponseSerializer(serializers.Serializer):
+    deleted = serializers.BooleanField(
+        help_text="Флаг успешного удаления аватара.",
+    )
+    avatarUrl = serializers.URLField(
+        allow_null=True,
+        required=False,
+        help_text="После удаления всегда null.",
+    )

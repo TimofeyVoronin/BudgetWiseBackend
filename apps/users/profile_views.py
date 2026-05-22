@@ -1,10 +1,15 @@
+from django.core.files.storage import default_storage
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework.generics import GenericAPIView
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.users.profile_serializers import (
     CurrentUserSerializer,
+    UserProfileAvatarDeleteResponseSerializer,
+    UserProfileAvatarResponseSerializer,
+    UserProfileAvatarUploadSerializer,
     UserProfileMeSerializer,
 )
 
@@ -215,3 +220,92 @@ class UserProfileMeView(GenericAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class UserProfileAvatarView(GenericAPIView):
+    serializer_class = UserProfileAvatarUploadSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _get_avatar_url(self, request) -> str | None:
+        return UserProfileMeSerializer(
+            request.user,
+            context={"request": request},
+        ).data["avatarUrl"]
+
+    @extend_schema(
+        tags=["users-profile"],
+        operation_id="profile_me_avatar_upload",
+        summary="Загрузить или заменить аватар текущего пользователя",
+        description=(
+            "Загружает аватар текущего пользователя через multipart/form-data. "
+            "Поддерживаются JPEG, PNG и WebP. При успешной загрузке старый файл "
+            "аватара удаляется из локального media storage."
+        ),
+        request=UserProfileAvatarUploadSerializer,
+        responses={200: UserProfileAvatarResponseSerializer},
+        examples=[
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "avatarUrl": "http://localhost:8000/media/avatars/user_1/avatar.jpg",
+                    "message": "Аватар обновлён.",
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        old_avatar_name = user.avatar.name if user.avatar else ""
+
+        user.avatar = serializer.validated_data["avatar"]
+        user.save(update_fields=["avatar"])
+
+        _delete_storage_file_if_unused(old_avatar_name, user.avatar.name)
+
+        return Response(
+            {
+                "avatarUrl": self._get_avatar_url(request),
+                "message": "Аватар обновлён.",
+            }
+        )
+
+    @extend_schema(
+        tags=["users-profile"],
+        operation_id="profile_me_avatar_delete",
+        summary="Удалить аватар текущего пользователя",
+        description=(
+            "Удаляет файл аватара из локального media storage и очищает ссылку "
+            "на аватар в профиле текущего пользователя."
+        ),
+        responses={200: UserProfileAvatarDeleteResponseSerializer},
+        examples=[
+            OpenApiExample(
+                "Успешный ответ",
+                value={"deleted": True, "avatarUrl": None},
+                response_only=True,
+            )
+        ],
+    )
+    def delete(self, request, *args, **kwargs):
+        user = request.user
+        avatar_name = user.avatar.name if user.avatar else ""
+
+        if avatar_name:
+            user.avatar = None
+            user.save(update_fields=["avatar"])
+            _delete_storage_file_if_unused(avatar_name, "")
+
+        return Response({"deleted": True, "avatarUrl": None})
+
+
+def _delete_storage_file_if_unused(file_name: str, current_file_name: str) -> None:
+    if not file_name or file_name == current_file_name:
+        return
+
+    if default_storage.exists(file_name):
+        default_storage.delete(file_name)
