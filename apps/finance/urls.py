@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from apps.finance.account_views import AccountViewSet
 from apps.finance.budget_views import BudgetViewSet
 from apps.finance.budget_notification_views import (
+    BudgetNotificationCheckView,
     BudgetNotificationMetaView,
     BudgetNotificationPreviewView,
     BudgetNotificationSettingsView,
@@ -64,6 +65,11 @@ urlpatterns = [
         "budget-notifications/meta/",
         BudgetNotificationMetaView.as_view(),
         name="budget-notification-meta",
+    ),
+    path(
+        "budget-notifications/check/",
+        BudgetNotificationCheckView.as_view(),
+        name="budget-notification-check",
     ),
     path(
         "dashboard/summary/",

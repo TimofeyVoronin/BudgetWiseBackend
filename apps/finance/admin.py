@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.finance.models import BudgetNotificationSettings, Tag, TagGroup, TransactionTemplate
+from apps.finance.models import BudgetNotificationEvent, BudgetNotificationSettings, Tag, TagGroup, TransactionTemplate
 
 
 @admin.register(TagGroup)
@@ -63,3 +63,20 @@ class BudgetNotificationSettingsAdmin(admin.ModelAdmin):
     list_filter = ("enabled", "thresholds_enabled")
     search_fields = ("user__email", "user__username")
     readonly_fields = ("created_at", "updated_at")
+
+@admin.register(BudgetNotificationEvent)
+class BudgetNotificationEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "event_type",
+        "related_object_type",
+        "related_object_id",
+        "threshold_id",
+        "status",
+        "created_at",
+    )
+    list_filter = ("event_type", "related_object_type", "status", "icon_tone")
+    search_fields = ("title", "message", "deduplication_key", "user__email", "user__username")
+    readonly_fields = ("deduplication_key", "created_at", "updated_at")
+

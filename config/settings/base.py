@@ -381,6 +381,11 @@ SPECTACULAR_SETTINGS = {
             ("not_configured", "Не настроен"),
             ("disabled", "Отключён"),
         ],
+        "BudgetNotificationEventStatusEnum": [
+            ("generated", "Сформировано"),
+            ("delivered", "Доставлено"),
+            ("skipped", "Пропущено"),
+        ],
     },
     "SWAGGER_UI_SETTINGS": {
         "deepLinking": True,

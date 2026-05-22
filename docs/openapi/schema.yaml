@@ -725,6 +725,72 @@ paths:
                     currency: RUB
                   summary: Сводка по счетам
           description: ''
+  /api/v1/finance/budget-notifications/check/:
+    post:
+      operationId: finance_budget_notifications_check_create
+      description: Запускает сервис формирования событий бюджетных уведомлений для
+        текущего пользователя. Сервис учитывает настройки, активные пороги, типы событий,
+        выбранные цели и защиту от дублей. При dryRun=true события не сохраняются,
+        а только возвращаются в ответе для предпросмотра.
+      summary: Запустить проверку бюджетных уведомлений
+      tags:
+      - finance-budget-notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetNotificationCheckRequest'
+            examples:
+              РучнаяПроверкаБезСохранения:
+                value:
+                  date: '2026-05-21'
+                  dryRun: true
+                summary: Ручная проверка без сохранения
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BudgetNotificationCheckRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BudgetNotificationCheckRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetNotificationCheckResponse'
+              examples:
+                РезультатПроверки:
+                  value:
+                    date: '2026-05-21'
+                    dryRun: false
+                    processedBudgets: 2
+                    processedGoals: 1
+                    createdEvents: 1
+                    wouldCreateEvents: 0
+                    skippedDuplicates: 0
+                    items:
+                    - id: 10
+                      eventType: budget_near_limit
+                      relatedObjectType: budget
+                      relatedObjectId: 5
+                      thresholdId: near_limit
+                      title: Бюджет близок к лимиту
+                      message: Бюджет «Продукты» за период «май 2026» использован
+                        на 86.0%.
+                      icon: trending-up
+                      iconTone: warning
+                      deduplicationKey: budget_near_limit:budget:5:near_limit
+                      payload:
+                        budgetId: 5
+                        categoryName: Продукты
+                        usagePercent: 86.0
+                        thresholdPercent: 80
+                  summary: Результат проверки
+          description: ''
+        '400':
+          description: Ошибка валидации параметров запуска.
   /api/v1/finance/budget-notifications/meta/:
     get:
       operationId: finance_budget_notifications_meta_retrieve
@@ -6796,6 +6862,46 @@ components:
       required:
       - enabled
       - id
+    BudgetNotificationCheckRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        dryRun:
+          type: boolean
+          default: false
+    BudgetNotificationCheckResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        dryRun:
+          type: boolean
+        processedBudgets:
+          type: integer
+        processedGoals:
+          type: integer
+        createdEvents:
+          type: integer
+        wouldCreateEvents:
+          type: integer
+        skippedDuplicates:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationGeneratedEvent'
+      required:
+      - createdEvents
+      - date
+      - dryRun
+      - items
+      - processedBudgets
+      - processedGoals
+      - skippedDuplicates
+      - wouldCreateEvents
     BudgetNotificationDeliveryStatusEnum:
       enum:
       - available
@@ -6862,6 +6968,44 @@ components:
       required:
       - enabled
       - id
+    BudgetNotificationGeneratedEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        eventType:
+          $ref: '#/components/schemas/BudgetNotificationEventTypeEnum'
+        relatedObjectType:
+          type: string
+        relatedObjectId:
+          type: integer
+        thresholdId:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        icon:
+          type: string
+        iconTone:
+          type: string
+        deduplicationKey:
+          type: string
+        payload:
+          type: object
+          additionalProperties: {}
+      required:
+      - deduplicationKey
+      - eventType
+      - icon
+      - iconTone
+      - message
+      - payload
+      - relatedObjectId
+      - relatedObjectType
+      - thresholdId
+      - title
     BudgetNotificationGoalOption:
       type: object
       properties:

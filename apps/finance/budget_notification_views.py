@@ -11,6 +11,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.finance.budget_notification_serializers import (
+    BudgetNotificationCheckResponseSerializer,
+    BudgetNotificationCheckSerializer,
     BudgetNotificationPreviewSerializer,
     BudgetNotificationsMetaSerializer,
     BudgetNotificationsSettingsResponseSerializer,
@@ -21,6 +23,7 @@ from apps.finance.budget_notification_serializers import (
     ValidateBudgetNotificationThresholdsSerializer,
     get_current_budget_notifications_payload,
 )
+from apps.finance.budget_notification_events import generate_budget_notification_events
 
 
 BUDGET_NOTIFICATION_SETTINGS_EXAMPLE = {
@@ -297,3 +300,73 @@ class BudgetNotificationMetaView(APIView):
     )
     def get(self, request):
         return Response(BudgetNotificationsMetaSerializer.build_payload(user=request.user))
+
+class BudgetNotificationCheckView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-budget-notifications"],
+        summary="Запустить проверку бюджетных уведомлений",
+        description=(
+            "Запускает сервис формирования событий бюджетных уведомлений для текущего "
+            "пользователя. Сервис учитывает настройки, активные пороги, типы событий, "
+            "выбранные цели и защиту от дублей. При dryRun=true события не сохраняются, "
+            "а только возвращаются в ответе для предпросмотра."
+        ),
+        request=BudgetNotificationCheckSerializer,
+        responses={200: BudgetNotificationCheckResponseSerializer, 400: OpenApiResponse(description="Ошибка валидации параметров запуска.")},
+        examples=[
+            OpenApiExample(
+                "Ручная проверка без сохранения",
+                value={
+                    "date": "2026-05-21",
+                    "dryRun": True,
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Результат проверки",
+                value={
+                    "date": "2026-05-21",
+                    "dryRun": False,
+                    "processedBudgets": 2,
+                    "processedGoals": 1,
+                    "createdEvents": 1,
+                    "wouldCreateEvents": 0,
+                    "skippedDuplicates": 0,
+                    "items": [
+                        {
+                            "id": 10,
+                            "eventType": "budget_near_limit",
+                            "relatedObjectType": "budget",
+                            "relatedObjectId": 5,
+                            "thresholdId": "near_limit",
+                            "title": "Бюджет близок к лимиту",
+                            "message": "Бюджет «Продукты» за период «май 2026» использован на 86.0%.",
+                            "icon": "trending-up",
+                            "iconTone": "warning",
+                            "deduplicationKey": "budget_near_limit:budget:5:near_limit",
+                            "payload": {
+                                "budgetId": 5,
+                                "categoryName": "Продукты",
+                                "usagePercent": 86.0,
+                                "thresholdPercent": 80,
+                            },
+                        }
+                    ],
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request):
+        serializer = BudgetNotificationCheckSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+        result = generate_budget_notification_events(
+            user=request.user,
+            target_date=payload.get("date"),
+            dry_run=payload.get("dryRun", False),
+        )
+        return Response(result)
+

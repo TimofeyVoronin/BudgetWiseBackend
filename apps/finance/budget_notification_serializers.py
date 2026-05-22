@@ -256,3 +256,33 @@ class BudgetNotificationsSettingsResponseSerializer(BudgetNotificationsSettingsS
 
 def get_current_budget_notifications_payload(*, user) -> BudgetNotificationSettings:
     return get_or_create_budget_notification_settings(user=user)
+
+
+class BudgetNotificationCheckSerializer(serializers.Serializer):
+    date = serializers.DateField(required=False)
+    dryRun = serializers.BooleanField(required=False, default=False)
+
+
+class BudgetNotificationGeneratedEventSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True)
+    eventType = serializers.ChoiceField(choices=BudgetNotificationEventType.choices)
+    relatedObjectType = serializers.CharField()
+    relatedObjectId = serializers.IntegerField()
+    thresholdId = serializers.CharField(allow_blank=True)
+    title = serializers.CharField()
+    message = serializers.CharField()
+    icon = serializers.CharField()
+    iconTone = serializers.CharField()
+    deduplicationKey = serializers.CharField()
+    payload = serializers.DictField()
+
+
+class BudgetNotificationCheckResponseSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    dryRun = serializers.BooleanField()
+    processedBudgets = serializers.IntegerField()
+    processedGoals = serializers.IntegerField()
+    createdEvents = serializers.IntegerField()
+    wouldCreateEvents = serializers.IntegerField()
+    skippedDuplicates = serializers.IntegerField()
+    items = BudgetNotificationGeneratedEventSerializer(many=True)

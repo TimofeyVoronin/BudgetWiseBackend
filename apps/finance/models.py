@@ -163,6 +163,12 @@ class BudgetNotificationDeliveryStatus(models.TextChoices):
     DISABLED = "disabled", "Отключён"
 
 
+class BudgetNotificationEventStatus(models.TextChoices):
+    GENERATED = "generated", "Сформировано"
+    DELIVERED = "delivered", "Доставлено"
+    SKIPPED = "skipped", "Пропущено"
+
+
 NOTIFICATION_QUIET_HOURS_DAYS = {
     "mon",
     "tue",
@@ -2423,6 +2429,119 @@ class BudgetNotificationSettings(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Настройки бюджетных уведомлений пользователя {self.user_id}"
+
+
+class BudgetNotificationEvent(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="budget_notification_events",
+        verbose_name="Пользователь",
+    )
+    event_type = models.CharField(
+        max_length=50,
+        choices=BudgetNotificationEventType.choices,
+        verbose_name="Тип события",
+    )
+    related_object_type = models.CharField(
+        max_length=20,
+        choices=NotificationEntityKind.choices,
+        verbose_name="Тип связанного объекта",
+    )
+    related_object_id = models.PositiveBigIntegerField(
+        verbose_name="ID связанного объекта",
+    )
+    threshold_id = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="ID порога",
+    )
+    title = models.CharField(
+        max_length=200,
+        verbose_name="Заголовок события",
+    )
+    message = models.TextField(
+        blank=True,
+        verbose_name="Текст события",
+    )
+    icon = models.CharField(
+        max_length=50,
+        default="bell",
+        verbose_name="Иконка",
+    )
+    icon_tone = models.CharField(
+        max_length=20,
+        choices=NotificationIconTone.choices,
+        default=NotificationIconTone.PRIMARY,
+        verbose_name="Тон иконки",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=BudgetNotificationEventStatus.choices,
+        default=BudgetNotificationEventStatus.GENERATED,
+        verbose_name="Статус события",
+    )
+    deduplication_key = models.CharField(
+        max_length=255,
+        verbose_name="Ключ защиты от дублей",
+    )
+    payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Данные события",
+    )
+
+    class Meta:
+        verbose_name = "Событие бюджетного уведомления"
+        verbose_name_plural = "События бюджетных уведомлений"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(event_type__in=BudgetNotificationEventType.values),
+                name="budget_notif_event_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(related_object_type__in=NotificationEntityKind.values),
+                name="budget_notif_event_obj_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(icon_tone__in=NotificationIconTone.values),
+                name="budget_notif_event_tone_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=BudgetNotificationEventStatus.values),
+                name="budget_notif_event_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_bn_event_user"),
+            models.Index(fields=["user", "event_type"], name="idx_bn_event_user_type"),
+            models.Index(fields=["user", "related_object_type", "related_object_id"], name="idx_bn_event_object"),
+            models.Index(fields=["user", "deduplication_key"], name="idx_bn_event_dedup"),
+            models.Index(fields=["user", "created_at"], name="idx_bn_event_created"),
+            models.Index(fields=["status"], name="idx_bn_event_status"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.event_type not in BudgetNotificationEventType.values:
+            errors["event_type"] = "Недопустимый тип события уведомления."
+
+        if self.related_object_type not in NotificationEntityKind.values:
+            errors["related_object_type"] = "Недопустимый тип связанного объекта."
+
+        if self.icon_tone not in NotificationIconTone.values:
+            errors["icon_tone"] = "Недопустимый тон иконки."
+
+        if self.status not in BudgetNotificationEventStatus.values:
+            errors["status"] = "Недопустимый статус события."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.event_type})"
 
 
 class RecurringTransaction(TimeStampedModel):
