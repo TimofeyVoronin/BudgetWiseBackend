@@ -9,11 +9,12 @@ from apps.users.auth_serializers import (
     ResetPasswordSerializer,
     VerifyEmailSerializer,
 )
-from apps.users.profile_serializers import CurrentUserSerializer
+from apps.users.profile_serializers import CurrentUserSerializer, UserProfileMeSerializer
 
 
 __all__ = [
     "CurrentUserSerializer",
+    "UserProfileMeSerializer",
     "UserSerializer",
     "RegisterSerializer",
     "VerifyEmailSerializer",

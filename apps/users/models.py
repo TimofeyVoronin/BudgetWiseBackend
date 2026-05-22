@@ -6,9 +6,34 @@ from django.utils import timezone
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
+    middle_name = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Отчество",
+    )
+    phone = models.CharField(
+        max_length=32,
+        blank=True,
+        verbose_name="Телефон",
+    )
+    city = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="Город",
+    )
+    bio = models.TextField(
+        blank=True,
+        verbose_name="Краткое описание",
+    )
 
     def __str__(self) -> str:
         return self.email or self.username
+
+    @property
+    def full_name(self) -> str:
+        parts = [self.last_name, self.first_name, self.middle_name]
+        full_name = " ".join(part for part in parts if part).strip()
+        return full_name or self.username or self.email
 
 
 class PasswordResetToken(models.Model):
