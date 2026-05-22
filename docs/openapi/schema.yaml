@@ -5,7 +5,7 @@ info:
   description: |-
     OpenAPI-документация серверной части прогрессивного веб-приложения для управления личными финансами.
 
-    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, бюджетами, тегами операций, финансовыми целями, уведомлениями, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
+    API предоставляет endpoints для регистрации и аутентификации пользователей, управления профилем, финансовыми счетами, бюджетами, тегами операций, финансовыми целями, уведомлениями, финансовыми калькуляторами, регулярными операциями, планируемыми операциями, категориями, операциями, агрегированными данными главного дашборда и служебного мониторинга.
 
     Авторизация защищённых endpoints выполняется через JWT Bearer token. Для ручной проверки в Swagger UI сначала выполните login-запрос, получите access token и передайте его в Authorize в формате: Bearer <access_token>.
   contact:
@@ -1485,6 +1485,144 @@ paths:
               schema:
                 $ref: '#/components/schemas/BudgetWarningsResponse'
           description: ''
+  /api/v1/finance/calculators/:
+    get:
+      operationId: finance_calculators_retrieve
+      description: Возвращает список доступных stateless-калькуляторов для страницы
+        финансовых калькуляторов. Расчёты не сохраняются в базе данных.
+      summary: Получить каталог финансовых калькуляторов
+      parameters:
+      - in: query
+        name: q
+        schema:
+          type: string
+        description: Поиск по названию, описанию или идентификатору калькулятора.
+      tags:
+      - finance-calculators
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorsHubListResponse'
+              examples:
+                КаталогКалькуляторов:
+                  value:
+                    items:
+                    - id: credit
+                      title: Кредит
+                      description: Рассчитайте ежемесячный платёж и переплату по кредиту
+                      icon: percent
+                      iconBg: '#F3E8FF'
+                      iconColor: '#4F46E5'
+                      category: credit
+                      routeTitle: Кредитный калькулятор
+                      subtitle: Рассчитайте ежемесячный платёж и переплату по кредиту
+                    totalCount: 6
+                  summary: Каталог калькуляторов
+          description: ''
+  /api/v1/finance/calculators/{calc_id}/calculate/:
+    post:
+      operationId: finance_calculators_calculate_create
+      description: 'Выполняет расчёт по выбранному калькулятору. Endpoint не сохраняет
+        результат в базе. Схема тела запроса зависит от calcId: credit, mortgage,
+        installment, deposit, pension, inflation.'
+      summary: Выполнить расчёт финансового калькулятора
+      parameters:
+      - in: path
+        name: calc_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - finance-calculators
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalculatorCalculateRequestRequest'
+            examples:
+              РасчётКредита:
+                value:
+                  amount: 1500000
+                  ratePct: 12.5
+                  termMonths: 36
+                  paymentType: annuity
+                  issueDate: '2026-05-22'
+                summary: Расчёт кредита
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CalculatorCalculateRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CalculatorCalculateRequestRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorCalculateResponse'
+              examples:
+                РезультатКредита:
+                  value:
+                    monthlyPayment: 50180.0
+                    firstPayment: 50180.0
+                    lastPayment: 50180.0
+                    totalPayment: 1806480.0
+                    overpayment: 306480.0
+                    schedule:
+                    - month: 1
+                      date: '2026-06-22'
+                      payment: 50180.0
+                      principalPart: 34555.0
+                      interestPart: 15625.0
+                      remaining: 1465445.0
+                  summary: Результат кредита
+          description: ''
+        '400':
+          description: Ошибка валидации входных параметров.
+        '404':
+          description: Калькулятор не найден.
+  /api/v1/finance/calculators/{calc_id}/defaults/:
+    get:
+      operationId: finance_calculators_defaults_retrieve
+      description: 'Возвращает стартовые параметры формы выбранного калькулятора.
+        Поддерживаемые calcId: credit, mortgage, installment, deposit, pension, inflation.'
+      summary: Получить значения по умолчанию для калькулятора
+      parameters:
+      - in: path
+        name: calc_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - finance-calculators
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculatorDefaultsResponse'
+              examples:
+                ЗначенияПоУмолчаниюДляКредита:
+                  value:
+                    calculatorId: credit
+                    defaults:
+                      amount: 1500000
+                      ratePct: 12.5
+                      termMonths: 36
+                      paymentType: annuity
+                      issueDate: '2026-05-22'
+                  summary: Значения по умолчанию для кредита
+          description: ''
+        '404':
+          description: Калькулятор не найден.
   /api/v1/finance/categories/:
     get:
       operationId: finance_categories_list
@@ -8046,6 +8184,100 @@ components:
       - kinds
       - periodTypes
       - usageStatuses
+    CalculatorCalculateRequestRequest:
+      oneOf:
+      - $ref: '#/components/schemas/CreditCalculatorInputRequest'
+      - $ref: '#/components/schemas/MortgageCalculatorInputRequest'
+      - $ref: '#/components/schemas/InstallmentCalculatorInputRequest'
+      - $ref: '#/components/schemas/DepositCalculatorInputRequest'
+      - $ref: '#/components/schemas/PensionCalculatorInputRequest'
+      - $ref: '#/components/schemas/InflationCalculatorInputRequest'
+    CalculatorCalculateResponse:
+      oneOf:
+      - $ref: '#/components/schemas/CreditCalculationResult'
+      - $ref: '#/components/schemas/MortgageCalculationResult'
+      - $ref: '#/components/schemas/InstallmentCalculationResult'
+      - $ref: '#/components/schemas/DepositCalculationResult'
+      - $ref: '#/components/schemas/PensionCalculationResult'
+      - $ref: '#/components/schemas/InflationCalculationResult'
+    CalculatorCatalogItem:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        title:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        icon:
+          type: string
+          readOnly: true
+        iconBg:
+          type: string
+          readOnly: true
+        iconColor:
+          type: string
+          readOnly: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/CalculatorCatalogItemCategoryEnum'
+          readOnly: true
+        routeTitle:
+          type: string
+          readOnly: true
+        subtitle:
+          type: string
+          readOnly: true
+      required:
+      - category
+      - description
+      - icon
+      - iconBg
+      - iconColor
+      - id
+      - routeTitle
+      - subtitle
+      - title
+    CalculatorCatalogItemCategoryEnum:
+      enum:
+      - credit
+      - saving
+      - pension
+      type: string
+      description: |-
+        * `credit` - Кредиты
+        * `saving` - Сбережения
+        * `pension` - Пенсия
+    CalculatorDefaultsResponse:
+      type: object
+      properties:
+        calculatorId:
+          type: string
+          readOnly: true
+        defaults:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+      required:
+      - calculatorId
+      - defaults
+    CalculatorsHubListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalculatorCatalogItem'
+          readOnly: true
+        totalCount:
+          type: integer
+          readOnly: true
+      required:
+      - items
+      - totalCount
     Category:
       type: object
       properties:
@@ -8559,6 +8791,67 @@ components:
       - code
       - name
       - symbol
+    CreditCalculationResult:
+      type: object
+      properties:
+        monthlyPayment:
+          type: number
+          format: double
+          readOnly: true
+        firstPayment:
+          type: number
+          format: double
+          readOnly: true
+        lastPayment:
+          type: number
+          format: double
+          readOnly: true
+        totalPayment:
+          type: number
+          format: double
+          readOnly: true
+        overpayment:
+          type: number
+          format: double
+          readOnly: true
+        schedule:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentScheduleRow'
+          readOnly: true
+      required:
+      - firstPayment
+      - lastPayment
+      - monthlyPayment
+      - overpayment
+      - schedule
+      - totalPayment
+    CreditCalculatorInputRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        ratePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+        termMonths:
+          type: integer
+          maximum: 600
+          minimum: 1
+        paymentType:
+          $ref: '#/components/schemas/LoanPaymentTypeEnum'
+        issueDate:
+          type: string
+          format: date
+      required:
+      - amount
+      - issueDate
+      - paymentType
+      - ratePct
+      - termMonths
     CurrenciesCatalogResponse:
       type: object
       properties:
@@ -8949,6 +9242,98 @@ components:
       required:
       - deleted
       - id
+    DepositCalculationResult:
+      type: object
+      properties:
+        income:
+          type: number
+          format: double
+          readOnly: true
+        finalAmount:
+          type: number
+          format: double
+          readOnly: true
+        effectiveRatePct:
+          type: number
+          format: double
+          readOnly: true
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/DepositGrowthPoint'
+          readOnly: true
+      required:
+      - effectiveRatePct
+      - finalAmount
+      - income
+      - series
+    DepositCalculatorInputRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        ratePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+        termMonths:
+          type: integer
+          maximum: 600
+          minimum: 1
+        capitalization:
+          $ref: '#/components/schemas/DepositCapitalizationEnum'
+        topUp:
+          $ref: '#/components/schemas/DepositTopUpEnum'
+        monthlyTopUp:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          default: '0.00'
+      required:
+      - amount
+      - capitalization
+      - ratePct
+      - termMonths
+      - topUp
+    DepositCapitalizationEnum:
+      enum:
+      - none
+      - monthly
+      - quarterly
+      - yearly
+      type: string
+      description: |-
+        * `none` - Нет
+        * `monthly` - Ежемесячно
+        * `quarterly` - Ежеквартально
+        * `yearly` - Ежегодно
+    DepositGrowthPoint:
+      type: object
+      properties:
+        month:
+          type: integer
+          readOnly: true
+        label:
+          type: string
+          readOnly: true
+        total:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - label
+      - month
+      - total
+    DepositTopUpEnum:
+      enum:
+      - none
+      - monthly
+      type: string
+      description: |-
+        * `none` - Нет
+        * `monthly` - Ежемесячно
     ForgotPassword:
       type: object
       properties:
@@ -9384,6 +9769,140 @@ components:
       - status
       - timestamp
       - version
+    InflationCalculationResult:
+      type: object
+      properties:
+        futureValue:
+          type: number
+          format: double
+          readOnly: true
+        purchasingPowerLoss:
+          type: number
+          format: double
+          readOnly: true
+        lossPct:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - futureValue
+      - lossPct
+      - purchasingPowerLoss
+    InflationCalculatorInputRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        years:
+          type: integer
+          maximum: 100
+          minimum: 1
+        inflationPct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+      required:
+      - amount
+      - inflationPct
+      - years
+    InstallmentCalculationResult:
+      type: object
+      properties:
+        installment:
+          allOf:
+          - $ref: '#/components/schemas/InstallmentCalculationSlice'
+          readOnly: true
+        creditCard:
+          allOf:
+          - $ref: '#/components/schemas/InstallmentCalculationSlice'
+          readOnly: true
+        comparisonMeta:
+          allOf:
+          - $ref: '#/components/schemas/InstallmentCardComparisonMeta'
+          readOnly: true
+      required:
+      - comparisonMeta
+      - creditCard
+      - installment
+    InstallmentCalculationSlice:
+      type: object
+      properties:
+        monthlyPayment:
+          type: number
+          format: double
+          readOnly: true
+        totalToPay:
+          type: number
+          format: double
+          readOnly: true
+        overpayment:
+          type: number
+          format: double
+          readOnly: true
+        overpaymentPct:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - monthlyPayment
+      - overpayment
+      - overpaymentPct
+      - totalToPay
+    InstallmentCalculatorInputRequest:
+      type: object
+      properties:
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        termMonths:
+          type: integer
+          maximum: 120
+          minimum: 1
+        bankFeePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+        downPayment:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        zeroOverpayment:
+          type: boolean
+      required:
+      - bankFeePct
+      - downPayment
+      - price
+      - termMonths
+      - zeroOverpayment
+    InstallmentCardComparisonMeta:
+      type: object
+      properties:
+        annualRatePct:
+          type: number
+          format: double
+          readOnly: true
+        minPaymentPct:
+          type: number
+          format: double
+          readOnly: true
+        footerNote:
+          type: string
+          readOnly: true
+      required:
+      - annualRatePct
+      - footerNote
+      - minPaymentPct
+    LoanPaymentTypeEnum:
+      enum:
+      - annuity
+      - differentiated
+      type: string
+      description: |-
+        * `annuity` - Аннуитетный
+        * `differentiated` - Дифференцированный
     Login:
       type: object
       properties:
@@ -9449,6 +9968,75 @@ components:
       - last_name
       - role
       - username
+    MortgageCalculationResult:
+      type: object
+      properties:
+        loanAmount:
+          type: number
+          format: double
+          readOnly: true
+        monthlyPayment:
+          type: number
+          format: double
+          readOnly: true
+        recommendedIncome:
+          type: number
+          format: double
+          readOnly: true
+        totalPayment:
+          type: number
+          format: double
+          readOnly: true
+        totalInterest:
+          type: number
+          format: double
+          readOnly: true
+        principalShare:
+          type: number
+          format: double
+          readOnly: true
+        interestShare:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - interestShare
+      - loanAmount
+      - monthlyPayment
+      - principalShare
+      - recommendedIncome
+      - totalInterest
+      - totalPayment
+    MortgageCalculatorInputRequest:
+      type: object
+      properties:
+        propertyPrice:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        downPaymentPct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,3})?$
+        ratePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+        termYears:
+          type: integer
+          maximum: 50
+          minimum: 1
+        withInsurance:
+          type: boolean
+        isFamilyMortgage:
+          type: boolean
+      required:
+      - downPaymentPct
+      - isFamilyMortgage
+      - propertyPrice
+      - ratePct
+      - termYears
+      - withInsurance
     Notification:
       type: object
       properties:
@@ -10983,6 +11571,116 @@ components:
           type: boolean
           title: Статус суперпользователя
           description: Указывает, что пользователь имеет все права без явного их назначения.
+    PaymentScheduleRow:
+      type: object
+      properties:
+        month:
+          type: integer
+          readOnly: true
+        date:
+          type: string
+          format: date
+          readOnly: true
+        payment:
+          type: number
+          format: double
+          readOnly: true
+        principalPart:
+          type: number
+          format: double
+          readOnly: true
+        interestPart:
+          type: number
+          format: double
+          readOnly: true
+        remaining:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - date
+      - interestPart
+      - month
+      - payment
+      - principalPart
+      - remaining
+    PensionCalculationResult:
+      type: object
+      properties:
+        capitalAtRetirement:
+          type: number
+          format: double
+          readOnly: true
+        monthlyPensionReal:
+          type: number
+          format: double
+          readOnly: true
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/PensionCapitalPoint'
+          readOnly: true
+      required:
+      - capitalAtRetirement
+      - monthlyPensionReal
+      - series
+    PensionCalculatorInputRequest:
+      type: object
+      properties:
+        currentAge:
+          type: integer
+          maximum: 100
+          minimum: 14
+        retireAge:
+          type: integer
+          maximum: 100
+          minimum: 15
+        monthlyContribution:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        returnRatePct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+        inflationPct:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+        initialSaved:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - currentAge
+      - inflationPct
+      - initialSaved
+      - monthlyContribution
+      - retireAge
+      - returnRatePct
+    PensionCapitalPoint:
+      type: object
+      properties:
+        age:
+          type: integer
+          readOnly: true
+        contributions:
+          type: number
+          format: double
+          readOnly: true
+        growth:
+          type: number
+          format: double
+          readOnly: true
+        total:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - age
+      - contributions
+      - growth
+      - total
     PlannedCalendarDayBadge:
       type: object
       properties:

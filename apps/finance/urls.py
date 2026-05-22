@@ -3,6 +3,11 @@ from rest_framework.routers import DefaultRouter
 
 from apps.finance.account_views import AccountViewSet
 from apps.finance.budget_views import BudgetViewSet
+from apps.finance.calculator_views import (
+    CalculatorCalculateView,
+    CalculatorDefaultsView,
+    CalculatorsHubView,
+)
 from apps.finance.budget_notification_views import (
     BudgetNotificationCheckView,
     BudgetNotificationMetaView,
@@ -43,6 +48,21 @@ router.register("transactions", TransactionViewSet, basename="transaction")
 
 urlpatterns = [
 
+    path(
+        "calculators/",
+        CalculatorsHubView.as_view(),
+        name="calculators-hub",
+    ),
+    path(
+        "calculators/<str:calc_id>/defaults/",
+        CalculatorDefaultsView.as_view(),
+        name="calculator-defaults",
+    ),
+    path(
+        "calculators/<str:calc_id>/calculate/",
+        CalculatorCalculateView.as_view(),
+        name="calculator-calculate",
+    ),
     path(
         "budget-notifications/settings/",
         BudgetNotificationSettingsView.as_view(),
