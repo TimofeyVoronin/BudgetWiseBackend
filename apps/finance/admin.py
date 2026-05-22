@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from apps.finance.models import BudgetNotificationEvent, BudgetNotificationSettings, Currency, Tag, TagGroup, TransactionTemplate, UserCurrency
+from apps.finance.models import (
+    BudgetNotificationEvent,
+    BudgetNotificationSettings,
+    Currency,
+    Receipt,
+    Tag,
+    TagGroup,
+    TransactionTemplate,
+    UserCurrency,
+)
 
 
 @admin.register(TagGroup)
@@ -17,6 +26,39 @@ class TagAdmin(admin.ModelAdmin):
     list_filter = ("is_visible", "is_system", "group")
     search_fields = ("name", "description", "group__name", "user__email")
     readonly_fields = ("normalized_name", "created_at", "updated_at")
+
+
+@admin.register(Receipt)
+class ReceiptAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "fiscal_drive_number",
+        "fiscal_document_number",
+        "fiscal_sign",
+        "total_amount",
+        "status",
+        "store_name",
+        "created_at",
+    )
+    list_filter = ("status", "provider_name", "operation_type")
+    search_fields = (
+        "user__email",
+        "user__username",
+        "fiscal_drive_number",
+        "fiscal_document_number",
+        "fiscal_sign",
+        "deduplication_key",
+        "store_name",
+        "seller_inn",
+    )
+    readonly_fields = (
+        "raw_hash",
+        "deduplication_key",
+        "fiscal_key",
+        "created_at",
+        "updated_at",
+    )
 
 
 @admin.register(TransactionTemplate)

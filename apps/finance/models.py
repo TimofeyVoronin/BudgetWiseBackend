@@ -137,6 +137,23 @@ class TransactionTemplateIconTone(models.TextChoices):
     INFO = "info", "Информация"
 
 
+
+
+class ReceiptStatus(models.TextChoices):
+    PARSED = "parsed", "Распознан"
+    FETCHED = "fetched", "Получен от провайдера"
+    IMPORTED = "imported", "Импортирован"
+    DUPLICATE = "duplicate", "Дубликат"
+    ERROR = "error", "Ошибка"
+
+
+class ReceiptOperationType(models.TextChoices):
+    INCOME = "income", "Приход"
+    INCOME_RETURN = "income_return", "Возврат прихода"
+    EXPENSE = "expense", "Расход"
+    EXPENSE_RETURN = "expense_return", "Возврат расхода"
+
+
 class BudgetNotificationChannel(models.TextChoices):
     EMAIL = "email", "Email"
     PUSH = "push", "Push"
@@ -1236,6 +1253,192 @@ class Transaction(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.type}: {self.amount} {self.account.currency}"
+
+
+class Receipt(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="receipts",
+        verbose_name="Пользователь",
+    )
+    qr_raw = models.TextField(
+        verbose_name="Исходная строка QR-кода",
+    )
+    raw_hash = models.CharField(
+        max_length=64,
+        verbose_name="SHA-256 исходного QR",
+    )
+    deduplication_key = models.CharField(
+        max_length=255,
+        verbose_name="Ключ защиты от дублей",
+    )
+    fiscal_key = models.CharField(
+        max_length=255,
+        verbose_name="Фискальный ключ",
+    )
+    fiscal_drive_number = models.CharField(
+        max_length=32,
+        verbose_name="ФН",
+    )
+    fiscal_document_number = models.CharField(
+        max_length=32,
+        verbose_name="ФД",
+    )
+    fiscal_sign = models.CharField(
+        max_length=32,
+        verbose_name="ФПД",
+    )
+    operation_type_code = models.CharField(
+        max_length=1,
+        verbose_name="Код типа операции",
+    )
+    operation_type = models.CharField(
+        max_length=30,
+        choices=ReceiptOperationType.choices,
+        verbose_name="Тип операции по чеку",
+    )
+    receipt_datetime = models.DateTimeField(
+        verbose_name="Дата и время чека",
+    )
+    total_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма чека",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ReceiptStatus.choices,
+        default=ReceiptStatus.PARSED,
+        verbose_name="Статус импорта чека",
+    )
+    provider_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Провайдер",
+    )
+    provider_code = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Код ответа провайдера",
+    )
+    store_name = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Магазин",
+    )
+    seller_inn = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name="ИНН продавца",
+    )
+    provider_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Сырой ответ провайдера",
+    )
+    duplicate_of = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="duplicate_attempts",
+        verbose_name="Дубликат чека",
+    )
+    note = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
+
+    class Meta:
+        verbose_name = "Импортированный чек"
+        verbose_name_plural = "Импортированные чеки"
+        ordering = ["-receipt_datetime", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "deduplication_key"],
+                name="unique_receipt_dedup_per_user",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(total_amount__gt=0),
+                name="receipt_total_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(operation_type__in=ReceiptOperationType.values),
+                name="receipt_operation_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=ReceiptStatus.values),
+                name="receipt_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_receipt_user"),
+            models.Index(fields=["user", "raw_hash"], name="idx_receipt_user_hash"),
+            models.Index(fields=["user", "fiscal_key"], name="idx_receipt_user_fiscal"),
+            models.Index(fields=["user", "receipt_datetime"], name="idx_receipt_user_date"),
+            models.Index(fields=["user", "status"], name="idx_receipt_user_status"),
+            models.Index(fields=["seller_inn"], name="idx_receipt_seller_inn"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        for field_name in (
+            "raw_hash",
+            "deduplication_key",
+            "fiscal_key",
+            "fiscal_drive_number",
+            "fiscal_document_number",
+            "fiscal_sign",
+            "operation_type_code",
+            "operation_type",
+            "provider_name",
+            "store_name",
+            "seller_inn",
+        ):
+            value = getattr(self, field_name, "")
+            if isinstance(value, str):
+                setattr(self, field_name, value.strip())
+
+        if self.fiscal_drive_number and not self.fiscal_drive_number.isdigit():
+            errors["fiscal_drive_number"] = "ФН должен содержать только цифры."
+
+        if self.fiscal_document_number and not self.fiscal_document_number.isdigit():
+            errors["fiscal_document_number"] = "ФД должен содержать только цифры."
+
+        if self.fiscal_sign and not self.fiscal_sign.isdigit():
+            errors["fiscal_sign"] = "ФПД должен содержать только цифры."
+
+        if self.operation_type not in ReceiptOperationType.values:
+            errors["operation_type"] = "Недопустимый тип операции по чеку."
+
+        if self.status not in ReceiptStatus.values:
+            errors["status"] = "Недопустимый статус импорта чека."
+
+        if self.total_amount <= Decimal("0.00"):
+            errors["total_amount"] = "Сумма чека должна быть больше нуля."
+
+        if self.duplicate_of_id and self.duplicate_of_id == self.id:
+            errors["duplicate_of"] = "Чек не может быть дубликатом самого себя."
+
+        if (
+            self.duplicate_of_id
+            and self.user_id
+            and self.duplicate_of.user_id != self.user_id
+        ):
+            errors["duplicate_of"] = "Дубликат должен принадлежать тому же пользователю."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.fiscal_key}: {self.total_amount}"
 
 
 class TransactionTemplate(TimeStampedModel):
