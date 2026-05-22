@@ -725,6 +725,367 @@ paths:
                     currency: RUB
                   summary: Сводка по счетам
           description: ''
+  /api/v1/finance/budget-notifications/check/:
+    post:
+      operationId: finance_budget_notifications_check_create
+      description: Запускает сервис формирования событий бюджетных уведомлений для
+        текущего пользователя. Сервис учитывает настройки, активные пороги, типы событий,
+        выбранные цели и защиту от дублей. При dryRun=true события не сохраняются,
+        а только возвращаются в ответе для предпросмотра. При dryRun=false новые события
+        передаются в централизованный Notification Center через in-app канал. Email
+        и push логируются как skipped, потому что провайдеры пока не подключены.
+      summary: Запустить проверку бюджетных уведомлений
+      tags:
+      - finance-budget-notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetNotificationCheckRequest'
+            examples:
+              РучнаяПроверкаБезСохранения:
+                value:
+                  date: '2026-05-21'
+                  dryRun: true
+                summary: Ручная проверка без сохранения
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BudgetNotificationCheckRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BudgetNotificationCheckRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetNotificationCheckResponse'
+              examples:
+                РезультатПроверки:
+                  value:
+                    date: '2026-05-21'
+                    dryRun: false
+                    processedBudgets: 2
+                    processedGoals: 1
+                    createdEvents: 1
+                    wouldCreateEvents: 0
+                    deliveredNotifications: 1
+                    skippedDeliveries: 1
+                    skippedDuplicates: 0
+                    items:
+                    - id: 10
+                      eventType: budget_near_limit
+                      relatedObjectType: budget
+                      relatedObjectId: 5
+                      thresholdId: near_limit
+                      title: Бюджет близок к лимиту
+                      message: Бюджет «Продукты» за период «май 2026» использован
+                        на 86.0%.
+                      icon: trending-up
+                      iconTone: warning
+                      status: delivered
+                      deduplicationKey: budget_near_limit:budget:5:near_limit
+                      deliveryResults:
+                      - channel: in_app
+                        status: delivered
+                        notificationId: 42
+                        error: ''
+                      - channel: email
+                        status: skipped
+                        notificationId: null
+                        error: Канал доставки пока не настроен на backend.
+                      payload:
+                        budgetId: 5
+                        categoryName: Продукты
+                        usagePercent: 86.0
+                        thresholdPercent: 80
+                  summary: Результат проверки
+          description: ''
+        '400':
+          description: Ошибка валидации параметров запуска.
+  /api/v1/finance/budget-notifications/meta/:
+    get:
+      operationId: finance_budget_notifications_meta_retrieve
+      description: 'Возвращает цели накопления и справочные значения для выпадающих
+        списков: интервалы повторов, cooldown, дни отставания и проценты рубежей целей.'
+      summary: Получить справочники для настроек уведомлений
+      tags:
+      - finance-budget-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetNotificationsMeta'
+          description: ''
+  /api/v1/finance/budget-notifications/settings/:
+    get:
+      operationId: finance_budget_notifications_settings_retrieve
+      description: 'Возвращает настройки текущего пользователя для страницы уведомлений:
+        включение уведомлений, пороги бюджета, типы событий, каналы доставки, защиту
+        от дублей и настройки целей накопления. На текущем этапе реально доступен
+        in-app канал, email и push сохраняются как будущие каналы.'
+      summary: Получить настройки уведомлений о бюджетах и целях
+      tags:
+      - finance-budget-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetNotificationsSettingsResponse'
+              examples:
+                НастройкиУведомлений:
+                  value:
+                    enabled: true
+                    thresholdsEnabled: true
+                    thresholds:
+                    - id: near_limit
+                      label: Приближение к лимиту
+                      hint: Уведомление отправится один раз при пересечении порога.
+                      percent: 80
+                      active: true
+                      locked: false
+                    - id: warning
+                      label: Предупреждение
+                      hint: Уведомление отправится один раз при пересечении порога.
+                      percent: 90
+                      active: true
+                      locked: false
+                    - id: critical
+                      label: Критический порог
+                      hint: Фиксированный системный порог превышения бюджета.
+                      percent: 100
+                      active: false
+                      locked: true
+                    events:
+                    - id: budget_near_limit
+                      group: budget
+                      label: 'Бюджет: приближение к лимиту'
+                      icon: trending-up
+                      iconTone: warning
+                      enabled: true
+                    channels:
+                    - id: in_app
+                      label: In-app
+                      description: Центр уведомлений в приложении
+                      icon: bell
+                      enabled: true
+                      deliveryHint: Всегда доступно
+                      deliveryOk: true
+                      deliveryStatus: available
+                    - id: email
+                      label: Электронная почта
+                      description: Email пользователя
+                      icon: mail
+                      enabled: false
+                      deliveryHint: Канал будет подключен позже.
+                      deliveryOk: false
+                      deliveryStatus: not_configured
+                    antiSpam:
+                      minRepeatHours: 24
+                      groupNotifications: true
+                      cooldownMinutes: 15
+                    goals:
+                      milestonePercents:
+                      - 25
+                      - 50
+                      - 75
+                      - 100
+                      milestoneEnabled:
+                        '25': true
+                        '50': true
+                        '75': true
+                        '100': true
+                      notifyOnLag: false
+                      lagDays: 7
+                      selectedGoalIds: []
+                    previewUsagePercent: 87
+                    updatedAt: 2026-05-21T18:00:00+0300
+                  summary: Настройки уведомлений
+          description: ''
+    post:
+      operationId: finance_budget_notifications_settings_create
+      description: Полный или частичный вариант сохранения. Работает так же, как PATCH.
+      summary: Сохранить настройки уведомлений о бюджетах и целях
+      tags:
+      - finance-budget-notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBudgetNotificationsSettingsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UpdateBudgetNotificationsSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateBudgetNotificationsSettingsRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetNotificationsSettingsResponse'
+          description: ''
+        '400':
+          description: Ошибка валидации настроек.
+    patch:
+      operationId: finance_budget_notifications_settings_partial_update
+      description: 'Частично обновляет настройки уведомлений текущего пользователя.
+        Можно передавать только изменённые секции: пороги, события, каналы, antiSpam
+        или goals. Пороги валидируются: активные значения должны идти по возрастанию
+        и не повторяться.'
+      summary: Обновить настройки уведомлений о бюджетах и целях
+      tags:
+      - finance-budget-notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdateBudgetNotificationsSettingsRequest'
+            examples:
+              ОбновитьПорогиИКаналы:
+                value:
+                  enabled: true
+                  thresholds:
+                  - id: near_limit
+                    percent: 80
+                    active: true
+                  - id: warning
+                    percent: 90
+                    active: true
+                  channels:
+                  - id: in_app
+                    enabled: true
+                  - id: email
+                    enabled: false
+                summary: Обновить пороги и каналы
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdateBudgetNotificationsSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdateBudgetNotificationsSettingsRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetNotificationsSettingsResponse'
+          description: ''
+        '400':
+          description: Ошибка валидации настроек.
+        '409':
+          description: Настройки временно заблокированы cooldown-паузой.
+  /api/v1/finance/budget-notifications/settings/preview/:
+    get:
+      operationId: finance_budget_notifications_settings_preview_retrieve
+      description: Возвращает пример текста уведомления для активных каналов доставки
+        с учётом previewUsagePercent из пользовательских настроек.
+      summary: Получить предпросмотр уведомления
+      tags:
+      - finance-budget-notifications
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetNotificationPreview'
+          description: ''
+  /api/v1/finance/budget-notifications/settings/test/:
+    post:
+      operationId: finance_budget_notifications_settings_test_create
+      description: Возвращает результат тестовой доставки по выбранным каналам. На
+        текущем этапе in-app канал считается доставленным, а email и push возвращаются
+        как skipped, потому что реальные провайдеры не подключены.
+      summary: Отправить тестовое уведомление
+      tags:
+      - finance-budget-notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendBudgetNotificationTestRequest'
+            examples:
+              ТестIn-appУведомления:
+                value:
+                  channelIds:
+                  - in_app
+                  eventId: budget_near_limit
+                summary: Тест in-app уведомления
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SendBudgetNotificationTestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendBudgetNotificationTestRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendBudgetNotificationTestResponse'
+              examples:
+                РезультатТеста:
+                  value:
+                    sent: true
+                    channels:
+                    - id: in_app
+                      status: delivered
+                    - id: email
+                      status: skipped
+                      error: Канал доставки пока не настроен на backend.
+                  summary: Результат теста
+          description: ''
+        '400':
+          description: Ошибка валидации каналов или типа события.
+  /api/v1/finance/budget-notifications/settings/validate-thresholds/:
+    post:
+      operationId: finance_budget_notifications_settings_validate_thresholds_create
+      description: 'Проверяет пороги без сохранения настроек. Используется фронтом
+        для валидации слайдеров: проценты должны быть в диапазоне 1..100, активные
+        пороги должны идти по возрастанию и не повторяться.'
+      summary: Проверить пороги бюджетных уведомлений
+      tags:
+      - finance-budget-notifications
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateBudgetNotificationThresholdsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ValidateBudgetNotificationThresholdsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateBudgetNotificationThresholdsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateBudgetNotificationThresholdsResponse'
+          description: ''
+        '400':
+          description: Невалидное тело запроса.
   /api/v1/finance/budgets/:
     get:
       operationId: finance_budgets_list
@@ -6438,6 +6799,503 @@ components:
       - attentionCount
       - normalCount
       - totalCount
+    BudgetNotificationAntiSpamSettings:
+      type: object
+      properties:
+        minRepeatHours:
+          type: integer
+          maximum: 168
+          minimum: 1
+        groupNotifications:
+          type: boolean
+        cooldownMinutes:
+          type: integer
+          maximum: 1440
+          minimum: 0
+      required:
+      - cooldownMinutes
+      - groupNotifications
+      - minRepeatHours
+    BudgetNotificationAntiSpamUpdateRequest:
+      type: object
+      properties:
+        minRepeatHours:
+          type: integer
+          maximum: 168
+          minimum: 1
+        groupNotifications:
+          type: boolean
+        cooldownMinutes:
+          type: integer
+          maximum: 1440
+          minimum: 0
+    BudgetNotificationChannelEnum:
+      enum:
+      - email
+      - push
+      - in_app
+      type: string
+      description: |-
+        * `email` - Email
+        * `push` - Push
+        * `in_app` - In-app
+    BudgetNotificationChannelSetting:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/BudgetNotificationChannelEnum'
+        label:
+          type: string
+        description:
+          type: string
+        icon:
+          type: string
+        enabled:
+          type: boolean
+        deliveryHint:
+          type: string
+        deliveryOk:
+          type: boolean
+        deliveryStatus:
+          $ref: '#/components/schemas/BudgetNotificationDeliveryStatusEnum'
+      required:
+      - deliveryHint
+      - deliveryOk
+      - description
+      - enabled
+      - icon
+      - id
+      - label
+    BudgetNotificationChannelUpdateItemRequest:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/BudgetNotificationChannelEnum'
+        enabled:
+          type: boolean
+      required:
+      - enabled
+      - id
+    BudgetNotificationCheckRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        dryRun:
+          type: boolean
+          default: false
+    BudgetNotificationCheckResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        dryRun:
+          type: boolean
+        processedBudgets:
+          type: integer
+        processedGoals:
+          type: integer
+        createdEvents:
+          type: integer
+        wouldCreateEvents:
+          type: integer
+        deliveredNotifications:
+          type: integer
+        skippedDeliveries:
+          type: integer
+        skippedDuplicates:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationGeneratedEvent'
+      required:
+      - createdEvents
+      - date
+      - deliveredNotifications
+      - dryRun
+      - items
+      - processedBudgets
+      - processedGoals
+      - skippedDeliveries
+      - skippedDuplicates
+      - wouldCreateEvents
+    BudgetNotificationDeliveryResult:
+      type: object
+      properties:
+        channel:
+          $ref: '#/components/schemas/BudgetNotificationChannelEnum'
+        status:
+          $ref: '#/components/schemas/BudgetNotificationDeliveryResultStatusEnum'
+        notificationId:
+          type: integer
+          nullable: true
+        error:
+          type: string
+      required:
+      - channel
+      - status
+    BudgetNotificationDeliveryResultStatusEnum:
+      enum:
+      - delivered
+      - pending
+      - unavailable
+      - failed
+      - skipped
+      type: string
+      description: |-
+        * `delivered` - delivered
+        * `pending` - pending
+        * `unavailable` - unavailable
+        * `failed` - failed
+        * `skipped` - skipped
+    BudgetNotificationDeliveryStatusEnum:
+      enum:
+      - available
+      - not_configured
+      - disabled
+      type: string
+      description: |-
+        * `available` - Доступен
+        * `not_configured` - Не настроен
+        * `disabled` - Отключён
+    BudgetNotificationEventGroupEnum:
+      enum:
+      - budget
+      - goal
+      type: string
+      description: |-
+        * `budget` - Бюджет
+        * `goal` - Цель накопления
+    BudgetNotificationEventSetting:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/BudgetNotificationEventTypeEnum'
+        group:
+          $ref: '#/components/schemas/BudgetNotificationEventGroupEnum'
+        label:
+          type: string
+        icon:
+          type: string
+        iconTone:
+          type: string
+        enabled:
+          type: boolean
+      required:
+      - enabled
+      - group
+      - icon
+      - iconTone
+      - id
+      - label
+    BudgetNotificationEventTypeEnum:
+      enum:
+      - budget_near_limit
+      - budget_exceeded
+      - budget_back_to_normal
+      - goal_milestone
+      - goal_reached
+      - goal_lagging
+      type: string
+      description: |-
+        * `budget_near_limit` - Бюджет: приближение к лимиту
+        * `budget_exceeded` - Бюджет: превышение лимита
+        * `budget_back_to_normal` - Бюджет: возврат в норму
+        * `goal_milestone` - Цель: достигнут промежуточный рубеж
+        * `goal_reached` - Цель: цель выполнена
+        * `goal_lagging` - Цель: отставание от плана
+    BudgetNotificationEventUpdateItemRequest:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/BudgetNotificationEventTypeEnum'
+        enabled:
+          type: boolean
+      required:
+      - enabled
+      - id
+    BudgetNotificationGeneratedEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        eventType:
+          $ref: '#/components/schemas/BudgetNotificationEventTypeEnum'
+        relatedObjectType:
+          type: string
+        relatedObjectId:
+          type: integer
+        thresholdId:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        icon:
+          type: string
+        iconTone:
+          type: string
+        status:
+          type: string
+        deduplicationKey:
+          type: string
+        deliveryResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationDeliveryResult'
+        payload:
+          type: object
+          additionalProperties: {}
+      required:
+      - deduplicationKey
+      - eventType
+      - icon
+      - iconTone
+      - message
+      - payload
+      - relatedObjectId
+      - relatedObjectType
+      - thresholdId
+      - title
+    BudgetNotificationGoalOption:
+      type: object
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+      required:
+      - id
+      - label
+    BudgetNotificationGoalsSettings:
+      type: object
+      properties:
+        milestonePercents:
+          type: array
+          items:
+            type: integer
+            maximum: 100
+            minimum: 1
+        milestoneEnabled:
+          type: object
+          additionalProperties:
+            type: boolean
+        notifyOnLag:
+          type: boolean
+        lagDays:
+          type: integer
+          maximum: 365
+          minimum: 1
+        selectedGoalIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+      required:
+      - lagDays
+      - milestoneEnabled
+      - milestonePercents
+      - notifyOnLag
+      - selectedGoalIds
+    BudgetNotificationGoalsUpdateRequest:
+      type: object
+      properties:
+        milestonePercents:
+          type: array
+          items:
+            type: integer
+            maximum: 100
+            minimum: 1
+        milestoneEnabled:
+          type: object
+          additionalProperties:
+            type: boolean
+        notifyOnLag:
+          type: boolean
+        lagDays:
+          type: integer
+          maximum: 365
+          minimum: 1
+        selectedGoalIds:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+    BudgetNotificationPreview:
+      type: object
+      properties:
+        eventTitle:
+          type: string
+        eventSubtitle:
+          type: string
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationPreviewChannelSample'
+        activeChannelIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationChannelEnum'
+      required:
+      - activeChannelIds
+      - channels
+      - eventSubtitle
+      - eventTitle
+    BudgetNotificationPreviewChannelSample:
+      type: object
+      properties:
+        channel:
+          $ref: '#/components/schemas/BudgetNotificationChannelEnum'
+        title:
+          type: string
+        body:
+          type: string
+      required:
+      - body
+      - channel
+      - title
+    BudgetNotificationSelectOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: integer
+      required:
+      - title
+      - value
+    BudgetNotificationTestChannelResult:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/BudgetNotificationChannelEnum'
+        status:
+          $ref: '#/components/schemas/BudgetNotificationTestChannelResultStatusEnum'
+        error:
+          type: string
+      required:
+      - id
+      - status
+    BudgetNotificationTestChannelResultStatusEnum:
+      enum:
+      - delivered
+      - failed
+      - skipped
+      type: string
+      description: |-
+        * `delivered` - delivered
+        * `failed` - failed
+        * `skipped` - skipped
+    BudgetNotificationThreshold:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        hint:
+          type: string
+        percent:
+          type: integer
+          maximum: 100
+          minimum: 1
+        active:
+          type: boolean
+        locked:
+          type: boolean
+      required:
+      - active
+      - hint
+      - id
+      - label
+      - locked
+      - percent
+    BudgetNotificationThresholdUpdateItemRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 1
+        percent:
+          type: integer
+          maximum: 100
+          minimum: 1
+        active:
+          type: boolean
+      required:
+      - id
+    BudgetNotificationsMeta:
+      type: object
+      properties:
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationGoalOption'
+        repeatHourOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationSelectOption'
+        cooldownOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationSelectOption'
+        lagDayOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationSelectOption'
+        milestonePercents:
+          type: array
+          items:
+            type: integer
+      required:
+      - cooldownOptions
+      - goals
+      - lagDayOptions
+      - milestonePercents
+      - repeatHourOptions
+    BudgetNotificationsSettingsResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          title: Уведомления о бюджетах и целях включены
+        thresholdsEnabled:
+          type: boolean
+        thresholds:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationThreshold'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationEventSetting'
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationChannelSetting'
+        antiSpam:
+          $ref: '#/components/schemas/BudgetNotificationAntiSpamSettings'
+        goals:
+          $ref: '#/components/schemas/BudgetNotificationGoalsSettings'
+        previewUsagePercent:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - antiSpam
+      - channels
+      - events
+      - goals
+      - previewUsagePercent
+      - thresholds
+      - thresholdsEnabled
+      - updatedAt
     BudgetOperationRow:
       type: object
       properties:
@@ -9260,6 +10118,33 @@ components:
         isDefault:
           type: boolean
           default: false
+    PatchedUpdateBudgetNotificationsSettingsRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        thresholdsEnabled:
+          type: boolean
+        thresholds:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationThresholdUpdateItemRequest'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationEventUpdateItemRequest'
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationChannelUpdateItemRequest'
+        antiSpam:
+          $ref: '#/components/schemas/BudgetNotificationAntiSpamUpdateRequest'
+        goals:
+          $ref: '#/components/schemas/BudgetNotificationGoalsUpdateRequest'
+        previewUsagePercent:
+          type: integer
+          maximum: 100
+          minimum: 0
     PatchedUserRequest:
       type: object
       properties:
@@ -10280,6 +11165,27 @@ components:
       - password
       - password_confirm
       - token
+    SendBudgetNotificationTestRequest:
+      type: object
+      properties:
+        channelIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationChannelEnum'
+        eventId:
+          $ref: '#/components/schemas/BudgetNotificationEventTypeEnum'
+    SendBudgetNotificationTestResponse:
+      type: object
+      properties:
+        sent:
+          type: boolean
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationTestChannelResult'
+      required:
+      - channels
+      - sent
     Tag:
       type: object
       properties:
@@ -11282,6 +12188,33 @@ components:
       description: |-
         * `income` - Доход
         * `expense` - Расход
+    UpdateBudgetNotificationsSettingsRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        thresholdsEnabled:
+          type: boolean
+        thresholds:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationThresholdUpdateItemRequest'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationEventUpdateItemRequest'
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationChannelUpdateItemRequest'
+        antiSpam:
+          $ref: '#/components/schemas/BudgetNotificationAntiSpamUpdateRequest'
+        goals:
+          $ref: '#/components/schemas/BudgetNotificationGoalsUpdateRequest'
+        previewUsagePercent:
+          type: integer
+          maximum: 100
+          minimum: 0
     User:
       type: object
       properties:
@@ -11422,6 +12355,29 @@ components:
             type: string
       required:
       - fieldErrors
+      - ok
+    ValidateBudgetNotificationThresholdsRequest:
+      type: object
+      properties:
+        thresholds:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationThresholdUpdateItemRequest'
+      required:
+      - thresholds
+    ValidateBudgetNotificationThresholdsResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+        generalMessage:
+          type: string
+          nullable: true
+      required:
       - ok
     ValidatePlannedFormRequest:
       type: object
@@ -11565,6 +12521,10 @@ tags:
   description: 'Центр уведомлений: список, просмотр, фильтрация, отметка как прочитанное/непрочитанное,
     архивация, восстановление, сводка, справочники, настройки каналов, типов уведомлений
     и тихих часов.'
+- name: finance-budget-notifications
+  description: 'Настройки уведомлений о бюджетах и целях: включение, пороги, типы
+    событий, каналы доставки, защита от дублей, предпросмотр и тестовая отправка.
+    На текущем этапе реально доступен in-app канал.'
 - name: finance-recurring-transactions
   description: 'Регулярные операции: список, создание, редактирование, удаление, пауза,
     возобновление, завершение, справочники, сводка, история списаний и проверка расписания.'

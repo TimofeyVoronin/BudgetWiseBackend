@@ -137,6 +137,38 @@ class TransactionTemplateIconTone(models.TextChoices):
     INFO = "info", "Информация"
 
 
+class BudgetNotificationChannel(models.TextChoices):
+    EMAIL = "email", "Email"
+    PUSH = "push", "Push"
+    IN_APP = "in_app", "In-app"
+
+
+class BudgetNotificationEventGroup(models.TextChoices):
+    BUDGET = "budget", "Бюджет"
+    GOAL = "goal", "Цель накопления"
+
+
+class BudgetNotificationEventType(models.TextChoices):
+    BUDGET_NEAR_LIMIT = "budget_near_limit", "Бюджет: приближение к лимиту"
+    BUDGET_EXCEEDED = "budget_exceeded", "Бюджет: превышение лимита"
+    BUDGET_BACK_TO_NORMAL = "budget_back_to_normal", "Бюджет: возврат в норму"
+    GOAL_MILESTONE = "goal_milestone", "Цель: достигнут промежуточный рубеж"
+    GOAL_REACHED = "goal_reached", "Цель: цель выполнена"
+    GOAL_LAGGING = "goal_lagging", "Цель: отставание от плана"
+
+
+class BudgetNotificationDeliveryStatus(models.TextChoices):
+    AVAILABLE = "available", "Доступен"
+    NOT_CONFIGURED = "not_configured", "Не настроен"
+    DISABLED = "disabled", "Отключён"
+
+
+class BudgetNotificationEventStatus(models.TextChoices):
+    GENERATED = "generated", "Сформировано"
+    DELIVERED = "delivered", "Доставлено"
+    SKIPPED = "skipped", "Пропущено"
+
+
 NOTIFICATION_QUIET_HOURS_DAYS = {
     "mon",
     "tue",
@@ -150,6 +182,162 @@ NOTIFICATION_QUIET_HOURS_DAYS = {
 
 def default_quiet_hours_days() -> list[str]:
     return ["mon", "tue", "wed", "thu", "fri"]
+
+
+BUDGET_NOTIFICATION_THRESHOLD_IDS = {
+    "near_limit",
+    "warning",
+    "critical",
+}
+
+BUDGET_NOTIFICATION_EVENT_GROUP_BY_ID = {
+    BudgetNotificationEventType.BUDGET_NEAR_LIMIT.value: BudgetNotificationEventGroup.BUDGET.value,
+    BudgetNotificationEventType.BUDGET_EXCEEDED.value: BudgetNotificationEventGroup.BUDGET.value,
+    BudgetNotificationEventType.BUDGET_BACK_TO_NORMAL.value: BudgetNotificationEventGroup.BUDGET.value,
+    BudgetNotificationEventType.GOAL_MILESTONE.value: BudgetNotificationEventGroup.GOAL.value,
+    BudgetNotificationEventType.GOAL_REACHED.value: BudgetNotificationEventGroup.GOAL.value,
+    BudgetNotificationEventType.GOAL_LAGGING.value: BudgetNotificationEventGroup.GOAL.value,
+}
+
+
+def default_budget_notification_thresholds() -> list[dict]:
+    return [
+        {
+            "id": "near_limit",
+            "label": "Приближение к лимиту",
+            "hint": "Уведомление отправится один раз при пересечении порога.",
+            "percent": 80,
+            "active": True,
+            "locked": False,
+        },
+        {
+            "id": "warning",
+            "label": "Предупреждение",
+            "hint": "Уведомление отправится один раз при пересечении порога.",
+            "percent": 90,
+            "active": True,
+            "locked": False,
+        },
+        {
+            "id": "critical",
+            "label": "Критический порог",
+            "hint": "Фиксированный системный порог превышения бюджета.",
+            "percent": 100,
+            "active": False,
+            "locked": True,
+        },
+    ]
+
+
+def default_budget_notification_events() -> list[dict]:
+    return [
+        {
+            "id": BudgetNotificationEventType.BUDGET_NEAR_LIMIT.value,
+            "group": BudgetNotificationEventGroup.BUDGET.value,
+            "label": BudgetNotificationEventType.BUDGET_NEAR_LIMIT.label,
+            "icon": "trending-up",
+            "iconTone": "warning",
+            "enabled": True,
+        },
+        {
+            "id": BudgetNotificationEventType.BUDGET_EXCEEDED.value,
+            "group": BudgetNotificationEventGroup.BUDGET.value,
+            "label": BudgetNotificationEventType.BUDGET_EXCEEDED.label,
+            "icon": "alert-circle",
+            "iconTone": "error",
+            "enabled": True,
+        },
+        {
+            "id": BudgetNotificationEventType.BUDGET_BACK_TO_NORMAL.value,
+            "group": BudgetNotificationEventGroup.BUDGET.value,
+            "label": BudgetNotificationEventType.BUDGET_BACK_TO_NORMAL.label,
+            "icon": "check-circle",
+            "iconTone": "success",
+            "enabled": False,
+        },
+        {
+            "id": BudgetNotificationEventType.GOAL_MILESTONE.value,
+            "group": BudgetNotificationEventGroup.GOAL.value,
+            "label": BudgetNotificationEventType.GOAL_MILESTONE.label,
+            "icon": "flag",
+            "iconTone": "primary",
+            "enabled": True,
+        },
+        {
+            "id": BudgetNotificationEventType.GOAL_REACHED.value,
+            "group": BudgetNotificationEventGroup.GOAL.value,
+            "label": BudgetNotificationEventType.GOAL_REACHED.label,
+            "icon": "trophy",
+            "iconTone": "success",
+            "enabled": True,
+        },
+        {
+            "id": BudgetNotificationEventType.GOAL_LAGGING.value,
+            "group": BudgetNotificationEventGroup.GOAL.value,
+            "label": BudgetNotificationEventType.GOAL_LAGGING.label,
+            "icon": "trending-down",
+            "iconTone": "error",
+            "enabled": False,
+        },
+    ]
+
+
+def default_budget_notification_channels() -> list[dict]:
+    return [
+        {
+            "id": BudgetNotificationChannel.EMAIL.value,
+            "label": "Электронная почта",
+            "description": "Email пользователя",
+            "icon": "mail",
+            "enabled": False,
+            "deliveryHint": "Email-доставка будет подключена позже.",
+            "deliveryOk": False,
+            "deliveryStatus": BudgetNotificationDeliveryStatus.NOT_CONFIGURED.value,
+        },
+        {
+            "id": BudgetNotificationChannel.PUSH.value,
+            "label": "Push-уведомления",
+            "description": "Мобильное приложение BudgetWise",
+            "icon": "smartphone",
+            "enabled": False,
+            "deliveryHint": "Push-доставка будет подключена позже.",
+            "deliveryOk": False,
+            "deliveryStatus": BudgetNotificationDeliveryStatus.NOT_CONFIGURED.value,
+        },
+        {
+            "id": BudgetNotificationChannel.IN_APP.value,
+            "label": "In-app",
+            "description": "Центр уведомлений в приложении",
+            "icon": "bell",
+            "enabled": True,
+            "deliveryHint": "Всегда доступно",
+            "deliveryOk": True,
+            "deliveryStatus": BudgetNotificationDeliveryStatus.AVAILABLE.value,
+        },
+    ]
+
+
+def default_budget_notification_anti_spam() -> dict:
+    return {
+        "minRepeatHours": 24,
+        "groupNotifications": True,
+        "cooldownMinutes": 15,
+    }
+
+
+def default_budget_notification_goals() -> dict:
+    return {
+        "milestonePercents": [25, 50, 75, 100],
+        "milestoneEnabled": {
+            "25": True,
+            "50": True,
+            "75": True,
+            "100": True,
+        },
+        "notifyOnLag": False,
+        "lagDays": 7,
+        "selectedGoalIds": [],
+    }
 
 
 class AccountType(models.TextChoices):
@@ -1827,6 +2015,533 @@ class NotificationSettings(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Настройки уведомлений пользователя {self.user_id}"
+
+
+def _is_bool_value(value) -> bool:
+    return isinstance(value, bool)
+
+
+def _is_int_value(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_bool_json_value(value, *, field_path: str, errors: dict) -> None:
+    if not _is_bool_value(value):
+        errors[field_path] = "Значение должно быть true или false."
+
+
+def _normalize_int_list(value, *, field_path: str, min_value: int, max_value: int, errors: dict) -> list[int]:
+    if not isinstance(value, list):
+        errors[field_path] = "Значение должно быть списком."
+        return []
+
+    result = []
+
+    for item in value:
+        if not _is_int_value(item):
+            errors[field_path] = "Все значения должны быть целыми числами."
+            return []
+
+        if item < min_value or item > max_value:
+            errors[field_path] = f"Значения должны быть в диапазоне от {min_value} до {max_value}."
+            return []
+
+        result.append(item)
+
+    if len(set(result)) != len(result):
+        errors[field_path] = "Значения не должны повторяться."
+
+    return result
+
+
+class BudgetNotificationSettings(TimeStampedModel):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="budget_notification_settings",
+        verbose_name="Пользователь",
+    )
+    enabled = models.BooleanField(
+        default=False,
+        verbose_name="Уведомления о бюджетах и целях включены",
+    )
+    thresholds_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Пороговые уведомления включены",
+    )
+    thresholds = models.JSONField(
+        default=default_budget_notification_thresholds,
+        blank=True,
+        verbose_name="Пороги бюджета",
+    )
+    events = models.JSONField(
+        default=default_budget_notification_events,
+        blank=True,
+        verbose_name="Типы событий",
+    )
+    channels = models.JSONField(
+        default=default_budget_notification_channels,
+        blank=True,
+        verbose_name="Каналы доставки",
+    )
+    anti_spam = models.JSONField(
+        default=default_budget_notification_anti_spam,
+        blank=True,
+        verbose_name="Защита от дублей и спама",
+    )
+    goals = models.JSONField(
+        default=default_budget_notification_goals,
+        blank=True,
+        verbose_name="Настройки уведомлений по целям",
+    )
+    preview_usage_percent = models.PositiveSmallIntegerField(
+        default=87,
+        validators=[MinValueValidator(0)],
+        verbose_name="Процент использования бюджета для предпросмотра",
+    )
+
+    class Meta:
+        verbose_name = "Настройки уведомлений о бюджете"
+        verbose_name_plural = "Настройки уведомлений о бюджете"
+        ordering = ["user_id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(preview_usage_percent__gte=0)
+                & models.Q(preview_usage_percent__lte=100),
+                name="budget_notif_preview_percent_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["enabled"], name="idx_budget_notif_enabled"),
+            models.Index(fields=["thresholds_enabled"], name="idx_budget_notif_thresholds"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.preview_usage_percent < 0 or self.preview_usage_percent > 100:
+            errors["preview_usage_percent"] = "Процент предпросмотра должен быть от 0 до 100."
+
+        self.thresholds = self._clean_thresholds(self.thresholds, errors)
+        self.events = self._clean_events(self.events, errors)
+        self.channels = self._clean_channels(self.channels, errors)
+        self.anti_spam = self._clean_anti_spam(self.anti_spam, errors)
+        self.goals = self._clean_goals(self.goals, errors)
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        errors = {}
+        self.thresholds = self._clean_thresholds(self.thresholds, errors)
+        self.events = self._clean_events(self.events, errors)
+        self.channels = self._clean_channels(self.channels, errors)
+        self.anti_spam = self._clean_anti_spam(self.anti_spam, errors)
+        self.goals = self._clean_goals(self.goals, errors)
+
+        if errors:
+            raise ValidationError(errors)
+
+        super().save(*args, **kwargs)
+
+    def _clean_thresholds(self, value, errors: dict) -> list[dict]:
+        if value in (None, ""):
+            value = default_budget_notification_thresholds()
+
+        if not isinstance(value, list):
+            errors["thresholds"] = "Пороги должны быть списком."
+            return default_budget_notification_thresholds()
+
+        normalized = []
+        seen_ids = set()
+        active_percents = []
+
+        for index, item in enumerate(value, start=1):
+            if not isinstance(item, dict):
+                errors["thresholds"] = f"Порог #{index} должен быть объектом."
+                continue
+
+            threshold_id = str(item.get("id", "")).strip()
+            if threshold_id not in BUDGET_NOTIFICATION_THRESHOLD_IDS:
+                errors[f"thresholds.{threshold_id or index}.id"] = "Недопустимый идентификатор порога."
+                continue
+
+            if threshold_id in seen_ids:
+                errors[f"thresholds.{threshold_id}.id"] = "Порог не должен повторяться."
+                continue
+
+            seen_ids.add(threshold_id)
+
+            percent = item.get("percent")
+            if not _is_int_value(percent):
+                errors[f"thresholds.{threshold_id}.percent"] = "Процент должен быть целым числом."
+                continue
+
+            if percent < 1 or percent > 100:
+                errors[f"thresholds.{threshold_id}.percent"] = "Процент должен быть от 1 до 100."
+                continue
+
+            active = item.get("active", True)
+            locked = item.get("locked", False)
+
+            _validate_bool_json_value(active, field_path=f"thresholds.{threshold_id}.active", errors=errors)
+            _validate_bool_json_value(locked, field_path=f"thresholds.{threshold_id}.locked", errors=errors)
+
+            if threshold_id == "critical" and percent != 100:
+                errors[f"thresholds.{threshold_id}.percent"] = "Критический порог должен быть равен 100%."
+
+            if active:
+                active_percents.append(percent)
+
+            normalized.append(
+                {
+                    "id": threshold_id,
+                    "label": str(item.get("label") or self._get_default_threshold_label(threshold_id)),
+                    "hint": str(item.get("hint") or "Уведомление отправится один раз при пересечении порога."),
+                    "percent": percent,
+                    "active": bool(active),
+                    "locked": bool(locked),
+                }
+            )
+
+        if len(set(active_percents)) != len(active_percents):
+            errors["thresholds"] = "Активные пороги не должны повторяться."
+
+        if active_percents != sorted(active_percents):
+            errors["thresholds"] = "Активные пороги должны идти по возрастанию."
+
+        return normalized
+
+    def _clean_events(self, value, errors: dict) -> list[dict]:
+        if value in (None, ""):
+            value = default_budget_notification_events()
+
+        if not isinstance(value, list):
+            errors["events"] = "Типы событий должны быть списком."
+            return default_budget_notification_events()
+
+        allowed_event_ids = set(BudgetNotificationEventType.values)
+        normalized = []
+        seen_ids = set()
+
+        for index, item in enumerate(value, start=1):
+            if not isinstance(item, dict):
+                errors["events"] = f"Тип события #{index} должен быть объектом."
+                continue
+
+            event_id = str(item.get("id", "")).strip()
+            if event_id not in allowed_event_ids:
+                errors[f"events.{event_id or index}.id"] = "Недопустимый тип события."
+                continue
+
+            if event_id in seen_ids:
+                errors[f"events.{event_id}.id"] = "Тип события не должен повторяться."
+                continue
+
+            seen_ids.add(event_id)
+            group = str(item.get("group") or BUDGET_NOTIFICATION_EVENT_GROUP_BY_ID[event_id])
+            expected_group = BUDGET_NOTIFICATION_EVENT_GROUP_BY_ID[event_id]
+
+            if group != expected_group:
+                errors[f"events.{event_id}.group"] = "Группа события не соответствует типу события."
+
+            enabled = item.get("enabled", True)
+            _validate_bool_json_value(enabled, field_path=f"events.{event_id}.enabled", errors=errors)
+
+            normalized.append(
+                {
+                    "id": event_id,
+                    "group": expected_group,
+                    "label": str(item.get("label") or BudgetNotificationEventType(event_id).label),
+                    "icon": str(item.get("icon") or "bell"),
+                    "iconTone": str(item.get("iconTone") or NotificationIconTone.PRIMARY.value),
+                    "enabled": bool(enabled),
+                }
+            )
+
+        return normalized
+
+    def _clean_channels(self, value, errors: dict) -> list[dict]:
+        if value in (None, ""):
+            value = default_budget_notification_channels()
+
+        if not isinstance(value, list):
+            errors["channels"] = "Каналы доставки должны быть списком."
+            return default_budget_notification_channels()
+
+        allowed_channel_ids = set(BudgetNotificationChannel.values)
+        normalized = []
+        seen_ids = set()
+
+        for index, item in enumerate(value, start=1):
+            if not isinstance(item, dict):
+                errors["channels"] = f"Канал доставки #{index} должен быть объектом."
+                continue
+
+            channel_id = str(item.get("id", "")).strip()
+            if channel_id not in allowed_channel_ids:
+                errors[f"channels.{channel_id or index}.id"] = "Недопустимый канал доставки."
+                continue
+
+            if channel_id in seen_ids:
+                errors[f"channels.{channel_id}.id"] = "Канал доставки не должен повторяться."
+                continue
+
+            seen_ids.add(channel_id)
+            enabled = item.get("enabled", False)
+            _validate_bool_json_value(enabled, field_path=f"channels.{channel_id}.enabled", errors=errors)
+
+            delivery_status = BudgetNotificationDeliveryStatus.AVAILABLE.value
+            delivery_ok = True
+            delivery_hint = "Всегда доступно"
+
+            if channel_id != BudgetNotificationChannel.IN_APP.value:
+                delivery_status = BudgetNotificationDeliveryStatus.NOT_CONFIGURED.value
+                delivery_ok = False
+                delivery_hint = "Канал будет подключен позже."
+
+            normalized.append(
+                {
+                    "id": channel_id,
+                    "label": str(item.get("label") or BudgetNotificationChannel(channel_id).label),
+                    "description": str(item.get("description") or ""),
+                    "icon": str(item.get("icon") or "bell"),
+                    "enabled": bool(enabled),
+                    "deliveryHint": str(item.get("deliveryHint") or delivery_hint),
+                    "deliveryOk": delivery_ok,
+                    "deliveryStatus": delivery_status,
+                }
+            )
+
+        return normalized
+
+    def _clean_anti_spam(self, value, errors: dict) -> dict:
+        if value in (None, ""):
+            value = default_budget_notification_anti_spam()
+
+        if not isinstance(value, dict):
+            errors["anti_spam"] = "Настройки защиты от дублей должны быть объектом."
+            return default_budget_notification_anti_spam()
+
+        min_repeat_hours = value.get("minRepeatHours", 24)
+        cooldown_minutes = value.get("cooldownMinutes", 15)
+        group_notifications = value.get("groupNotifications", True)
+
+        if not _is_int_value(min_repeat_hours) or not 1 <= min_repeat_hours <= 168:
+            errors["antiSpam.minRepeatHours"] = "Минимальный интервал должен быть от 1 до 168 часов."
+
+        if not _is_int_value(cooldown_minutes) or not 0 <= cooldown_minutes <= 1440:
+            errors["antiSpam.cooldownMinutes"] = "Пауза после изменения настроек должна быть от 0 до 1440 минут."
+
+        _validate_bool_json_value(
+            group_notifications,
+            field_path="antiSpam.groupNotifications",
+            errors=errors,
+        )
+
+        return {
+            "minRepeatHours": int(min_repeat_hours) if _is_int_value(min_repeat_hours) else 24,
+            "groupNotifications": bool(group_notifications),
+            "cooldownMinutes": int(cooldown_minutes) if _is_int_value(cooldown_minutes) else 15,
+        }
+
+    def _clean_goals(self, value, errors: dict) -> dict:
+        if value in (None, ""):
+            value = default_budget_notification_goals()
+
+        if not isinstance(value, dict):
+            errors["goals"] = "Настройки целей должны быть объектом."
+            return default_budget_notification_goals()
+
+        milestone_percents = _normalize_int_list(
+            value.get("milestonePercents", [25, 50, 75, 100]),
+            field_path="goals.milestonePercents",
+            min_value=1,
+            max_value=100,
+            errors=errors,
+        )
+
+        if milestone_percents != sorted(milestone_percents):
+            errors["goals.milestonePercents"] = "Рубежи целей должны идти по возрастанию."
+
+        milestone_enabled = value.get("milestoneEnabled", {})
+        if not isinstance(milestone_enabled, dict):
+            errors["goals.milestoneEnabled"] = "Настройки рубежей должны быть объектом."
+            milestone_enabled = {}
+
+        normalized_milestones = {}
+        for percent in milestone_percents:
+            raw_value = milestone_enabled.get(str(percent), True)
+            _validate_bool_json_value(
+                raw_value,
+                field_path=f"goals.milestoneEnabled.{percent}",
+                errors=errors,
+            )
+            normalized_milestones[str(percent)] = bool(raw_value)
+
+        notify_on_lag = value.get("notifyOnLag", False)
+        _validate_bool_json_value(notify_on_lag, field_path="goals.notifyOnLag", errors=errors)
+
+        lag_days = value.get("lagDays", 7)
+        if not _is_int_value(lag_days) or not 1 <= lag_days <= 365:
+            errors["goals.lagDays"] = "Количество дней отставания должно быть от 1 до 365."
+
+        selected_goal_ids = value.get("selectedGoalIds", [])
+        if not isinstance(selected_goal_ids, list):
+            errors["goals.selectedGoalIds"] = "Выбранные цели должны быть списком."
+            selected_goal_ids = []
+
+        normalized_goal_ids = []
+        for raw_goal_id in selected_goal_ids:
+            try:
+                goal_id = int(raw_goal_id)
+            except (TypeError, ValueError):
+                errors["goals.selectedGoalIds"] = "ID целей должны быть числами."
+                normalized_goal_ids = []
+                break
+
+            normalized_goal_ids.append(goal_id)
+
+        if normalized_goal_ids and self.user_id:
+            existing_count = Goal.objects.filter(
+                user_id=self.user_id,
+                id__in=normalized_goal_ids,
+            ).count()
+            if existing_count != len(set(normalized_goal_ids)):
+                errors["goals.selectedGoalIds"] = "Некоторые цели не найдены или недоступны пользователю."
+
+        return {
+            "milestonePercents": milestone_percents,
+            "milestoneEnabled": normalized_milestones,
+            "notifyOnLag": bool(notify_on_lag),
+            "lagDays": int(lag_days) if _is_int_value(lag_days) else 7,
+            "selectedGoalIds": normalized_goal_ids,
+        }
+
+    @staticmethod
+    def _get_default_threshold_label(threshold_id: str) -> str:
+        labels = {
+            "near_limit": "Приближение к лимиту",
+            "warning": "Предупреждение",
+            "critical": "Критический порог",
+        }
+        return labels.get(threshold_id, threshold_id)
+
+    def __str__(self) -> str:
+        return f"Настройки бюджетных уведомлений пользователя {self.user_id}"
+
+
+class BudgetNotificationEvent(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="budget_notification_events",
+        verbose_name="Пользователь",
+    )
+    event_type = models.CharField(
+        max_length=50,
+        choices=BudgetNotificationEventType.choices,
+        verbose_name="Тип события",
+    )
+    related_object_type = models.CharField(
+        max_length=20,
+        choices=NotificationEntityKind.choices,
+        verbose_name="Тип связанного объекта",
+    )
+    related_object_id = models.PositiveBigIntegerField(
+        verbose_name="ID связанного объекта",
+    )
+    threshold_id = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="ID порога",
+    )
+    title = models.CharField(
+        max_length=200,
+        verbose_name="Заголовок события",
+    )
+    message = models.TextField(
+        blank=True,
+        verbose_name="Текст события",
+    )
+    icon = models.CharField(
+        max_length=50,
+        default="bell",
+        verbose_name="Иконка",
+    )
+    icon_tone = models.CharField(
+        max_length=20,
+        choices=NotificationIconTone.choices,
+        default=NotificationIconTone.PRIMARY,
+        verbose_name="Тон иконки",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=BudgetNotificationEventStatus.choices,
+        default=BudgetNotificationEventStatus.GENERATED,
+        verbose_name="Статус события",
+    )
+    deduplication_key = models.CharField(
+        max_length=255,
+        verbose_name="Ключ защиты от дублей",
+    )
+    payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Данные события",
+    )
+
+    class Meta:
+        verbose_name = "Событие бюджетного уведомления"
+        verbose_name_plural = "События бюджетных уведомлений"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(event_type__in=BudgetNotificationEventType.values),
+                name="budget_notif_event_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(related_object_type__in=NotificationEntityKind.values),
+                name="budget_notif_event_obj_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(icon_tone__in=NotificationIconTone.values),
+                name="budget_notif_event_tone_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=BudgetNotificationEventStatus.values),
+                name="budget_notif_event_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_bn_event_user"),
+            models.Index(fields=["user", "event_type"], name="idx_bn_event_user_type"),
+            models.Index(fields=["user", "related_object_type", "related_object_id"], name="idx_bn_event_object"),
+            models.Index(fields=["user", "deduplication_key"], name="idx_bn_event_dedup"),
+            models.Index(fields=["user", "created_at"], name="idx_bn_event_created"),
+            models.Index(fields=["status"], name="idx_bn_event_status"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.event_type not in BudgetNotificationEventType.values:
+            errors["event_type"] = "Недопустимый тип события уведомления."
+
+        if self.related_object_type not in NotificationEntityKind.values:
+            errors["related_object_type"] = "Недопустимый тип связанного объекта."
+
+        if self.icon_tone not in NotificationIconTone.values:
+            errors["icon_tone"] = "Недопустимый тон иконки."
+
+        if self.status not in BudgetNotificationEventStatus.values:
+            errors["status"] = "Недопустимый статус события."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.event_type})"
 
 
 class RecurringTransaction(TimeStampedModel):

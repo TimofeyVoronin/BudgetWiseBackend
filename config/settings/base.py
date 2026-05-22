@@ -359,6 +359,33 @@ SPECTACULAR_SETTINGS = {
             ("warning", "Предупреждение"),
             ("info", "Информация"),
         ],
+        "BudgetNotificationChannelEnum": [
+            ("email", "Email"),
+            ("push", "Push"),
+            ("in_app", "In-app"),
+        ],
+        "BudgetNotificationEventGroupEnum": [
+            ("budget", "Бюджет"),
+            ("goal", "Цель накопления"),
+        ],
+        "BudgetNotificationEventTypeEnum": [
+            ("budget_near_limit", "Бюджет: приближение к лимиту"),
+            ("budget_exceeded", "Бюджет: превышение лимита"),
+            ("budget_back_to_normal", "Бюджет: возврат в норму"),
+            ("goal_milestone", "Цель: достигнут промежуточный рубеж"),
+            ("goal_reached", "Цель: цель выполнена"),
+            ("goal_lagging", "Цель: отставание от плана"),
+        ],
+        "BudgetNotificationDeliveryStatusEnum": [
+            ("available", "Доступен"),
+            ("not_configured", "Не настроен"),
+            ("disabled", "Отключён"),
+        ],
+        "BudgetNotificationEventStatusEnum": [
+            ("generated", "Сформировано"),
+            ("delivered", "Доставлено"),
+            ("skipped", "Пропущено"),
+        ],
     },
     "SWAGGER_UI_SETTINGS": {
         "deepLinking": True,
@@ -422,6 +449,14 @@ SPECTACULAR_SETTINGS = {
                 "как прочитанное/непрочитанное, архивация, восстановление, "
                 "сводка, справочники, настройки каналов, типов уведомлений "
                 "и тихих часов."
+            ),
+        },
+        {
+            "name": "finance-budget-notifications",
+            "description": (
+                "Настройки уведомлений о бюджетах и целях: включение, пороги, "
+                "типы событий, каналы доставки, защита от дублей, предпросмотр "
+                "и тестовая отправка. На текущем этапе реально доступен in-app канал."
             ),
         },
 {
