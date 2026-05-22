@@ -7,7 +7,7 @@ from typing import Any
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from apps.finance.models import Receipt, ReceiptStatus
+from apps.finance.models import Receipt, ReceiptAuditAction, ReceiptAuditStatus, ReceiptStatus
 from apps.finance.receipt_provider import FiscalReceiptDetails
 from apps.finance.receipt_qr import FiscalReceiptQRData, parse_receipt_qr
 
@@ -93,6 +93,18 @@ def register_receipt_from_qr(
 
     duplicate_check = check_receipt_duplicate(user, qr_data)
     if duplicate_check.existing_receipt is not None:
+        from apps.finance.receipt_audit import log_receipt_audit_event
+
+        log_receipt_audit_event(
+            receipt=duplicate_check.existing_receipt,
+            action=ReceiptAuditAction.DUPLICATE_DETECTED,
+            status=ReceiptAuditStatus.WARNING,
+            message="Повторная попытка импорта уже зарегистрированного чека.",
+            metadata={
+                "deduplicationKey": duplicate_check.deduplication_key,
+                "fiscalKey": duplicate_check.fiscal_key,
+            },
+        )
         return ReceiptRegistrationResult(
             receipt=duplicate_check.existing_receipt,
             created=False,
@@ -117,16 +129,58 @@ def register_receipt_from_qr(
             user=user,
             deduplication_key=duplicate_check.deduplication_key,
         )
+        from apps.finance.receipt_audit import log_receipt_audit_event
+
+        log_receipt_audit_event(
+            receipt=existing_receipt,
+            action=ReceiptAuditAction.DUPLICATE_DETECTED,
+            status=ReceiptAuditStatus.WARNING,
+            message="Повторная попытка импорта уже зарегистрированного чека.",
+            metadata={
+                "deduplicationKey": duplicate_check.deduplication_key,
+                "fiscalKey": duplicate_check.fiscal_key,
+                "raceConditionHandled": True,
+            },
+        )
         return ReceiptRegistrationResult(
             receipt=existing_receipt,
             created=False,
             is_duplicate=True,
         )
 
+    from apps.finance.receipt_audit import log_receipt_audit_event
+
+    log_receipt_audit_event(
+        receipt=receipt,
+        action=(
+            ReceiptAuditAction.PROVIDER_FETCH_SUCCESS
+            if provider_details is not None
+            else ReceiptAuditAction.QR_PARSED
+        ),
+        status=ReceiptAuditStatus.SUCCESS,
+        message=(
+            "Чек получен от внешнего провайдера."
+            if provider_details is not None
+            else "QR-код чека распознан и зарегистрирован."
+        ),
+        metadata={
+            "receiptStatus": receipt.status,
+            "providerCode": receipt.provider_code,
+            "totalAmount": str(receipt.total_amount),
+        },
+    )
+
     if provider_details is not None:
         from apps.finance.receipt_item_mapper import map_receipt_details_to_items
 
-        map_receipt_details_to_items(receipt, provider_details)
+        created_items = map_receipt_details_to_items(receipt, provider_details)
+        log_receipt_audit_event(
+            receipt=receipt,
+            action=ReceiptAuditAction.ITEMS_MAPPED,
+            status=ReceiptAuditStatus.SUCCESS,
+            message="Позиции чека сопоставлены с внутренними сущностями.",
+            metadata={"itemsCount": len(created_items)},
+        )
 
     return ReceiptRegistrationResult(
         receipt=receipt,

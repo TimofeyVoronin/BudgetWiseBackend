@@ -5,6 +5,7 @@ from apps.finance.models import (
     BudgetNotificationSettings,
     Currency,
     Receipt,
+    ReceiptAuditLog,
     ReceiptItem,
     Tag,
     TagGroup,
@@ -49,9 +50,26 @@ class ReceiptItemInline(admin.TabularInline):
     can_delete = False
 
 
+class ReceiptAuditLogInline(admin.TabularInline):
+    model = ReceiptAuditLog
+    extra = 0
+    readonly_fields = (
+        "action",
+        "status",
+        "message",
+        "provider_name",
+        "metadata",
+        "created_at",
+    )
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(Receipt)
 class ReceiptAdmin(admin.ModelAdmin):
-    inlines = (ReceiptItemInline,)
+    inlines = (ReceiptItemInline, ReceiptAuditLogInline)
     list_display = (
         "id",
         "user",
@@ -175,6 +193,43 @@ class UserCurrencyAdmin(admin.ModelAdmin):
         "custom_name",
     )
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ReceiptAuditLog)
+class ReceiptAuditLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "receipt",
+        "user",
+        "action",
+        "status",
+        "provider_name",
+        "created_at",
+    )
+    list_filter = ("action", "status", "provider_name", "created_at")
+    search_fields = (
+        "receipt__fiscal_drive_number",
+        "receipt__fiscal_document_number",
+        "receipt__fiscal_sign",
+        "receipt__store_name",
+        "user__email",
+        "user__username",
+        "message",
+        "fiscal_key",
+        "qr_raw_hash",
+    )
+    readonly_fields = (
+        "user",
+        "receipt",
+        "action",
+        "status",
+        "message",
+        "qr_raw_hash",
+        "fiscal_key",
+        "provider_name",
+        "metadata",
+        "created_at",
+    )
 
 
 @admin.register(ReceiptItem)

@@ -147,6 +147,22 @@ class ReceiptStatus(models.TextChoices):
     ERROR = "error", "Ошибка"
 
 
+class ReceiptAuditAction(models.TextChoices):
+    QR_PARSED = "qr_parsed", "QR-код распознан"
+    PROVIDER_FETCH_SUCCESS = "provider_fetch_success", "Чек получен от провайдера"
+    PROVIDER_FETCH_FAILED = "provider_fetch_failed", "Ошибка получения от провайдера"
+    DUPLICATE_DETECTED = "duplicate_detected", "Найден дубликат"
+    ITEMS_MAPPED = "items_mapped", "Позиции сопоставлены"
+    TRANSACTIONS_CREATED = "transactions_created", "Операции созданы"
+    IMPORT_FAILED = "import_failed", "Ошибка импорта"
+
+
+class ReceiptAuditStatus(models.TextChoices):
+    SUCCESS = "success", "Успешно"
+    WARNING = "warning", "Предупреждение"
+    ERROR = "error", "Ошибка"
+
+
 class ReceiptOperationType(models.TextChoices):
     INCOME = "income", "Приход"
     INCOME_RETURN = "income_return", "Возврат прихода"
@@ -1472,6 +1488,98 @@ class Receipt(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.fiscal_key}: {self.total_amount}"
+
+
+class ReceiptAuditLog(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="receipt_audit_logs",
+        verbose_name="Пользователь",
+    )
+    receipt = models.ForeignKey(
+        Receipt,
+        on_delete=models.CASCADE,
+        related_name="audit_logs",
+        verbose_name="Чек",
+    )
+    action = models.CharField(
+        max_length=40,
+        choices=ReceiptAuditAction.choices,
+        verbose_name="Действие",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ReceiptAuditStatus.choices,
+        default=ReceiptAuditStatus.SUCCESS,
+        verbose_name="Статус",
+    )
+    message = models.TextField(
+        blank=True,
+        verbose_name="Сообщение",
+    )
+    qr_raw_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        verbose_name="SHA-256 исходного QR",
+    )
+    fiscal_key = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Фискальный ключ",
+    )
+    provider_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Провайдер",
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Метаданные",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания",
+    )
+
+    class Meta:
+        verbose_name = "Аудит импорта чека"
+        verbose_name_plural = "Аудит импорта чеков"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["user", "created_at"], name="idx_receipt_audit_user_time"),
+            models.Index(fields=["receipt", "created_at"], name="idx_receipt_audit_receipt"),
+            models.Index(fields=["action"], name="idx_receipt_audit_action"),
+            models.Index(fields=["status"], name="idx_receipt_audit_status"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        for field_name in ("action", "status", "message", "qr_raw_hash", "fiscal_key", "provider_name"):
+            value = getattr(self, field_name, "")
+            if isinstance(value, str):
+                setattr(self, field_name, value.strip())
+
+        if self.action not in ReceiptAuditAction.values:
+            errors["action"] = "Недопустимое действие аудита чека."
+
+        if self.status not in ReceiptAuditStatus.values:
+            errors["status"] = "Недопустимый статус аудита чека."
+
+        if self.receipt_id and self.user_id and self.receipt.user_id != self.user_id:
+            errors["receipt"] = "Событие аудита должно принадлежать пользователю чека."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.action}: receipt={self.receipt_id}"
 
 
 class ReceiptItem(TimeStampedModel):

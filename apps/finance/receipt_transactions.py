@@ -96,6 +96,39 @@ def create_transactions_from_receipt(
     items: Iterable[ReceiptItemTransactionInput] | None = None,
     description: str = "",
 ) -> ReceiptTransactionCreationResult:
+    try:
+        return _create_transactions_from_receipt_impl(
+            user=user,
+            receipt=receipt,
+            account=account,
+            mode=mode,
+            category=category,
+            items=items,
+            description=description,
+        )
+    except ReceiptTransactionCreationError as exc:
+        if getattr(receipt, "user_id", None) == getattr(user, "id", None):
+            from apps.finance.receipt_audit import log_receipt_import_failed
+
+            log_receipt_import_failed(
+                receipt=receipt,
+                code=exc.code,
+                message=exc.message,
+                field_errors=exc.field_errors,
+            )
+        raise
+
+
+def _create_transactions_from_receipt_impl(
+    *,
+    user,
+    receipt: Receipt,
+    account: Account,
+    mode: str,
+    category: Category | None = None,
+    items: Iterable[ReceiptItemTransactionInput] | None = None,
+    description: str = "",
+) -> ReceiptTransactionCreationResult:
     _validate_common(user=user, receipt=receipt, account=account, mode=mode)
 
     transaction_type = receipt_operation_to_transaction_type(receipt)
@@ -162,11 +195,28 @@ def create_transactions_from_receipt(
         locked_receipt.status = ReceiptStatus.IMPORTED
         locked_receipt.save(update_fields=["status", "updated_at"])
 
+        from apps.finance.models import ReceiptAuditAction, ReceiptAuditStatus
+        from apps.finance.receipt_audit import log_receipt_audit_event
+
+        log_receipt_audit_event(
+            receipt=locked_receipt,
+            action=ReceiptAuditAction.TRANSACTIONS_CREATED,
+            status=ReceiptAuditStatus.SUCCESS,
+            message="По чеку созданы финансовые операции.",
+            metadata={
+                "mode": mode,
+                "createdCount": len(transactions),
+                "transactionIds": [transaction.id for transaction in transactions],
+                "accountId": locked_account.id,
+            },
+        )
+
     return ReceiptTransactionCreationResult(
         receipt=locked_receipt,
         transactions=transactions,
         mode=mode,
     )
+
 
 
 def _create_transactions_by_items(
