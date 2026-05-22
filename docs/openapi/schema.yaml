@@ -7267,6 +7267,7 @@ components:
         code:
           type: string
           minLength: 1
+          description: Код валюты из каталога, например USD.
           maxLength: 3
       required:
       - code
@@ -8299,31 +8300,45 @@ components:
         id:
           type: string
           readOnly: true
+          description: Идентификатор калькулятора.
         title:
           type: string
           readOnly: true
+          description: Название карточки калькулятора.
         description:
           type: string
           readOnly: true
+          description: Короткое описание калькулятора.
         icon:
           type: string
           readOnly: true
+          description: Код иконки для карточки.
         iconBg:
           type: string
           readOnly: true
+          description: HEX-фон плашки иконки.
         iconColor:
           type: string
           readOnly: true
+          description: HEX-цвет иконки.
         category:
           allOf:
           - $ref: '#/components/schemas/CalculatorCatalogItemCategoryEnum'
           readOnly: true
+          description: |-
+            Категория калькулятора для группировки на странице.
+
+            * `credit` - Кредиты
+            * `saving` - Сбережения
+            * `pension` - Пенсия
         routeTitle:
           type: string
           readOnly: true
+          description: Заголовок страницы калькулятора.
         subtitle:
           type: string
           readOnly: true
+          description: Подзаголовок страницы калькулятора.
       required:
       - category
       - description
@@ -8350,10 +8365,12 @@ components:
         calculatorId:
           type: string
           readOnly: true
+          description: Идентификатор калькулятора.
         defaults:
           type: object
           additionalProperties: {}
           readOnly: true
+          description: Значения формы по умолчанию.
       required:
       - calculatorId
       - defaults
@@ -8365,9 +8382,11 @@ components:
           items:
             $ref: '#/components/schemas/CalculatorCatalogItem'
           readOnly: true
+          description: Доступные финансовые калькуляторы.
         totalCount:
           type: integer
           readOnly: true
+          description: Количество калькуляторов после фильтрации.
       required:
       - items
       - totalCount
@@ -8798,8 +8817,10 @@ components:
       properties:
         available:
           type: boolean
+          description: Можно ли использовать код валюты.
         message:
           type: string
+          description: Пояснение, если код недоступен.
       required:
       - available
     CheckPlannedDuplicateRequest:
@@ -8868,18 +8889,22 @@ components:
         code:
           type: string
           minLength: 1
+          description: Код пользовательской валюты из 3 латинских букв.
           maxLength: 3
         name:
           type: string
           minLength: 1
+          description: Название пользовательской валюты.
           maxLength: 100
         symbol:
           type: string
           minLength: 1
+          description: Символ пользовательской валюты.
           maxLength: 12
         isVisible:
           type: boolean
           default: true
+          description: Показывать валюту в интерфейсе.
       required:
       - code
       - name
@@ -8891,27 +8916,33 @@ components:
           type: number
           format: double
           readOnly: true
+          description: Основной месячный платёж для отображения, ₽.
         firstPayment:
           type: number
           format: double
           readOnly: true
+          description: Первый платёж по графику, ₽.
         lastPayment:
           type: number
           format: double
           readOnly: true
+          description: Последний платёж по графику, ₽.
         totalPayment:
           type: number
           format: double
           readOnly: true
+          description: Общая сумма выплат, ₽.
         overpayment:
           type: number
           format: double
           readOnly: true
+          description: Переплата по кредиту, ₽.
         schedule:
           type: array
           items:
             $ref: '#/components/schemas/PaymentScheduleRow'
           readOnly: true
+          description: График платежей.
       required:
       - firstPayment
       - lastPayment
@@ -8926,19 +8957,29 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Сумма кредита в рублях.
         ratePct:
           type: string
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Годовая ставка по кредиту, %.
         termMonths:
           type: integer
           maximum: 600
           minimum: 1
+          description: Срок кредита в месяцах, от 1 до 600.
         paymentType:
-          $ref: '#/components/schemas/LoanPaymentTypeEnum'
+          allOf:
+          - $ref: '#/components/schemas/LoanPaymentTypeEnum'
+          description: |-
+            Тип платежа: annuity или differentiated.
+
+            * `annuity` - Аннуитетный
+            * `differentiated` - Дифференцированный
         issueDate:
           type: string
           format: date
+          description: Дата выдачи кредита в формате YYYY-MM-DD.
       required:
       - amount
       - issueDate
@@ -8952,6 +8993,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CurrencyCatalogItem'
+          description: Список валют из статического каталога.
       required:
       - items
     CurrenciesListResponse:
@@ -8961,8 +9003,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CurrencyListRow'
+          description: Список валют пользователя.
         summary:
-          $ref: '#/components/schemas/CurrenciesListSummary'
+          allOf:
+          - $ref: '#/components/schemas/CurrenciesListSummary'
+          description: Сводка для страницы управления валютами.
       required:
       - items
       - summary
@@ -8971,10 +9016,13 @@ components:
       properties:
         totalCount:
           type: integer
+          description: Общее количество валют пользователя.
         primaryCode:
           type: string
+          description: Код основной валюты пользователя.
         hiddenCount:
           type: integer
+          description: Количество скрытых валют.
       required:
       - hiddenCount
       - primaryCode
@@ -8984,10 +9032,12 @@ components:
       properties:
         primaryCode:
           type: string
+          description: Код основной валюты пользователя.
         options:
           type: array
           items:
             $ref: '#/components/schemas/CurrencySelectOption'
+          description: Видимые валюты для форм.
       required:
       - options
       - primaryCode
@@ -8996,14 +9046,19 @@ components:
       properties:
         code:
           type: string
+          description: Код валюты из каталога.
         name:
           type: string
+          description: Название валюты из каталога.
         symbol:
           type: string
+          description: Символ валюты.
         flagIcon:
           type: string
+          description: Код иконки валюты.
         popular:
           type: boolean
+          description: Популярная валюта для быстрого выбора.
       required:
       - code
       - flagIcon
@@ -9014,12 +9069,16 @@ components:
       properties:
         code:
           type: string
+          description: Ошибка поля code.
         name:
           type: string
+          description: Ошибка поля name.
         symbol:
           type: string
+          description: Ошибка поля symbol.
         general:
           type: string
+          description: Общая ошибка формы.
     CurrencyListRow:
       type: object
       properties:
@@ -9029,12 +9088,15 @@ components:
         code:
           type: string
           readOnly: true
+          description: Код валюты, например RUB, USD или BTC.
         name:
           type: string
           readOnly: true
+          description: Пользовательское или системное название валюты.
         symbol:
           type: string
           readOnly: true
+          description: Символ валюты, который показывается в интерфейсе.
         rateToPrimary:
           type: number
           format: double
@@ -9043,21 +9105,28 @@ components:
           exclusiveMaximum: true
           exclusiveMinimum: true
           readOnly: true
+          description: Курс к основной валюте пользователя. Для основной валюты всегда
+            1.0.
         isPrimary:
           type: boolean
           readOnly: true
+          description: Является ли валюта основной.
         isVisible:
           type: boolean
           readOnly: true
+          description: Показывается ли валюта в интерфейсе и формах.
         isCustom:
           type: boolean
           readOnly: true
+          description: Является ли валюта пользовательской.
         operationsCount:
           type: integer
           readOnly: true
+          description: Количество связанных объектов пользователя с этой валютой.
         flagIcon:
           type: string
           readOnly: true
+          description: Код иконки валюты для интерфейса.
       required:
       - code
       - flagIcon
@@ -9074,12 +9143,16 @@ components:
       properties:
         title:
           type: string
+          description: Подпись валюты для select-поля.
         value:
           type: string
+          description: Код валюты.
         symbol:
           type: string
+          description: Символ валюты.
         isPrimary:
           type: boolean
+          description: Является ли валюта основной.
       required:
       - title
       - value
@@ -9290,12 +9363,16 @@ components:
       properties:
         code:
           type: string
+          description: Код конфликта удаления.
         message:
           type: string
+          description: Пояснение для пользователя.
         operationsCount:
           type: integer
+          description: Количество связанных объектов с этой валютой.
         canHide:
           type: boolean
+          description: Можно ли скрыть валюту вместо удаления.
       required:
       - code
       - message
@@ -9304,8 +9381,10 @@ components:
       properties:
         deleted:
           type: boolean
+          description: Признак успешного удаления.
         id:
           type: integer
+          description: ID удалённой валюты пользователя.
       required:
       - deleted
       - id
@@ -9342,19 +9421,23 @@ components:
           type: number
           format: double
           readOnly: true
+          description: Процентный доход по вкладу, ₽.
         finalAmount:
           type: number
           format: double
           readOnly: true
+          description: Итоговая сумма вклада, ₽.
         effectiveRatePct:
           type: number
           format: double
           readOnly: true
+          description: Эффективная годовая ставка, %.
         series:
           type: array
           items:
             $ref: '#/components/schemas/DepositGrowthPoint'
           readOnly: true
+          description: Точки графика роста вклада.
       required:
       - effectiveRatePct
       - finalAmount
@@ -9367,23 +9450,41 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Начальная сумма вклада в рублях.
         ratePct:
           type: string
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Годовая ставка по вкладу, %.
         termMonths:
           type: integer
           maximum: 600
           minimum: 1
+          description: Срок вклада в месяцах, от 1 до 600.
         capitalization:
-          $ref: '#/components/schemas/DepositCapitalizationEnum'
+          allOf:
+          - $ref: '#/components/schemas/DepositCapitalizationEnum'
+          description: |-
+            Периодичность капитализации процентов.
+
+            * `none` - Нет
+            * `monthly` - Ежемесячно
+            * `quarterly` - Ежеквартально
+            * `yearly` - Ежегодно
         topUp:
-          $ref: '#/components/schemas/DepositTopUpEnum'
+          allOf:
+          - $ref: '#/components/schemas/DepositTopUpEnum'
+          description: |-
+            Тип пополнения вклада.
+
+            * `none` - Нет
+            * `monthly` - Ежемесячно
         monthlyTopUp:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           default: '0.00'
+          description: Ежемесячное пополнение в рублях, если topUp=monthly.
       required:
       - amount
       - capitalization
@@ -9408,13 +9509,16 @@ components:
         month:
           type: integer
           readOnly: true
+          description: Номер месяца роста вклада.
         label:
           type: string
           readOnly: true
+          description: Подпись точки графика.
         total:
           type: number
           format: double
           readOnly: true
+          description: Итоговая сумма вклада на этом месяце, ₽.
       required:
       - label
       - month
@@ -9869,14 +9973,17 @@ components:
           type: number
           format: double
           readOnly: true
+          description: Покупательная способность суммы через указанный срок, ₽.
         purchasingPowerLoss:
           type: number
           format: double
           readOnly: true
+          description: Потеря покупательной способности, ₽.
         lossPct:
           type: number
           format: double
           readOnly: true
+          description: Потеря покупательной способности, %.
       required:
       - futureValue
       - lossPct
@@ -9888,14 +9995,17 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Сумма сбережений в рублях.
         years:
           type: integer
           maximum: 100
           minimum: 1
+          description: Срок расчёта инфляции в годах, от 1 до 100.
         inflationPct:
           type: string
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Годовая инфляция, %.
       required:
       - amount
       - inflationPct
@@ -9907,14 +10017,17 @@ components:
           allOf:
           - $ref: '#/components/schemas/InstallmentCalculationSlice'
           readOnly: true
+          description: Расчёт рассрочки.
         creditCard:
           allOf:
           - $ref: '#/components/schemas/InstallmentCalculationSlice'
           readOnly: true
+          description: Сравнение с кредитной картой.
         comparisonMeta:
           allOf:
           - $ref: '#/components/schemas/InstallmentCardComparisonMeta'
           readOnly: true
+          description: Метаданные сравнения.
       required:
       - comparisonMeta
       - creditCard
@@ -9926,18 +10039,22 @@ components:
           type: number
           format: double
           readOnly: true
+          description: Платёж в месяц, ₽.
         totalToPay:
           type: number
           format: double
           readOnly: true
+          description: Итоговая сумма к оплате, ₽.
         overpayment:
           type: number
           format: double
           readOnly: true
+          description: Переплата, ₽.
         overpaymentPct:
           type: number
           format: double
           readOnly: true
+          description: Переплата в процентах.
       required:
       - monthlyPayment
       - overpayment
@@ -9950,20 +10067,25 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Цена товара в рублях.
         termMonths:
           type: integer
           maximum: 120
           minimum: 1
+          description: Срок рассрочки в месяцах, от 1 до 120.
         bankFeePct:
           type: string
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Комиссия банка в процентах.
         downPayment:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Первый взнос в рублях.
         zeroOverpayment:
           type: boolean
+          description: Считать рассрочку без переплаты.
       required:
       - bankFeePct
       - downPayment
@@ -9977,13 +10099,16 @@ components:
           type: number
           format: double
           readOnly: true
+          description: Ставка кредитной карты для сравнения, %.
         minPaymentPct:
           type: number
           format: double
           readOnly: true
+          description: Минимальный платёж кредитной карты, %.
         footerNote:
           type: string
           readOnly: true
+          description: Пояснение к сравнению с кредитной картой.
       required:
       - annualRatePct
       - footerNote
@@ -10068,30 +10193,37 @@ components:
           type: number
           format: double
           readOnly: true
+          description: Сумма ипотечного кредита после первоначального взноса, ₽.
         monthlyPayment:
           type: number
           format: double
           readOnly: true
+          description: Ежемесячный платёж, ₽.
         recommendedIncome:
           type: number
           format: double
           readOnly: true
+          description: Рекомендуемый месячный доход, ₽.
         totalPayment:
           type: number
           format: double
           readOnly: true
+          description: Общая сумма выплат, ₽.
         totalInterest:
           type: number
           format: double
           readOnly: true
+          description: Переплата за весь срок, ₽.
         principalShare:
           type: number
           format: double
           readOnly: true
+          description: Доля основного долга в общей сумме выплат.
         interestShare:
           type: number
           format: double
           readOnly: true
+          description: Доля процентов и страхования в общей сумме выплат.
       required:
       - interestShare
       - loanAmount
@@ -10107,22 +10239,29 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Стоимость жилья в рублях.
         downPaymentPct:
           type: string
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,3})?$
+          description: Первоначальный взнос в процентах от стоимости жилья, от 0 до
+            90.
         ratePct:
           type: string
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Годовая ставка по ипотеке, %.
         termYears:
           type: integer
           maximum: 50
           minimum: 1
+          description: Срок ипотеки в годах, от 1 до 50.
         withInsurance:
           type: boolean
+          description: Учитывать условную стоимость страхования.
         isFamilyMortgage:
           type: boolean
+          description: Флаг семейной ипотеки для интерфейса.
       required:
       - downPaymentPct
       - isFamilyMortgage
@@ -11474,6 +11613,7 @@ components:
       properties:
         isVisible:
           type: boolean
+          description: Показывать валюту в интерфейсе и формах.
     PatchedSetTagVisibilityRequest:
       type: object
       properties:
@@ -11615,13 +11755,16 @@ components:
         name:
           type: string
           minLength: 1
+          description: Новое название пользовательской валюты.
           maxLength: 100
         symbol:
           type: string
           minLength: 1
+          description: Новый символ пользовательской валюты.
           maxLength: 12
         isVisible:
           type: boolean
+          description: Показывать валюту в интерфейсе.
     PatchedUserRequest:
       type: object
       properties:
@@ -11670,26 +11813,32 @@ components:
         month:
           type: integer
           readOnly: true
+          description: Номер месяца платежа.
         date:
           type: string
           format: date
           readOnly: true
+          description: Дата платежа, если она рассчитана.
         payment:
           type: number
           format: double
           readOnly: true
+          description: Сумма платежа за месяц, ₽.
         principalPart:
           type: number
           format: double
           readOnly: true
+          description: Часть платежа, которая гасит основной долг, ₽.
         interestPart:
           type: number
           format: double
           readOnly: true
+          description: Процентная часть платежа, ₽.
         remaining:
           type: number
           format: double
           readOnly: true
+          description: Остаток долга после платежа, ₽.
       required:
       - date
       - interestPart
@@ -11704,15 +11853,18 @@ components:
           type: number
           format: double
           readOnly: true
+          description: Номинальный капитал к пенсионному возрасту, ₽.
         monthlyPensionReal:
           type: number
           format: double
           readOnly: true
+          description: Оценка ежемесячной пенсии в реальных ценах, ₽.
         series:
           type: array
           items:
             $ref: '#/components/schemas/PensionCapitalPoint'
           readOnly: true
+          description: Динамика капитала по возрастам.
       required:
       - capitalAtRetirement
       - monthlyPensionReal
@@ -11724,26 +11876,32 @@ components:
           type: integer
           maximum: 100
           minimum: 14
+          description: Текущий возраст пользователя.
         retireAge:
           type: integer
           maximum: 100
           minimum: 15
+          description: Возраст выхода на пенсию.
         monthlyContribution:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Ежемесячный взнос в пенсионные накопления.
         returnRatePct:
           type: string
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Ожидаемая годовая доходность, %.
         inflationPct:
           type: string
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,4})?$
+          description: Ожидаемая годовая инфляция, %.
         initialSaved:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Уже накопленная сумма в рублях.
       required:
       - currentAge
       - inflationPct
@@ -11757,18 +11915,22 @@ components:
         age:
           type: integer
           readOnly: true
+          description: Возраст на точке графика.
         contributions:
           type: number
           format: double
           readOnly: true
+          description: Накопленные взносы, ₽.
         growth:
           type: number
           format: double
           readOnly: true
+          description: Инвестиционный доход, ₽.
         total:
           type: number
           format: double
           readOnly: true
+          description: Итоговый капитал, ₽.
       required:
       - age
       - contributions
@@ -13826,13 +13988,16 @@ components:
         name:
           type: string
           minLength: 1
+          description: Новое название пользовательской валюты.
           maxLength: 100
         symbol:
           type: string
           minLength: 1
+          description: Новый символ пользовательской валюты.
           maxLength: 12
         isVisible:
           type: boolean
+          description: Показывать валюту в интерфейсе.
     User:
       type: object
       properties:
@@ -14002,23 +14167,30 @@ components:
       properties:
         code:
           type: string
+          description: Код проверяемой валюты.
           maxLength: 3
         name:
           type: string
+          description: Название проверяемой валюты.
           maxLength: 100
         symbol:
           type: string
+          description: Символ проверяемой валюты.
           maxLength: 12
         excludeId:
           type: integer
           nullable: true
+          description: ID валюты, которую нужно исключить при проверке дубля.
     ValidateCustomCurrencyResponse:
       type: object
       properties:
         ok:
           type: boolean
+          description: Форма прошла проверку.
         fieldErrors:
-          $ref: '#/components/schemas/CurrencyFormValidationErrors'
+          allOf:
+          - $ref: '#/components/schemas/CurrencyFormValidationErrors'
+          description: Ошибки по полям формы.
       required:
       - fieldErrors
       - ok
@@ -14168,6 +14340,15 @@ tags:
   description: 'Настройки уведомлений о бюджетах и целях: включение, пороги, типы
     событий, каналы доставки, защита от дублей, предпросмотр и тестовая отправка.
     На текущем этапе реально доступен in-app канал.'
+- name: finance-currencies
+  description: 'Управление валютами пользователя: список доступных валют, каталог
+    системных валют, пользовательские валюты, основная валюта, видимость в интерфейсе
+    и select-options для финансовых форм.'
+- name: finance-calculators
+  description: 'Финансовые калькуляторы без сохранения результата в базе: кредит,
+    ипотека, рассрочка, вклад, пенсионные накопления и инфляция. Endpoints возвращают
+    значения по умолчанию, выполняют расчёт и показывают ошибки валидации входных
+    параметров.'
 - name: finance-recurring-transactions
   description: 'Регулярные операции: список, создание, редактирование, удаление, пауза,
     возобновление, завершение, справочники, сводка, история списаний и проверка расписания.'
