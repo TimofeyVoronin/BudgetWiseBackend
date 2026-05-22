@@ -17,6 +17,21 @@ SECRET_KEY = env("SECRET_KEY", default="django-insecure-budgetwise-dev-secret-ke
 METRICS_ACCESS_TOKEN = env("METRICS_ACCESS_TOKEN", default="")
 
 
+PROVERKACHEKA_API_TOKEN = env("PROVERKACHEKA_API_TOKEN", default="")
+PROVERKACHEKA_API_URL = env(
+    "PROVERKACHEKA_API_URL",
+    default="https://proverkacheka.com/api/v1/check/get",
+)
+PROVERKACHEKA_TIMEOUT_SECONDS = env.int(
+    "PROVERKACHEKA_TIMEOUT_SECONDS",
+    default=10,
+)
+PROVERKACHEKA_ENABLED = env.bool(
+    "PROVERKACHEKA_ENABLED",
+    default=False,
+)
+
+
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
     default="django.core.mail.backends.console.EmailBackend",
