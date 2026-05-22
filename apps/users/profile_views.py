@@ -5,6 +5,12 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.users.profile_audit import (
+    get_profile_audit_snapshot,
+    log_profile_avatar_audit,
+    log_profile_update_audit,
+)
+from apps.users.models import UserProfileAuditAction
 from apps.users.profile_serializers import (
     CurrentUserSerializer,
     UserProfileAvatarDeleteResponseSerializer,
@@ -99,13 +105,20 @@ class CurrentUserView(GenericAPIView):
         ],
     )
     def patch(self, request):
+        old_profile_values = get_profile_audit_snapshot(request.user)
         serializer = self.get_serializer(
             request.user,
             data=request.data,
             partial=True,
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        user = serializer.save()
+        log_profile_update_audit(
+            user=user,
+            old_values=old_profile_values,
+            new_values=get_profile_audit_snapshot(user),
+            request=request,
+        )
         return Response(serializer.data)
 
 
@@ -161,7 +174,7 @@ class UserProfileMeView(GenericAPIView):
         description=(
             "Обновляет редактируемые поля профиля. Все поля формы необязательные, "
             "поэтому endpoint можно использовать как безопасный PUT для страницы профиля. "
-            "Email и username через этот endpoint не меняются."
+            "Email и username через этот endpoint не меняются. Изменение профиля фиксируется во внутреннем audit log."
         ),
         request=UserProfileMeSerializer,
         responses={200: UserProfileMeSerializer},
@@ -181,12 +194,19 @@ class UserProfileMeView(GenericAPIView):
         ],
     )
     def put(self, request, *args, **kwargs):
+        old_profile_values = get_profile_audit_snapshot(request.user)
         serializer = self.get_serializer(
             request.user,
             data=request.data,
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        user = serializer.save()
+        log_profile_update_audit(
+            user=user,
+            old_values=old_profile_values,
+            new_values=get_profile_audit_snapshot(user),
+            request=request,
+        )
         return Response(serializer.data)
 
     @extend_schema(
@@ -196,7 +216,7 @@ class UserProfileMeView(GenericAPIView):
         description=(
             "Частично обновляет редактируемые поля профиля: имя, фамилию, отчество, "
             "телефон, город и краткое описание. Email и username через этот endpoint "
-            "не меняются."
+            "не меняются. Изменение профиля фиксируется во внутреннем audit log."
         ),
         request=UserProfileMeSerializer,
         responses={200: UserProfileMeSerializer},
@@ -212,13 +232,20 @@ class UserProfileMeView(GenericAPIView):
         ],
     )
     def patch(self, request, *args, **kwargs):
+        old_profile_values = get_profile_audit_snapshot(request.user)
         serializer = self.get_serializer(
             request.user,
             data=request.data,
             partial=True,
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        user = serializer.save()
+        log_profile_update_audit(
+            user=user,
+            old_values=old_profile_values,
+            new_values=get_profile_audit_snapshot(user),
+            request=request,
+        )
         return Response(serializer.data)
 
 
@@ -266,6 +293,13 @@ class UserProfileAvatarView(GenericAPIView):
         user.save(update_fields=["avatar"])
 
         _delete_storage_file_if_unused(old_avatar_name, user.avatar.name)
+        log_profile_avatar_audit(
+            user=user,
+            action=UserProfileAuditAction.AVATAR_UPLOADED,
+            old_avatar_name=old_avatar_name,
+            new_avatar_name=user.avatar.name,
+            request=request,
+        )
 
         return Response(
             {
@@ -299,6 +333,13 @@ class UserProfileAvatarView(GenericAPIView):
             user.avatar = None
             user.save(update_fields=["avatar"])
             _delete_storage_file_if_unused(avatar_name, "")
+            log_profile_avatar_audit(
+                user=user,
+                action=UserProfileAuditAction.AVATAR_DELETED,
+                old_avatar_name=avatar_name,
+                new_avatar_name="",
+                request=request,
+            )
 
         return Response({"deleted": True, "avatarUrl": None})
 

@@ -6676,7 +6676,8 @@ paths:
       operationId: profile_me_update
       description: Обновляет редактируемые поля профиля. Все поля формы необязательные,
         поэтому endpoint можно использовать как безопасный PUT для страницы профиля.
-        Email и username через этот endpoint не меняются.
+        Email и username через этот endpoint не меняются. Изменение профиля фиксируется
+        во внутреннем audit log.
       summary: Полностью обновить профиль текущего пользователя
       tags:
       - users-profile
@@ -6714,7 +6715,7 @@ paths:
       operationId: profile_me_partial_update
       description: 'Частично обновляет редактируемые поля профиля: имя, фамилию, отчество,
         телефон, город и краткое описание. Email и username через этот endpoint не
-        меняются.'
+        меняются. Изменение профиля фиксируется во внутреннем audit log.'
       summary: Частично обновить профиль текущего пользователя
       tags:
       - users-profile
