@@ -12,6 +12,7 @@ from apps.finance.budget_notification_views import (
     BudgetNotificationThresholdValidationView,
 )
 from apps.finance.category_views import CategoryViewSet
+from apps.finance.currency_views import CurrencyViewSet
 from apps.finance.dashboard_views import DashboardSummaryView
 from apps.finance.goal_views import GoalViewSet
 from apps.finance.notification_views import NotificationViewSet
@@ -31,6 +32,7 @@ router = DefaultRouter()
 router.register("accounts", AccountViewSet, basename="account")
 router.register("budgets", BudgetViewSet, basename="budget")
 router.register("categories", CategoryViewSet, basename="category")
+router.register("currencies", CurrencyViewSet, basename="currency")
 router.register("goals", GoalViewSet, basename="goal")
 router.register("notifications", NotificationViewSet, basename="notification")
 router.register("planned-transactions", PlannedTransactionViewSet, basename="planned-transaction")

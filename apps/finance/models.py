@@ -359,6 +359,224 @@ def normalize_tag_text(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip()).casefold()
 
 
+
+class Currency(TimeStampedModel):
+    code = models.CharField(
+        max_length=3,
+        unique=True,
+        validators=[
+            RegexValidator(
+                regex=r"^[A-Z]{3}$",
+                message="Код валюты должен состоять из 3 латинских букв.",
+            )
+        ],
+        verbose_name="Код валюты",
+    )
+    name = models.CharField(
+        max_length=100,
+        verbose_name="Название валюты",
+    )
+    symbol = models.CharField(
+        max_length=12,
+        verbose_name="Символ валюты",
+    )
+    flag_icon = models.CharField(
+        max_length=50,
+        default="currency",
+        verbose_name="Иконка валюты",
+    )
+    decimal_places = models.PositiveSmallIntegerField(
+        default=2,
+        verbose_name="Количество знаков после запятой",
+    )
+    is_system = models.BooleanField(
+        default=True,
+        verbose_name="Системная валюта",
+    )
+    is_popular = models.BooleanField(
+        default=False,
+        verbose_name="Популярная валюта",
+    )
+
+    class Meta:
+        verbose_name = "Валюта"
+        verbose_name_plural = "Валюты"
+        ordering = ["code"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(code__regex=r"^[A-Z]{3}$"),
+                name="currency_code_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(decimal_places__gte=0) & models.Q(decimal_places__lte=8),
+                name="currency_decimal_places_range",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["code"], name="idx_currency_code"),
+            models.Index(fields=["is_system"], name="idx_currency_system"),
+            models.Index(fields=["is_popular"], name="idx_currency_popular"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.code:
+            self.code = self.code.strip().upper()
+
+        if self.name:
+            self.name = " ".join(self.name.split())
+
+        if self.symbol:
+            self.symbol = self.symbol.strip()
+
+        if not self.name:
+            errors["name"] = "Название валюты не может быть пустым."
+
+        if not self.symbol:
+            errors["symbol"] = "Символ валюты не может быть пустым."
+
+        if self.decimal_places > 8:
+            errors["decimal_places"] = "Количество знаков после запятой должно быть от 0 до 8."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.code:
+            self.code = self.code.strip().upper()
+        if self.name:
+            self.name = " ".join(self.name.split())
+        if self.symbol:
+            self.symbol = self.symbol.strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.code} · {self.name}"
+
+
+class UserCurrency(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="currency_settings",
+        verbose_name="Пользователь",
+    )
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="user_settings",
+        verbose_name="Валюта",
+    )
+    custom_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Пользовательское название",
+    )
+    custom_symbol = models.CharField(
+        max_length=12,
+        blank=True,
+        verbose_name="Пользовательский символ",
+    )
+    rate_to_primary = models.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        default=Decimal("1.00000000"),
+        validators=[MinValueValidator(Decimal("0.00000001"))],
+        verbose_name="Курс к основной валюте",
+    )
+    is_visible = models.BooleanField(
+        default=True,
+        verbose_name="Видима в интерфейсе",
+    )
+    is_primary = models.BooleanField(
+        default=False,
+        verbose_name="Основная валюта",
+    )
+    is_custom = models.BooleanField(
+        default=False,
+        verbose_name="Пользовательская валюта",
+    )
+
+    class Meta:
+        verbose_name = "Настройка валюты пользователя"
+        verbose_name_plural = "Настройки валют пользователей"
+        ordering = ["-is_primary", "currency__code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "currency"],
+                name="unique_user_currency_setting",
+            ),
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(is_primary=True),
+                name="unique_primary_currency_per_user",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(rate_to_primary__gt=0),
+                name="user_currency_rate_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_user_currency_user"),
+            models.Index(fields=["user", "is_visible"], name="idx_user_currency_visible"),
+            models.Index(fields=["user", "is_primary"], name="idx_user_currency_primary"),
+            models.Index(fields=["user", "is_custom"], name="idx_user_currency_custom"),
+        ]
+
+    @property
+    def code(self) -> str:
+        return self.currency.code
+
+    @property
+    def display_name(self) -> str:
+        return self.custom_name or self.currency.name
+
+    @property
+    def display_symbol(self) -> str:
+        return self.custom_symbol or self.currency.symbol
+
+    @property
+    def flag_icon(self) -> str:
+        return self.currency.flag_icon
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.is_primary and not self.is_visible:
+            errors["is_visible"] = "Основная валюта должна быть видимой."
+
+        if not self.is_custom and (self.custom_name or self.custom_symbol):
+            errors["custom_name"] = "Системную валюту можно только скрывать или делать основной."
+
+        if self.custom_name:
+            self.custom_name = " ".join(self.custom_name.split())
+
+        if self.custom_symbol:
+            self.custom_symbol = self.custom_symbol.strip()
+
+        if self.is_custom and not self.display_name:
+            errors["custom_name"] = "Название пользовательской валюты не может быть пустым."
+
+        if self.is_custom and not self.display_symbol:
+            errors["custom_symbol"] = "Символ пользовательской валюты не может быть пустым."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.is_primary:
+            self.is_visible = True
+        if self.custom_name:
+            self.custom_name = " ".join(self.custom_name.split())
+        if self.custom_symbol:
+            self.custom_symbol = self.custom_symbol.strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.user}: {self.code}"
+
+
 class Account(TimeStampedModel):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

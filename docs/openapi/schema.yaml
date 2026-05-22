@@ -2053,6 +2053,519 @@ paths:
                         updated_at: 2026-05-15T12:00:00+0300
                   summary: Дерево категорий расходов
           description: ''
+  /api/v1/finance/currencies/:
+    get:
+      operationId: finance_currencies_list
+      description: Возвращает валюты, доступные пользователю, включая системные и
+        пользовательские валюты. Ответ содержит список и сводку для страницы управления
+        валютами. Основная валюта может быть только одна.
+      summary: Получить список валют пользователя
+      parameters:
+      - in: query
+        name: isCustom
+        schema:
+          type: boolean
+        description: Фильтр пользовательских валют.
+      - in: query
+        name: isVisible
+        schema:
+          type: boolean
+        description: Фильтр видимости валюты в интерфейсе.
+      - in: query
+        name: onlyUsed
+        schema:
+          type: boolean
+        description: true - вернуть только валюты, используемые в данных пользователя.
+      - in: query
+        name: ordering
+        schema:
+          type: string
+        description: 'Сортировка: code, name, rateToPrimary, isPrimary, isVisible,
+          isCustom, createdAt.'
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по коду, названию или символу валюты.
+      tags:
+      - finance-currencies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCurrenciesListResponseList'
+              examples:
+                СписокВалют:
+                  value:
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - items:
+                      - id: 1
+                        code: RUB
+                        name: Российский рубль
+                        symbol: ₽
+                        rateToPrimary: 1.0
+                        isPrimary: true
+                        isVisible: true
+                        isCustom: false
+                        operationsCount: 3
+                        flagIcon: rub
+                      summary:
+                        totalCount: 10
+                        primaryCode: RUB
+                        hiddenCount: 2
+                  summary: Список валют
+          description: ''
+    post:
+      operationId: finance_currencies_create
+      description: Alias для POST /currencies/custom/. Создаёт пользовательскую валюту
+        текущего пользователя.
+      summary: Создать пользовательскую валюту
+      tags:
+      - finance-currencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomCurrencyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateCustomCurrencyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateCustomCurrencyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyListRow'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/currencies/{id}/:
+    get:
+      operationId: finance_currencies_retrieve
+      summary: Получить валюту пользователя
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-currencies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyListRow'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    put:
+      operationId: finance_currencies_update
+      summary: Полностью обновить пользовательскую валюту
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-currencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCurrencyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UpdateCurrencyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateCurrencyRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyListRow'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    patch:
+      operationId: finance_currencies_partial_update
+      description: Обновляет название, символ и видимость пользовательской валюты.
+        Системные валюты можно только скрывать или делать основными через специальные
+        actions.
+      summary: Обновить пользовательскую валюту
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-currencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdateCurrencyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdateCurrencyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUpdateCurrencyRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyListRow'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    delete:
+      operationId: finance_currencies_destroy
+      description: Удаляет только пользовательскую валюту, которая не является основной
+        и не используется в счетах, бюджетах, операциях или шаблонах. Системную валюту
+        можно скрыть, но нельзя удалить.
+      summary: Удалить пользовательскую валюту
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-currencies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteCurrencyResponse'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteCurrencyConflictResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/currencies/{id}/set-primary/:
+    patch:
+      operationId: finance_currencies_set_primary_partial_update
+      summary: Сделать валюту основной
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-currencies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrenciesListResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/currencies/{id}/visibility/:
+    patch:
+      operationId: finance_currencies_visibility_partial_update
+      summary: Изменить видимость валюты
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      tags:
+      - finance-currencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedSetCurrencyVisibilityRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedSetCurrencyVisibilityRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedSetCurrencyVisibilityRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyListRow'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteCurrencyConflictResponse'
+          description: ''
+  /api/v1/finance/currencies/catalog/:
+    get:
+      operationId: finance_currencies_catalog_retrieve
+      summary: Получить каталог валют
+      parameters:
+      - in: query
+        name: excludeAdded
+        schema:
+          type: boolean
+        description: Исключить валюты, уже добавленные пользователю.
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Поиск по коду, названию или символу.
+      tags:
+      - finance-currencies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrenciesCatalogResponse'
+          description: ''
+  /api/v1/finance/currencies/check-code/:
+    get:
+      operationId: finance_currencies_check_code_retrieve
+      summary: Проверить код пользовательской валюты
+      parameters:
+      - in: query
+        name: code
+        schema:
+          type: string
+        description: Код валюты.
+      - in: query
+        name: excludeId
+        schema:
+          type: integer
+        description: ID валюты пользователя при редактировании.
+      tags:
+      - finance-currencies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckCurrencyCodeResponse'
+          description: ''
+  /api/v1/finance/currencies/custom/:
+    post:
+      operationId: finance_currencies_custom_create
+      summary: Создать пользовательскую валюту
+      tags:
+      - finance-currencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomCurrencyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateCustomCurrencyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateCustomCurrencyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyListRow'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/currencies/from-catalog/:
+    post:
+      operationId: finance_currencies_from_catalog_create
+      summary: Добавить валюту из каталога
+      tags:
+      - finance-currencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCurrencyFromCatalogRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AddCurrencyFromCatalogRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AddCurrencyFromCatalogRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrencyListRow'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/currencies/select-options/:
+    get:
+      operationId: finance_currencies_select_options_retrieve
+      summary: Получить видимые валюты для select-полей
+      tags:
+      - finance-currencies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrenciesSelectOptionsResponse'
+          description: ''
+  /api/v1/finance/currencies/validate-custom/:
+    post:
+      operationId: finance_currencies_validate_custom_create
+      summary: Проверить форму пользовательской валюты
+      tags:
+      - finance-currencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateCustomCurrencyRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ValidateCustomCurrencyRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateCustomCurrencyRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateCustomCurrencyResponse'
+          description: ''
   /api/v1/finance/dashboard/summary/:
     get:
       operationId: finance_dashboard_summary_retrieve
@@ -6525,6 +7038,15 @@ components:
       - icon
       - title
       - value
+    AddCurrencyFromCatalogRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 3
+      required:
+      - code
     ApiErrorDetail:
       type: object
       description: Детальная информация об ошибке API.
@@ -7905,6 +8427,15 @@ components:
           type: string
       required:
       - isDuplicate
+    CheckCurrencyCodeResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+        message:
+          type: string
+      required:
+      - available
     CheckPlannedDuplicateRequest:
       type: object
       properties:
@@ -7965,6 +8496,162 @@ components:
           type: string
           format: date
           writeOnly: true
+    CreateCustomCurrencyRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 3
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 12
+        isVisible:
+          type: boolean
+          default: true
+      required:
+      - code
+      - name
+      - symbol
+    CurrenciesCatalogResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrencyCatalogItem'
+      required:
+      - items
+    CurrenciesListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrencyListRow'
+        summary:
+          $ref: '#/components/schemas/CurrenciesListSummary'
+      required:
+      - items
+      - summary
+    CurrenciesListSummary:
+      type: object
+      properties:
+        totalCount:
+          type: integer
+        primaryCode:
+          type: string
+        hiddenCount:
+          type: integer
+      required:
+      - hiddenCount
+      - primaryCode
+      - totalCount
+    CurrenciesSelectOptionsResponse:
+      type: object
+      properties:
+        primaryCode:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrencySelectOption'
+      required:
+      - options
+      - primaryCode
+    CurrencyCatalogItem:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        flagIcon:
+          type: string
+        popular:
+          type: boolean
+      required:
+      - code
+      - flagIcon
+      - name
+      - symbol
+    CurrencyFormValidationErrors:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        general:
+          type: string
+    CurrencyListRow:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        code:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        symbol:
+          type: string
+          readOnly: true
+        rateToPrimary:
+          type: number
+          format: double
+          maximum: 1000000000000
+          minimum: -1000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          readOnly: true
+        isPrimary:
+          type: boolean
+          readOnly: true
+        isVisible:
+          type: boolean
+          readOnly: true
+        isCustom:
+          type: boolean
+          readOnly: true
+        operationsCount:
+          type: integer
+          readOnly: true
+        flagIcon:
+          type: string
+          readOnly: true
+      required:
+      - code
+      - flagIcon
+      - id
+      - isCustom
+      - isPrimary
+      - isVisible
+      - name
+      - operationsCount
+      - rateToPrimary
+      - symbol
+    CurrencySelectOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+      required:
+      - title
+      - value
     CurrentUser:
       type: object
       properties:
@@ -8164,6 +8851,30 @@ components:
           type: boolean
         id:
           type: string
+      required:
+      - deleted
+      - id
+    DeleteCurrencyConflictResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        operationsCount:
+          type: integer
+        canHide:
+          type: boolean
+      required:
+      - code
+      - message
+    DeleteCurrencyResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+        id:
+          type: integer
       required:
       - deleted
       - id
@@ -9423,6 +10134,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CategoryTree'
+    PaginatedCurrenciesListResponseList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrenciesListResponse'
     PaginatedGoalContributionList:
       type: object
       required:
@@ -10010,6 +10744,11 @@ components:
           type: string
           minLength: 1
           maxLength: 80
+    PatchedSetCurrencyVisibilityRequest:
+      type: object
+      properties:
+        isVisible:
+          type: boolean
     PatchedSetTagVisibilityRequest:
       type: object
       properties:
@@ -10145,6 +10884,19 @@ components:
           type: integer
           maximum: 100
           minimum: 0
+    PatchedUpdateCurrencyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 12
+        isVisible:
+          type: boolean
     PatchedUserRequest:
       type: object
       properties:
@@ -12215,6 +12967,19 @@ components:
           type: integer
           maximum: 100
           minimum: 0
+    UpdateCurrencyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 12
+        isVisible:
+          type: boolean
     User:
       type: object
       properties:
@@ -12378,6 +13143,38 @@ components:
           type: string
           nullable: true
       required:
+      - ok
+    ValidateCustomCurrencyRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 3
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        symbol:
+          type: string
+          minLength: 1
+          maxLength: 12
+        excludeId:
+          type: integer
+          nullable: true
+      required:
+      - code
+      - name
+      - symbol
+    ValidateCustomCurrencyResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        fieldErrors:
+          $ref: '#/components/schemas/CurrencyFormValidationErrors'
+      required:
+      - fieldErrors
       - ok
     ValidatePlannedFormRequest:
       type: object
