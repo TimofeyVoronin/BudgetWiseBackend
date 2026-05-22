@@ -23,6 +23,7 @@ from apps.finance.goal_views import GoalViewSet
 from apps.finance.notification_views import NotificationViewSet
 from apps.finance.planned_transaction_views import PlannedTransactionViewSet
 from apps.finance.recurring_transaction_views import RecurringTransactionViewSet
+from apps.finance.receipt_transaction_views import ReceiptCreateTransactionsView
 from apps.finance.tag_views import TagViewSet
 from apps.finance.transaction_template_views import TransactionTemplateViewSet
 from apps.finance.transaction_views import (
@@ -97,6 +98,11 @@ urlpatterns = [
         "dashboard/summary/",
         DashboardSummaryView.as_view(),
         name="dashboard-summary",
+    ),
+    path(
+        "receipts/<int:receipt_id>/create-transactions/",
+        ReceiptCreateTransactionsView.as_view(),
+        name="receipt-create-transactions",
     ),
     path(
         "transactions/export/",

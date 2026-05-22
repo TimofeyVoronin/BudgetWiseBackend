@@ -1193,6 +1193,22 @@ class Transaction(TimeStampedModel):
         related_name="transactions",
         verbose_name="Теги операции",
     )
+    receipt = models.ForeignKey(
+        "Receipt",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transactions",
+        verbose_name="Источник: чек",
+    )
+    receipt_item = models.ForeignKey(
+        "ReceiptItem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transactions",
+        verbose_name="Источник: позиция чека",
+    )
 
     class Meta:
         verbose_name = "Операция"
@@ -1234,6 +1250,14 @@ class Transaction(TimeStampedModel):
                 fields=["user", "created_at"],
                 name="idx_tx_user_created",
             ),
+            models.Index(
+                fields=["user", "receipt"],
+                name="idx_tx_user_receipt",
+            ),
+            models.Index(
+                fields=["receipt_item"],
+                name="idx_tx_receipt_item",
+            ),
         ]
 
     def clean(self) -> None:
@@ -1247,6 +1271,15 @@ class Transaction(TimeStampedModel):
 
         if self.category_id and self.type and self.category.type != self.type:
             errors["category"] = "Тип категории должен совпадать с типом операции."
+
+        if self.receipt_id and self.user_id and self.receipt.user_id != self.user_id:
+            errors["receipt"] = "Чек должен принадлежать пользователю операции."
+
+        if self.receipt_item_id:
+            if self.receipt_id and self.receipt_item.receipt_id != self.receipt_id:
+                errors["receipt_item"] = "Позиция должна принадлежать указанному чеку."
+            if self.user_id and self.receipt_item.receipt.user_id != self.user_id:
+                errors["receipt_item"] = "Позиция чека должна принадлежать пользователю операции."
 
         if errors:
             raise ValidationError(errors)
