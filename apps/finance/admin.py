@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.finance.models import BudgetNotificationEvent, BudgetNotificationSettings, Tag, TagGroup, TransactionTemplate
+from apps.finance.models import BudgetNotificationEvent, BudgetNotificationSettings, Currency, Tag, TagGroup, TransactionTemplate, UserCurrency
 
 
 @admin.register(TagGroup)
@@ -80,3 +80,34 @@ class BudgetNotificationEventAdmin(admin.ModelAdmin):
     search_fields = ("title", "message", "deduplication_key", "user__email", "user__username")
     readonly_fields = ("deduplication_key", "created_at", "updated_at")
 
+
+
+@admin.register(Currency)
+class CurrencyAdmin(admin.ModelAdmin):
+    list_display = ("id", "code", "name", "symbol", "is_system", "is_popular", "created_at")
+    list_filter = ("is_system", "is_popular")
+    search_fields = ("code", "name", "symbol")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(UserCurrency)
+class UserCurrencyAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "currency",
+        "is_primary",
+        "is_visible",
+        "is_custom",
+        "rate_to_primary",
+        "created_at",
+    )
+    list_filter = ("is_primary", "is_visible", "is_custom")
+    search_fields = (
+        "user__email",
+        "user__username",
+        "currency__code",
+        "currency__name",
+        "custom_name",
+    )
+    readonly_fields = ("created_at", "updated_at")

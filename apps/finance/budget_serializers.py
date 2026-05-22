@@ -8,7 +8,6 @@ from rest_framework import serializers
 
 from apps.finance.budgets import (
     BUDGET_CATEGORY_GROUP_OPTIONS,
-    BUDGET_CURRENCY_OPTIONS,
     BUDGET_KIND_OPTIONS,
     BUDGET_PERIOD_TYPE_OPTIONS,
     BUDGET_USAGE_STATUS_OPTIONS,
@@ -17,6 +16,11 @@ from apps.finance.budgets import (
     get_budget_usage,
     get_period_label,
     percent_to_number,
+)
+from apps.finance.currencies import (
+    build_currency_select_options,
+    get_user_primary_currency_code,
+    validate_user_currency_available,
 )
 from apps.finance.models import (
     Budget,
@@ -79,7 +83,7 @@ class BudgetSerializer(serializers.ModelSerializer):
         coerce_to_string=False,
     )
     spentRub = serializers.SerializerMethodField(read_only=True)
-    currency = serializers.CharField(max_length=3, required=False, default="RUB")
+    currency = serializers.CharField(max_length=3, required=False)
     kind = serializers.ChoiceField(
         choices=BudgetKind.choices,
         default=BudgetKind.EXPENSE,
@@ -173,6 +177,10 @@ class BudgetSerializer(serializers.ModelSerializer):
             if alias in mutable_data and field_name not in mutable_data:
                 mutable_data[field_name] = mutable_data[alias]
 
+        currency = mutable_data.get("currency")
+        if isinstance(currency, str):
+            mutable_data["currency"] = currency.strip().upper()
+
         return super().to_internal_value(mutable_data)
 
     def to_representation(self, instance):
@@ -229,11 +237,15 @@ class BudgetSerializer(serializers.ModelSerializer):
         return category
 
     def validate_currency(self, currency: str) -> str:
+        request = self.context.get("request")
         normalized_currency = currency.upper()
 
-        if normalized_currency != "RUB":
-            raise serializers.ValidationError(
-                "Сейчас поддерживается только валюта RUB."
+        if request and request.user and request.user.is_authenticated:
+            return validate_user_currency_available(
+                request.user,
+                normalized_currency,
+                field_name=None,
+                require_visible=True,
             )
 
         return normalized_currency
@@ -251,6 +263,9 @@ class BudgetSerializer(serializers.ModelSerializer):
         )
         period_start = attrs.get("period_start") or getattr(instance, "period_start", None)
         period_end = attrs.get("period_end") or getattr(instance, "period_end", None)
+
+        if request and instance is None and not attrs.get("currency"):
+            attrs["currency"] = get_user_primary_currency_code(request.user)
 
         if category and kind and category.type != kind:
             raise serializers.ValidationError(
@@ -412,6 +427,8 @@ class BudgetOptionSerializer(serializers.Serializer):
     icon = serializers.CharField(required=False)
     color = serializers.CharField(required=False)
     kind = serializers.CharField(required=False)
+    symbol = serializers.CharField(required=False)
+    isPrimary = serializers.BooleanField(required=False)
 
 
 class BudgetsListMetaSerializer(serializers.Serializer):
@@ -476,7 +493,7 @@ def get_budget_meta_payload(user) -> dict:
         "categories": get_budget_meta_categories(user),
         "categoryGroups": BUDGET_CATEGORY_GROUP_OPTIONS,
         "periodTypes": BUDGET_PERIOD_TYPE_OPTIONS,
-        "currencies": BUDGET_CURRENCY_OPTIONS,
+        "currencies": build_currency_select_options(user),
         "kinds": BUDGET_KIND_OPTIONS,
         "usageStatuses": BUDGET_USAGE_STATUS_OPTIONS,
     }

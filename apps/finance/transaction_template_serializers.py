@@ -8,6 +8,11 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
 
+from apps.finance.currencies import (
+    get_user_primary_currency_code,
+    get_user_visible_currency_codes,
+    validate_user_currency_available,
+)
 from apps.finance.models import (
     Account,
     Category,
@@ -118,6 +123,7 @@ class TransactionTemplateSerializer(serializers.ModelSerializer):
                 user=request.user,
                 is_active=True,
                 is_archived=False,
+                currency__in=get_user_visible_currency_codes(request.user),
             )
             self.fields["categoryId"].queryset = Category.objects.filter(
                 user=request.user,
@@ -196,15 +202,18 @@ class TransactionTemplateSerializer(serializers.ModelSerializer):
         return normalized_value
 
     def validate_currency(self, value: str) -> str:
-        normalized_value = str(value or "RUB").strip().upper()
+        request = self.context.get("request")
+        normalized_value = str(value or "").strip().upper()
 
-        if normalized_value != "RUB":
-            raise serializers.ValidationError(
-                "Сейчас поддерживается только валюта RUB.",
-                code="template_currency_invalid",
+        if request and request.user and request.user.is_authenticated:
+            return validate_user_currency_available(
+                request.user,
+                normalized_value,
+                field_name=None,
+                require_visible=True,
             )
 
-        return normalized_value
+        return normalized_value or "RUB"
 
     def validate_note(self, value: str | None) -> str:
         normalized_value = str(value or "").strip()
@@ -259,6 +268,36 @@ class TransactionTemplateSerializer(serializers.ModelSerializer):
         kind = attrs.get("kind", getattr(instance, "kind", None))
         name = attrs.get("name", getattr(instance, "name", ""))
         status = attrs.get("status", getattr(instance, "status", TransactionTemplateStatus.ACTIVE))
+        currency = attrs.get("currency") or getattr(instance, "currency", "")
+
+        if request and instance is None and not currency:
+            if account is not None:
+                attrs["currency"] = account.currency
+                currency = account.currency
+            else:
+                attrs["currency"] = get_user_primary_currency_code(request.user)
+                currency = attrs["currency"]
+
+        if request and account is not None:
+            validate_user_currency_available(
+                request.user,
+                account.currency,
+                field_name="accountId",
+                require_visible=True,
+            )
+
+        if request and currency:
+            validate_user_currency_available(
+                request.user,
+                currency,
+                field_name="currency",
+                require_visible=True,
+            )
+
+        if account and currency and account.currency != currency:
+            raise serializers.ValidationError(
+                {"currency": ["Валюта шаблона должна совпадать с валютой выбранного счёта."]}
+            )
 
         if account and request and account.user_id != request.user.id:
             raise serializers.ValidationError(
@@ -406,6 +445,7 @@ class TransactionTemplateApplySerializer(serializers.Serializer):
                 user=request.user,
                 is_active=True,
                 is_archived=False,
+                currency__in=get_user_visible_currency_codes(request.user),
             )
             self.fields["categoryId"].queryset = Category.objects.filter(
                 user=request.user,
@@ -450,6 +490,13 @@ class TransactionTemplateApplySerializer(serializers.Serializer):
                 {"template": ["Архивный шаблон нельзя применить."]},
                 code="template_archived",
             )
+
+        validate_user_currency_available(
+            request.user,
+            account.currency,
+            field_name="accountId",
+            require_visible=True,
+        )
 
         if account.user_id != request.user.id or account.is_archived or not account.is_active:
             raise serializers.ValidationError(
@@ -520,6 +567,15 @@ class TransactionTemplateOptionSerializer(serializers.Serializer):
     kind = serializers.CharField(required=False)
 
 
+
+
+class TransactionTemplateCurrencyOptionSerializer(serializers.Serializer):
+    title = serializers.CharField()
+    value = serializers.CharField()
+    symbol = serializers.CharField(required=False)
+    isPrimary = serializers.BooleanField(required=False)
+
+
 class TransactionTemplateKindOptionSerializer(serializers.Serializer):
     title = serializers.CharField()
     value = serializers.CharField()
@@ -529,6 +585,7 @@ class TransactionTemplateMetaResponseSerializer(serializers.Serializer):
     kinds = TransactionTemplateKindOptionSerializer(many=True)
     statuses = TransactionTemplateKindOptionSerializer(many=True)
     defaultCurrency = serializers.CharField()
+    currencies = TransactionTemplateCurrencyOptionSerializer(many=True, required=False)
     categories = TransactionTemplateOptionSerializer(many=True)
     accounts = TransactionTemplateOptionSerializer(many=True)
     sortOptions = TransactionTemplateKindOptionSerializer(many=True)

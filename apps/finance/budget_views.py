@@ -40,6 +40,7 @@ from apps.finance.budget_serializers import (
     get_budget_meta_payload,
     serializer_errors_to_field_errors,
 )
+from apps.finance.currencies import validate_user_currency_available
 from apps.finance.models import (
     Budget,
     BudgetCategoryGroup,
@@ -234,12 +235,17 @@ def normalize_budget_group_values(values: list[str]) -> list[str]:
             OpenApiParameter("usageStatuses", OpenApiTypes.STR, description="Статусы использования через запятую: normal, warning, exceeded."),
             OpenApiParameter("kinds", OpenApiTypes.STR, description="Типы бюджетов через запятую: expense, income."),
             OpenApiParameter("onlyAtRisk", OpenApiTypes.BOOL, description="Только бюджеты со статусом warning или exceeded."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Фильтр по ISO-коду добавленной валюты пользователя."),
         ],
         responses={200: BudgetListResponseSerializer},
     ),
     create=extend_schema(
         tags=["finance-budgets"],
         summary="Создать бюджет",
+        description=(
+            "Создаёт бюджет. Валюта должна быть добавлена пользователем и быть видимой; "
+            "если currency не передан, используется основная валюта пользователя."
+        ),
         request=BudgetSerializer,
         responses={201: BudgetSerializer},
         examples=[
@@ -421,6 +427,16 @@ class BudgetViewSet(viewsets.ModelViewSet):
             allowed_values=set(BudgetKind.values),
         )
         search = query_params.get("search")
+        currency = query_params.get("currency")
+
+        if currency:
+            currency = validate_user_currency_available(
+                self.request.user,
+                currency,
+                field_name="currency",
+                require_visible=False,
+            )
+            queryset = queryset.filter(currency=currency)
 
         if period_types:
             queryset = queryset.filter(period_type__in=period_types)
@@ -552,7 +568,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["finance-budgets"],
         summary="Получить справочники страницы бюджетов",
-        description="Возвращает категории пользователя, группы бюджета, типы периода, валюты, типы бюджета и статусы использования.",
+        description="Возвращает категории пользователя, группы бюджета, типы периода, видимые валюты пользователя, типы бюджета и статусы использования.",
         responses={200: BudgetsListMetaSerializer},
     )
     @action(detail=False, methods=["get"], url_path="meta")

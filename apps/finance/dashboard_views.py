@@ -13,10 +13,13 @@ from apps.common.validation import (
     get_date_query_param,
     get_int_query_param,
 )
+from apps.finance.currencies import (
+    get_user_primary_currency_code,
+    validate_user_currency_available,
+)
 from apps.finance.dashboard import (
     DASHBOARD_PERIOD_CUSTOM,
     DASHBOARD_PERIOD_TYPES,
-    DEFAULT_DASHBOARD_CURRENCY,
     DEFAULT_DASHBOARD_PERIOD,
     DEFAULT_DASHBOARD_RECENT_LIMIT,
     MAX_DASHBOARD_RECENT_LIMIT,
@@ -64,20 +67,18 @@ def get_dashboard_period_query_param(query_params) -> str:
     return period
 
 
-def get_dashboard_currency_query_param(query_params) -> str:
-    currency = query_params.get("currency") or DEFAULT_DASHBOARD_CURRENCY
-    currency = currency.upper()
+def get_dashboard_currency_query_param(query_params, user) -> str:
+    currency = query_params.get("currency")
 
-    if len(currency) != 3 or not currency.isalpha():
-        raise ValidationError(
-            {
-                "currency": [
-                    "Параметр currency должен быть ISO-кодом из 3 букв, например RUB."
-                ]
-            }
-        )
+    if currency in (None, ""):
+        return get_user_primary_currency_code(user)
 
-    return currency
+    return validate_user_currency_available(
+        user,
+        currency,
+        field_name="currency",
+        require_visible=True,
+    )
 
 
 def get_dashboard_date_range_query_params(query_params, period: str):
@@ -105,7 +106,7 @@ def get_dashboard_date_range_query_params(query_params, period: str):
     return date_from, date_to
 
 
-def get_dashboard_query_params(query_params) -> dict:
+def get_dashboard_query_params(query_params, user) -> dict:
     period = get_dashboard_period_query_param(query_params)
     date_from, date_to = get_dashboard_date_range_query_params(
         query_params,
@@ -116,7 +117,7 @@ def get_dashboard_query_params(query_params) -> dict:
         "period_type": period,
         "date_from": date_from,
         "date_to": date_to,
-        "currency": get_dashboard_currency_query_param(query_params),
+        "currency": get_dashboard_currency_query_param(query_params, user),
         "recent_limit": get_dashboard_recent_limit(query_params),
         "tag_ids": get_tag_ids_query_param(query_params, "tags", "tagIds", "tag_ids"),
     }
@@ -165,7 +166,8 @@ class DashboardSummaryView(APIView):
                 "currency",
                 OpenApiTypes.STR,
                 description=(
-                    "Валюта dashboard, например RUB. Конвертация валют не выполняется, "
+                    "ISO-код добавленной валюты пользователя. Если параметр не передан, "
+                    "используется основная валюта. Конвертация валют не выполняется, "
                     "данные фильтруются по валюте счёта."
                 ),
             ),
@@ -263,7 +265,7 @@ class DashboardSummaryView(APIView):
         ],
     )
     def get(self, request):
-        query_params = get_dashboard_query_params(request.query_params)
+        query_params = get_dashboard_query_params(request.query_params, request.user)
         dashboard_data = get_cached_dashboard_summary(
             user=request.user,
             **query_params,

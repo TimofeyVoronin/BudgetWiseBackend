@@ -102,9 +102,9 @@ class FinanceAccountValidationAPITests(FinanceAPITestCase):
         response = self.client.post(
             reverse("finance:account-list"),
             data={
-                "name": "GBP счёт",
+                "name": "Неподдерживаемая валюта",
                 "type": "card",
-                "currency": "GBP",
+                "currency": "ZZZ",
                 "initial_balance": "1000.00",
             },
             format="json",

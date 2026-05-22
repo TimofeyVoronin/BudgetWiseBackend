@@ -8,6 +8,11 @@ from django.db.models import Max, Q, QuerySet
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.finance.currencies import (
+    build_currency_select_options,
+    get_user_primary_currency_code,
+    get_user_visible_currency_codes,
+)
 from apps.finance.models import (
     Account,
     Category,
@@ -345,7 +350,8 @@ def get_transaction_templates_meta_payload(user) -> dict:
     return {
         "kinds": TEMPLATE_KIND_OPTIONS,
         "statuses": TEMPLATE_STATUS_OPTIONS,
-        "defaultCurrency": "RUB",
+        "defaultCurrency": get_user_primary_currency_code(user),
+        "currencies": build_currency_select_options(user),
         "categories": [
             {
                 "title": category.name,
@@ -371,6 +377,7 @@ def get_transaction_templates_meta_payload(user) -> dict:
                 user=user,
                 is_active=True,
                 is_archived=False,
+                currency__in=get_user_visible_currency_codes(user),
             ).order_by("-is_default", "name", "id")
         ],
         "sortOptions": [

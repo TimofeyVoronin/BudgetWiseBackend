@@ -4,6 +4,10 @@ from django.utils import timezone
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
+from apps.finance.currencies import (
+    get_user_visible_currency_codes,
+    validate_user_currency_available,
+)
 from apps.finance.models import (
     Account,
     Goal,
@@ -171,6 +175,7 @@ class GoalSerializer(serializers.ModelSerializer):
                 user=request.user,
                 is_active=True,
                 is_archived=False,
+                currency__in=get_user_visible_currency_codes(request.user),
             )
         else:
             self.fields["account"].queryset = Account.objects.none()
@@ -263,6 +268,13 @@ class GoalSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Счёт должен принадлежать текущему пользователю."
             )
+
+        validate_user_currency_available(
+            request.user,
+            account.currency,
+            field_name="account",
+            require_visible=True,
+        )
 
         if not account.is_active:
             raise serializers.ValidationError(
@@ -489,6 +501,7 @@ class GoalTopupCreateSerializer(serializers.Serializer):
                 user=request.user,
                 is_active=True,
                 is_archived=False,
+                currency__in=get_user_visible_currency_codes(request.user),
             )
 
     def to_internal_value(self, data):
@@ -546,6 +559,13 @@ class GoalTopupCreateSerializer(serializers.Serializer):
                 )
 
         if account is not None and amount is not None:
+            validate_user_currency_available(
+                self.context["request"].user,
+                account.currency,
+                field_name="accountId",
+                require_visible=True,
+            )
+
             if account.available_balance < amount:
                 raise serializers.ValidationError(
                     {

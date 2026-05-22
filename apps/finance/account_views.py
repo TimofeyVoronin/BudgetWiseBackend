@@ -19,13 +19,17 @@ from apps.common.pagination import StandardResultsSetPagination
 from apps.common.validation import validate_choice_query_param
 from apps.finance.account_serializers import (
     ACCOUNT_BANK_OPTIONS,
-    ACCOUNT_CURRENCY_OPTIONS,
     ACCOUNT_TYPE_OPTIONS,
     AccountArchiveSerializer,
     AccountHistoryRowSerializer,
     AccountMetaSerializer,
     AccountSerializer,
     AccountSummarySerializer,
+    get_account_meta_payload,
+)
+from apps.finance.currencies import (
+    get_user_primary_currency_code,
+    validate_user_currency_available,
 )
 from apps.finance.models import Account, AccountType, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
@@ -133,7 +137,9 @@ ACCOUNT_STATUS_VALUES = {
         description=(
             "Создаёт счёт текущего пользователя. Текущий баланс при создании "
             "устанавливается равным начальному балансу. Если счёт отмечен как "
-            "основной, остальные основные счета пользователя сбрасываются."
+            "основной, остальные основные счета пользователя сбрасываются. "
+            "Если currency не передан, используется основная валюта пользователя; "
+            "скрытые валюты нельзя выбирать для нового счёта."
         ),
         request=AccountSerializer,
         responses={201: AccountSerializer},
@@ -256,7 +262,13 @@ class AccountViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(type=account_type)
 
         if currency:
-            queryset = queryset.filter(currency=currency.upper())
+            currency = validate_user_currency_available(
+                self.request.user,
+                currency,
+                field_name="currency",
+                require_visible=False,
+            )
+            queryset = queryset.filter(currency=currency)
 
         if search:
             search_value = search.strip()
@@ -301,13 +313,13 @@ class AccountViewSet(viewsets.ModelViewSet):
         description=(
             "Возвращает общий баланс активных неархивных счетов текущего пользователя, "
             "количество активных счетов и количество счетов в архиве. По умолчанию "
-            "используется валюта RUB."
+            "используется основная валюта пользователя."
         ),
         parameters=[
             OpenApiParameter(
                 "currency",
                 OpenApiTypes.STR,
-                description="ISO-код валюты, например RUB. По умолчанию RUB.",
+                description="ISO-код добавленной валюты пользователя. По умолчанию основная валюта.",
             ),
         ],
         responses={200: AccountSummarySerializer},
@@ -331,7 +343,16 @@ class AccountViewSet(viewsets.ModelViewSet):
         url_path="summary",
     )
     def summary(self, request):
-        currency = request.query_params.get("currency", "RUB").upper()
+        currency = request.query_params.get("currency")
+        if currency in (None, ""):
+            currency = get_user_primary_currency_code(request.user)
+        else:
+            currency = validate_user_currency_available(
+                request.user,
+                currency,
+                field_name="currency",
+                require_visible=False,
+            )
 
         total_balance = (
             Account.objects
@@ -370,8 +391,8 @@ class AccountViewSet(viewsets.ModelViewSet):
         tags=["finance-accounts"],
         summary="Получить справочники для формы счёта",
         description=(
-            "Возвращает типы счетов, популярные банки и валюты для формы "
-            "создания или редактирования счёта."
+            "Возвращает типы счетов, популярные банки, основную валюту и видимые "
+            "валюты пользователя для формы создания или редактирования счёта."
         ),
         responses={200: AccountMetaSerializer},
         examples=[
@@ -380,7 +401,11 @@ class AccountViewSet(viewsets.ModelViewSet):
                 value={
                     "types": ACCOUNT_TYPE_OPTIONS,
                     "banks": ACCOUNT_BANK_OPTIONS,
-                    "currencies": ACCOUNT_CURRENCY_OPTIONS,
+                    "currencies": [
+                        {"title": "RUB · Российский рубль", "value": "RUB"},
+                        {"title": "USD · Доллар США", "value": "USD"},
+                    ],
+                    "primaryCurrencyCode": "RUB",
                 },
                 response_only=True,
             )
@@ -392,13 +417,7 @@ class AccountViewSet(viewsets.ModelViewSet):
         url_path="meta",
     )
     def meta(self, request):
-        serializer = AccountMetaSerializer(
-            {
-                "types": ACCOUNT_TYPE_OPTIONS,
-                "banks": ACCOUNT_BANK_OPTIONS,
-                "currencies": ACCOUNT_CURRENCY_OPTIONS,
-            }
-        )
+        serializer = AccountMetaSerializer(get_account_meta_payload(request.user))
         return Response(serializer.data)
 
     @extend_schema(
