@@ -311,7 +311,9 @@ class BudgetNotificationCheckView(APIView):
             "Запускает сервис формирования событий бюджетных уведомлений для текущего "
             "пользователя. Сервис учитывает настройки, активные пороги, типы событий, "
             "выбранные цели и защиту от дублей. При dryRun=true события не сохраняются, "
-            "а только возвращаются в ответе для предпросмотра."
+            "а только возвращаются в ответе для предпросмотра. При dryRun=false новые "
+            "события передаются в централизованный Notification Center через in-app канал. "
+            "Email и push логируются как skipped, потому что провайдеры пока не подключены."
         ),
         request=BudgetNotificationCheckSerializer,
         responses={200: BudgetNotificationCheckResponseSerializer, 400: OpenApiResponse(description="Ошибка валидации параметров запуска.")},
@@ -333,6 +335,8 @@ class BudgetNotificationCheckView(APIView):
                     "processedGoals": 1,
                     "createdEvents": 1,
                     "wouldCreateEvents": 0,
+                    "deliveredNotifications": 1,
+                    "skippedDeliveries": 1,
                     "skippedDuplicates": 0,
                     "items": [
                         {
@@ -345,7 +349,22 @@ class BudgetNotificationCheckView(APIView):
                             "message": "Бюджет «Продукты» за период «май 2026» использован на 86.0%.",
                             "icon": "trending-up",
                             "iconTone": "warning",
+                            "status": "delivered",
                             "deduplicationKey": "budget_near_limit:budget:5:near_limit",
+                            "deliveryResults": [
+                                {
+                                    "channel": "in_app",
+                                    "status": "delivered",
+                                    "notificationId": 42,
+                                    "error": "",
+                                },
+                                {
+                                    "channel": "email",
+                                    "status": "skipped",
+                                    "notificationId": None,
+                                    "error": "Канал доставки пока не настроен на backend.",
+                                },
+                            ],
                             "payload": {
                                 "budgetId": 5,
                                 "categoryName": "Продукты",

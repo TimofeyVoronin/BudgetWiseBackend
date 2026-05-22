@@ -13,15 +13,19 @@ from apps.finance.budget_notifications import get_or_create_budget_notification_
 from apps.finance.models import (
     Budget,
     BudgetKind,
+    BudgetNotificationChannel,
     BudgetNotificationEvent,
     BudgetNotificationEventStatus,
     BudgetNotificationEventType,
     BudgetNotificationSettings,
     Goal,
     GoalStatus,
+    NotificationDeliveryStatus,
     NotificationEntityKind,
     NotificationIconTone,
+    NotificationType,
 )
+from apps.finance.notifications import create_notification
 
 MONEY_QUANT = Decimal("0.01")
 PERCENT_QUANT = Decimal("0.01")
@@ -60,8 +64,9 @@ def generate_budget_notification_events(
     """Generate budget/goal notification events for a user.
 
     The service creates BudgetNotificationEvent rows only when ``dry_run`` is False.
-    It does not send email, push, or in-app messages. Delivery through the
-    Notification Center is handled by the next integration step.
+    Newly created events are delivered to the centralized Notification Center
+    through the in-app channel. Email and push channels are logged as skipped
+    because external providers are not connected yet.
     """
     target_date = target_date or timezone.localdate()
     settings = get_or_create_budget_notification_settings(user=user)
@@ -89,6 +94,8 @@ def generate_budget_notification_events(
 
     items = []
     created_events = 0
+    delivered_notifications = 0
+    skipped_deliveries = 0
     skipped_duplicates = 0
 
     with db_transaction.atomic():
@@ -104,6 +111,9 @@ def generate_budget_notification_events(
                 continue
 
             event_id = None
+            event_status = BudgetNotificationEventStatus.GENERATED
+            delivery_results = []
+
             if not dry_run:
                 event = BudgetNotificationEvent.objects.create(
                     user=user,
@@ -119,8 +129,16 @@ def generate_budget_notification_events(
                     deduplication_key=candidate.deduplication_key,
                     payload=candidate.payload,
                 )
+                delivery_result = deliver_budget_notification_event(
+                    event=event,
+                    settings=settings,
+                )
+                delivery_results = delivery_result["deliveryResults"]
+                event_status = delivery_result["eventStatus"]
                 event_id = event.id
                 created_events += 1
+                delivered_notifications += delivery_result["deliveredNotifications"]
+                skipped_deliveries += delivery_result["skippedDeliveries"]
 
             items.append(
                 {
@@ -133,7 +151,9 @@ def generate_budget_notification_events(
                     "message": candidate.message,
                     "icon": candidate.icon,
                     "iconTone": candidate.icon_tone,
+                    "status": event_status,
                     "deduplicationKey": candidate.deduplication_key,
+                    "deliveryResults": delivery_results,
                     "payload": candidate.payload,
                 }
             )
@@ -145,9 +165,160 @@ def generate_budget_notification_events(
         "processedGoals": processed_goals,
         "createdEvents": created_events,
         "wouldCreateEvents": len(items) if dry_run else 0,
+        "deliveredNotifications": delivered_notifications,
+        "skippedDeliveries": skipped_deliveries,
         "skippedDuplicates": skipped_duplicates,
         "items": items,
     }
+
+
+def deliver_budget_notification_event(
+    *,
+    event: BudgetNotificationEvent,
+    settings: BudgetNotificationSettings | None = None,
+) -> dict[str, Any]:
+    """Deliver a generated budget-notification event to configured channels.
+
+    Only the in-app channel is delivered now. Email and push are recorded as
+    skipped/not configured so the response and event payload transparently show
+    why they were not sent.
+    """
+    settings = settings or get_or_create_budget_notification_settings(user=event.user)
+    enabled_channels = _enabled_channel_ids(settings)
+    delivery_results: list[dict[str, Any]] = []
+    delivered_notifications = 0
+    skipped_deliveries = 0
+
+    if BudgetNotificationChannel.IN_APP.value in enabled_channels:
+        notification = create_notification(
+            user=event.user,
+            title=event.title,
+            body=event.message,
+            type=_notification_type_for_event(event),
+            channel=BudgetNotificationChannel.IN_APP.value,
+            icon=event.icon,
+            icon_tone=event.icon_tone,
+            entity_kind=event.related_object_type,
+            entity_id=event.related_object_id,
+            entity_route_name=_entity_route_name_for_event(event),
+            entity_label=_entity_label_for_event(event),
+            entity_tag=event.threshold_id,
+            amount=_amount_for_event(event),
+            category_name=str(event.payload.get("categoryName") or ""),
+            related_goal_name=str(event.payload.get("goalName") or ""),
+            related_goal_percent=_goal_percent_for_event(event),
+            delivery_steps=[
+                {
+                    "label": "Событие сформировано",
+                    "at": event.created_at.isoformat(),
+                },
+                {
+                    "label": "Передано в центр уведомлений",
+                    "at": timezone.now().isoformat(),
+                },
+            ],
+        )
+        delivered_notifications += 1
+        delivery_results.append(
+            {
+                "channel": BudgetNotificationChannel.IN_APP.value,
+                "status": notification.delivery_status,
+                "notificationId": notification.id,
+                "error": notification.delivery_error,
+            }
+        )
+    else:
+        skipped_deliveries += 1
+        delivery_results.append(
+            {
+                "channel": BudgetNotificationChannel.IN_APP.value,
+                "status": "skipped",
+                "notificationId": None,
+                "error": "In-app канал отключён в настройках бюджетных уведомлений.",
+            }
+        )
+
+    for channel_id in [BudgetNotificationChannel.EMAIL.value, BudgetNotificationChannel.PUSH.value]:
+        if channel_id in enabled_channels:
+            skipped_deliveries += 1
+            delivery_results.append(
+                {
+                    "channel": channel_id,
+                    "status": "skipped",
+                    "notificationId": None,
+                    "error": "Канал доставки пока не настроен на backend.",
+                }
+            )
+
+    if delivered_notifications > 0:
+        event.status = BudgetNotificationEventStatus.DELIVERED
+    else:
+        event.status = BudgetNotificationEventStatus.SKIPPED
+
+    event.payload = {
+        **(event.payload or {}),
+        "deliveryResults": delivery_results,
+    }
+    event.save(update_fields=["status", "payload", "updated_at"])
+
+    return {
+        "eventStatus": event.status,
+        "deliveryResults": delivery_results,
+        "deliveredNotifications": delivered_notifications,
+        "skippedDeliveries": skipped_deliveries,
+    }
+
+
+def _enabled_channel_ids(settings: BudgetNotificationSettings) -> set[str]:
+    return {
+        item.get("id")
+        for item in settings.channels
+        if item.get("enabled")
+    }
+
+
+def _notification_type_for_event(event: BudgetNotificationEvent) -> str:
+    if event.related_object_type == NotificationEntityKind.GOAL.value:
+        return NotificationType.GOAL.value
+
+    return NotificationType.BUDGET.value
+
+
+def _entity_route_name_for_event(event: BudgetNotificationEvent) -> str:
+    if event.related_object_type == NotificationEntityKind.GOAL.value:
+        return "goals.detail"
+
+    return "budgets.detail"
+
+
+def _entity_label_for_event(event: BudgetNotificationEvent) -> str:
+    if event.related_object_type == NotificationEntityKind.GOAL.value:
+        return str(event.payload.get("goalName") or "Цель накопления")
+
+    return str(event.payload.get("categoryName") or "Бюджет")
+
+
+def _amount_for_event(event: BudgetNotificationEvent) -> Decimal | None:
+    for key in ["limitAmount", "currentAmount", "targetAmount"]:
+        value = event.payload.get(key)
+        if value not in (None, ""):
+            try:
+                return Decimal(str(value)).quantize(MONEY_QUANT)
+            except Exception:
+                return None
+
+    return None
+
+
+def _goal_percent_for_event(event: BudgetNotificationEvent) -> Decimal | None:
+    value = event.payload.get("progressPercent")
+    if value in (None, ""):
+        return None
+
+    try:
+        return Decimal(str(value)).quantize(PERCENT_QUANT)
+    except Exception:
+        return None
 
 
 def _build_budget_event_candidates(*, user, settings: BudgetNotificationSettings, target_date: date) -> tuple[list[BudgetNotificationCandidate], int]:

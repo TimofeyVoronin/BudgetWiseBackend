@@ -731,7 +731,9 @@ paths:
       description: Запускает сервис формирования событий бюджетных уведомлений для
         текущего пользователя. Сервис учитывает настройки, активные пороги, типы событий,
         выбранные цели и защиту от дублей. При dryRun=true события не сохраняются,
-        а только возвращаются в ответе для предпросмотра.
+        а только возвращаются в ответе для предпросмотра. При dryRun=false новые события
+        передаются в централизованный Notification Center через in-app канал. Email
+        и push логируются как skipped, потому что провайдеры пока не подключены.
       summary: Запустить проверку бюджетных уведомлений
       tags:
       - finance-budget-notifications
@@ -769,6 +771,8 @@ paths:
                     processedGoals: 1
                     createdEvents: 1
                     wouldCreateEvents: 0
+                    deliveredNotifications: 1
+                    skippedDeliveries: 1
                     skippedDuplicates: 0
                     items:
                     - id: 10
@@ -781,7 +785,17 @@ paths:
                         на 86.0%.
                       icon: trending-up
                       iconTone: warning
+                      status: delivered
                       deduplicationKey: budget_near_limit:budget:5:near_limit
+                      deliveryResults:
+                      - channel: in_app
+                        status: delivered
+                        notificationId: 42
+                        error: ''
+                      - channel: email
+                        status: skipped
+                        notificationId: null
+                        error: Канал доставки пока не настроен на backend.
                       payload:
                         budgetId: 5
                         categoryName: Продукты
@@ -6887,6 +6901,10 @@ components:
           type: integer
         wouldCreateEvents:
           type: integer
+        deliveredNotifications:
+          type: integer
+        skippedDeliveries:
+          type: integer
         skippedDuplicates:
           type: integer
         items:
@@ -6896,12 +6914,43 @@ components:
       required:
       - createdEvents
       - date
+      - deliveredNotifications
       - dryRun
       - items
       - processedBudgets
       - processedGoals
+      - skippedDeliveries
       - skippedDuplicates
       - wouldCreateEvents
+    BudgetNotificationDeliveryResult:
+      type: object
+      properties:
+        channel:
+          $ref: '#/components/schemas/BudgetNotificationChannelEnum'
+        status:
+          $ref: '#/components/schemas/BudgetNotificationDeliveryResultStatusEnum'
+        notificationId:
+          type: integer
+          nullable: true
+        error:
+          type: string
+      required:
+      - channel
+      - status
+    BudgetNotificationDeliveryResultStatusEnum:
+      enum:
+      - delivered
+      - pending
+      - unavailable
+      - failed
+      - skipped
+      type: string
+      description: |-
+        * `delivered` - delivered
+        * `pending` - pending
+        * `unavailable` - unavailable
+        * `failed` - failed
+        * `skipped` - skipped
     BudgetNotificationDeliveryStatusEnum:
       enum:
       - available
@@ -6990,8 +7039,14 @@ components:
           type: string
         iconTone:
           type: string
+        status:
+          type: string
         deduplicationKey:
           type: string
+        deliveryResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetNotificationDeliveryResult'
         payload:
           type: object
           additionalProperties: {}

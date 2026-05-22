@@ -263,6 +263,13 @@ class BudgetNotificationCheckSerializer(serializers.Serializer):
     dryRun = serializers.BooleanField(required=False, default=False)
 
 
+class BudgetNotificationDeliveryResultSerializer(serializers.Serializer):
+    channel = serializers.ChoiceField(choices=BudgetNotificationChannel.choices)
+    status = serializers.ChoiceField(choices=["delivered", "pending", "unavailable", "failed", "skipped"])
+    notificationId = serializers.IntegerField(required=False, allow_null=True)
+    error = serializers.CharField(required=False, allow_blank=True)
+
+
 class BudgetNotificationGeneratedEventSerializer(serializers.Serializer):
     id = serializers.IntegerField(required=False, allow_null=True)
     eventType = serializers.ChoiceField(choices=BudgetNotificationEventType.choices)
@@ -273,7 +280,9 @@ class BudgetNotificationGeneratedEventSerializer(serializers.Serializer):
     message = serializers.CharField()
     icon = serializers.CharField()
     iconTone = serializers.CharField()
+    status = serializers.CharField(required=False)
     deduplicationKey = serializers.CharField()
+    deliveryResults = BudgetNotificationDeliveryResultSerializer(many=True, required=False)
     payload = serializers.DictField()
 
 
@@ -284,5 +293,7 @@ class BudgetNotificationCheckResponseSerializer(serializers.Serializer):
     processedGoals = serializers.IntegerField()
     createdEvents = serializers.IntegerField()
     wouldCreateEvents = serializers.IntegerField()
+    deliveredNotifications = serializers.IntegerField()
+    skippedDeliveries = serializers.IntegerField()
     skippedDuplicates = serializers.IntegerField()
     items = BudgetNotificationGeneratedEventSerializer(many=True)
