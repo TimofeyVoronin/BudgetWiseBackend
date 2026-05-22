@@ -88,6 +88,8 @@ class CurrenciesListResponseSerializer(serializers.Serializer):
 class CurrencySelectOptionSerializer(serializers.Serializer):
     title = serializers.CharField()
     value = serializers.CharField()
+    symbol = serializers.CharField(required=False)
+    isPrimary = serializers.BooleanField(required=False)
 
 
 class CurrenciesSelectOptionsResponseSerializer(serializers.Serializer):
@@ -242,18 +244,12 @@ class CheckCurrencyCodeResponseSerializer(serializers.Serializer):
 
 
 def build_select_options_payload(user) -> dict:
-    from apps.finance.currencies import get_primary_currency, get_visible_user_currencies
-
-    primary = get_primary_currency(user)
-    options = [
-        {
-            "title": f"{item.code} · {item.display_name}",
-            "value": item.code,
-        }
-        for item in get_visible_user_currencies(user)
-    ]
+    from apps.finance.currencies import (
+        build_currency_select_options,
+        get_user_primary_currency_code,
+    )
 
     return {
-        "primaryCode": primary.code if primary else "RUB",
-        "options": options,
+        "primaryCode": get_user_primary_currency_code(user),
+        "options": build_currency_select_options(user),
     }

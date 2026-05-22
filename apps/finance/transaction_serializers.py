@@ -3,6 +3,7 @@ from decimal import Decimal
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
+from apps.finance.currencies import validate_user_currency_available
 from apps.finance.models import (
     Account,
     Category,
@@ -208,6 +209,7 @@ class TransactionSerializer(serializers.ModelSerializer):
         return category
 
     def validate(self, attrs):
+        request = self.context.get("request")
         tag_ids = attrs.pop("tagIds", None)
         self._validated_tags = None
 
@@ -221,6 +223,14 @@ class TransactionSerializer(serializers.ModelSerializer):
         should_validate_account_status = (
             not self.instance or "account" in attrs
         )
+
+        if request and should_validate_account_status and account:
+            validate_user_currency_available(
+                request.user,
+                account.currency,
+                field_name="account",
+                require_visible=True,
+            )
 
         if should_validate_account_status and account and not account.is_active:
             raise serializers.ValidationError(

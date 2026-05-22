@@ -3,6 +3,11 @@ from decimal import Decimal
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
+from apps.finance.currencies import (
+    build_currency_select_options,
+    get_user_primary_currency_code,
+    validate_user_currency_available,
+)
 from apps.finance.models import Account, AccountType
 
 
@@ -68,23 +73,12 @@ ACCOUNT_BANK_OPTIONS = [
 
 ACCOUNT_CURRENCY_OPTIONS = [
     {
-        "title": "RUB ₽",
+        "title": "RUB · Российский рубль",
         "value": "RUB",
-    },
-    {
-        "title": "USD $",
-        "value": "USD",
-    },
-    {
-        "title": "EUR €",
-        "value": "EUR",
     },
 ]
 
-ACCOUNT_CURRENCY_VALUES = {
-    item["value"]
-    for item in ACCOUNT_CURRENCY_OPTIONS
-}
+ACCOUNT_CURRENCY_VALUES = {"RUB"}
 
 
 class AccountSerializer(serializers.ModelSerializer):
@@ -230,11 +224,20 @@ class AccountSerializer(serializers.ModelSerializer):
         return name
 
     def validate_currency(self, value: str) -> str:
+        request = self.context.get("request")
         currency = value.upper()
+
+        if request and request.user and request.user.is_authenticated:
+            return validate_user_currency_available(
+                request.user,
+                currency,
+                field_name=None,
+                require_visible=True,
+            )
 
         if currency not in ACCOUNT_CURRENCY_VALUES:
             raise serializers.ValidationError(
-                "Валюта должна быть одной из доступных: RUB, USD или EUR."
+                "Валюта должна быть добавлена в список доступных валют пользователя."
             )
 
         return currency
@@ -294,6 +297,9 @@ class AccountSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         request = self.context["request"]
         validated_data["user"] = request.user
+
+        if not validated_data.get("currency"):
+            validated_data["currency"] = get_user_primary_currency_code(request.user)
 
         initial_balance = validated_data.get("initial_balance", Decimal("0.00"))
         validated_data["balance"] = initial_balance
@@ -386,9 +392,21 @@ class AccountBankOptionSerializer(serializers.Serializer):
 class AccountCurrencyOptionSerializer(serializers.Serializer):
     title = serializers.CharField()
     value = serializers.CharField()
+    symbol = serializers.CharField(required=False)
+    isPrimary = serializers.BooleanField(required=False)
 
 
 class AccountMetaSerializer(serializers.Serializer):
     types = AccountTypeOptionSerializer(many=True)
     banks = AccountBankOptionSerializer(many=True)
     currencies = AccountCurrencyOptionSerializer(many=True)
+    primaryCurrencyCode = serializers.CharField(required=False)
+
+
+def get_account_meta_payload(user) -> dict:
+    return {
+        "types": ACCOUNT_TYPE_OPTIONS,
+        "banks": ACCOUNT_BANK_OPTIONS,
+        "currencies": build_currency_select_options(user),
+        "primaryCurrencyCode": get_user_primary_currency_code(user),
+    }

@@ -398,7 +398,9 @@ paths:
       operationId: finance_accounts_create
       description: Создаёт счёт текущего пользователя. Текущий баланс при создании
         устанавливается равным начальному балансу. Если счёт отмечен как основной,
-        остальные основные счета пользователя сбрасываются.
+        остальные основные счета пользователя сбрасываются. Если currency не передан,
+        используется основная валюта пользователя; скрытые валюты нельзя выбирать
+        для нового счёта.
       summary: Создать счёт
       tags:
       - finance-accounts
@@ -635,8 +637,8 @@ paths:
   /api/v1/finance/accounts/meta/:
     get:
       operationId: finance_accounts_meta_retrieve
-      description: Возвращает типы счетов, популярные банки и валюты для формы создания
-        или редактирования счёта.
+      description: Возвращает типы счетов, популярные банки, основную валюту и видимые
+        валюты пользователя для формы создания или редактирования счёта.
       summary: Получить справочники для формы счёта
       tags:
       - finance-accounts
@@ -684,12 +686,11 @@ paths:
                     - title: Другой банк
                       value: other
                     currencies:
-                    - title: RUB ₽
+                    - title: RUB · Российский рубль
                       value: RUB
-                    - title: USD $
+                    - title: USD · Доллар США
                       value: USD
-                    - title: EUR €
-                      value: EUR
+                    primaryCurrencyCode: RUB
                   summary: Справочники счетов
           description: ''
   /api/v1/finance/accounts/summary/:
@@ -697,14 +698,15 @@ paths:
       operationId: finance_accounts_summary_retrieve
       description: Возвращает общий баланс активных неархивных счетов текущего пользователя,
         количество активных счетов и количество счетов в архиве. По умолчанию используется
-        валюта RUB.
+        основная валюта пользователя.
       summary: Получить сводку по счетам
       parameters:
       - in: query
         name: currency
         schema:
           type: string
-        description: ISO-код валюты, например RUB. По умолчанию RUB.
+        description: ISO-код добавленной валюты пользователя. По умолчанию основная
+          валюта.
       tags:
       - finance-accounts
       security:
@@ -1105,6 +1107,11 @@ paths:
           type: string
         description: 'Группы бюджетов через запятую: main, family, personal.'
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Фильтр по ISO-коду добавленной валюты пользователя.
+      - in: query
         name: kinds
         schema:
           type: string
@@ -1162,6 +1169,8 @@ paths:
           description: ''
     post:
       operationId: finance_budgets_create
+      description: Создаёт бюджет. Валюта должна быть добавлена пользователем и быть
+        видимой; если currency не передан, используется основная валюта пользователя.
       summary: Создать бюджет
       tags:
       - finance-budgets
@@ -1418,7 +1427,7 @@ paths:
     get:
       operationId: finance_budgets_meta_retrieve
       description: Возвращает категории пользователя, группы бюджета, типы периода,
-        валюты, типы бюджета и статусы использования.
+        видимые валюты пользователя, типы бюджета и статусы использования.
       summary: Получить справочники страницы бюджетов
       tags:
       - finance-budgets
@@ -2582,8 +2591,9 @@ paths:
         name: currency
         schema:
           type: string
-        description: Валюта dashboard, например RUB. Конвертация валют не выполняется,
-          данные фильтруются по валюте счёта.
+        description: ISO-код добавленной валюты пользователя. Если параметр не передан,
+          используется основная валюта. Конвертация валют не выполняется, данные фильтруются
+          по валюте счёта.
       - in: query
         name: date_from
         schema:
@@ -5217,7 +5227,8 @@ paths:
     get:
       operationId: finance_transaction_templates_list
       description: Возвращает сохранённые шаблоны операций текущего пользователя.
-        Ответ содержит items, summary и pagination для страницы шаблонов.
+        Ответ содержит items, summary и pagination для страницы шаблонов. В meta возвращается
+        defaultCurrency и список видимых валют пользователя для форм.
       summary: Получить список шаблонов операций
       parameters:
       - in: query
@@ -5346,7 +5357,9 @@ paths:
     post:
       operationId: finance_transaction_templates_create
       description: Создаёт шаблон операции. Счёт, категория и теги должны принадлежать
-        текущему пользователю, категория должна соответствовать типу шаблона.
+        текущему пользователю, категория должна соответствовать типу шаблона. Валюта
+        шаблона должна быть доступна пользователю и совпадать с валютой выбранного
+        счёта.
       summary: Создать шаблон операции
       tags:
       - finance-transaction-templates
@@ -5363,6 +5376,7 @@ paths:
                   amountRub: 180.0
                   accountId: 1
                   categoryId: 2
+                  currency: RUB
                   tagIds:
                   - 3
                   note: Кофе перед работой
@@ -5898,6 +5912,17 @@ paths:
           type: integer
         description: Frontend-friendly alias для category.
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Фильтр по ISO-коду добавленной валюты пользователя. Данные фильтруются
+          по валюте счёта.
+      - in: query
+        name: currencyCode
+        schema:
+          type: string
+        description: Frontend-friendly alias для currency.
+      - in: query
         name: dateFrom
         schema:
           type: string
@@ -6048,7 +6073,8 @@ paths:
       description: Создаёт финансовую операцию текущего пользователя. Счёт и категория
         должны принадлежать текущему пользователю. Тип категории должен совпадать
         с типом операции. Теги передаются через tagIds и должны быть видимыми для
-        выбора.
+        выбора. Валюта операции определяется валютой выбранного счёта; скрытые валюты
+        нельзя использовать в новых операциях.
       summary: Создать операцию
       tags:
       - finance-transactions
@@ -6224,9 +6250,9 @@ paths:
     get:
       operationId: finance_transactions_export_retrieve
       description: Экспортирует операции текущего пользователя с учётом тех же фильтров,
-        которые используются в списке операций, включая фильтр по тегам. Поддерживаются
-        форматы CSV, XLSX и PDF. Для защиты от слишком тяжёлых выгрузок действует
-        лимит 5000 операций.
+        которые используются в списке операций, включая фильтр по тегам и валюте.
+        Поддерживаются форматы CSV, XLSX и PDF. Для защиты от слишком тяжёлых выгрузок
+        действует лимит 5000 операций.
       summary: Экспортировать список операций
       parameters:
       - in: query
@@ -6261,6 +6287,14 @@ paths:
         name: categoryId
         schema:
           type: integer
+      - in: query
+        name: currency
+        schema:
+          type: string
+      - in: query
+        name: currencyCode
+        schema:
+          type: string
       - in: query
         name: dateFrom
         schema:
@@ -6872,6 +6906,10 @@ components:
           type: string
         value:
           type: string
+        symbol:
+          type: string
+        isPrimary:
+          type: boolean
       required:
       - title
       - value
@@ -6920,6 +6958,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AccountCurrencyOption'
+        primaryCurrencyCode:
+          type: string
       required:
       - banks
       - currencies
@@ -7141,7 +7181,6 @@ components:
           readOnly: true
         currency:
           type: string
-          default: RUB
           maxLength: 3
         kind:
           allOf:
@@ -7854,6 +7893,10 @@ components:
           type: string
         kind:
           type: string
+        symbol:
+          type: string
+        isPrimary:
+          type: boolean
       required:
       - title
       - value
@@ -7895,7 +7938,6 @@ components:
         currency:
           type: string
           minLength: 1
-          default: RUB
           maxLength: 3
         kind:
           allOf:
@@ -8649,6 +8691,10 @@ components:
           type: string
         value:
           type: string
+        symbol:
+          type: string
+        isPrimary:
+          type: boolean
       required:
       - title
       - value
@@ -10459,7 +10505,6 @@ components:
         currency:
           type: string
           minLength: 1
-          default: RUB
           maxLength: 3
         kind:
           allOf:
@@ -12720,6 +12765,20 @@ components:
           type: string
       required:
       - available
+    TransactionTemplateCurrencyOption:
+      type: object
+      properties:
+        title:
+          type: string
+        value:
+          type: string
+        symbol:
+          type: string
+        isPrimary:
+          type: boolean
+      required:
+      - title
+      - value
     TransactionTemplateDeleteResponse:
       type: object
       properties:
@@ -12768,6 +12827,10 @@ components:
             $ref: '#/components/schemas/TransactionTemplateKindOption'
         defaultCurrency:
           type: string
+        currencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionTemplateCurrencyOption'
         categories:
           type: array
           items:

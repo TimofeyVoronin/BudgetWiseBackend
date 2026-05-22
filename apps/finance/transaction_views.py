@@ -21,6 +21,7 @@ from apps.common.validation import (
     validate_choice_query_param,
     validate_ordering_fields,
 )
+from apps.finance.currencies import validate_user_currency_available
 from apps.finance.exporters import (
     TRANSACTION_EXPORT_FORMATS,
     build_transaction_export,
@@ -197,6 +198,7 @@ def get_transaction_queryset_for_request(request):
         "category_id",
     )
     transaction_type = get_transaction_type_query_param(query_params)
+    currency = get_first_query_value(query_params, "currency", "currencyCode", "currency_code")
     date_from = get_aliased_date_query_param(
         query_params,
         "date_from",
@@ -252,6 +254,15 @@ def get_transaction_queryset_for_request(request):
 
     if transaction_type:
         queryset = queryset.filter(type=transaction_type)
+
+    if currency:
+        currency = validate_user_currency_available(
+            request.user,
+            currency,
+            field_name="currency",
+            require_visible=False,
+        )
+        queryset = queryset.filter(account__currency=currency)
 
     if date_from:
         queryset = queryset.filter(operation_date__gte=date_from)
@@ -312,7 +323,7 @@ class TransactionExportView(APIView):
         summary="Экспортировать список операций",
         description=(
             "Экспортирует операции текущего пользователя с учётом тех же фильтров, "
-            "которые используются в списке операций, включая фильтр по тегам. Поддерживаются форматы CSV, "
+            "которые используются в списке операций, включая фильтр по тегам и валюте. Поддерживаются форматы CSV, "
             "XLSX и PDF. Для защиты от слишком тяжёлых выгрузок действует лимит "
             f"{MAX_TRANSACTION_EXPORT_ROWS} операций."
         ),
@@ -333,6 +344,8 @@ class TransactionExportView(APIView):
             OpenApiParameter("accountId", OpenApiTypes.INT),
             OpenApiParameter("category", OpenApiTypes.INT),
             OpenApiParameter("categoryId", OpenApiTypes.INT),
+            OpenApiParameter("currency", OpenApiTypes.STR),
+            OpenApiParameter("currencyCode", OpenApiTypes.STR),
             OpenApiParameter("amount_min", OpenApiTypes.NUMBER),
             OpenApiParameter("amountMin", OpenApiTypes.NUMBER),
             OpenApiParameter("amount_max", OpenApiTypes.NUMBER),
@@ -448,6 +461,16 @@ class TransactionExportView(APIView):
                 "type",
                 OpenApiTypes.STR,
                 description="Тип операции: income или expense.",
+            ),
+            OpenApiParameter(
+                "currency",
+                OpenApiTypes.STR,
+                description="Фильтр по ISO-коду добавленной валюты пользователя. Данные фильтруются по валюте счёта.",
+            ),
+            OpenApiParameter(
+                "currencyCode",
+                OpenApiTypes.STR,
+                description="Frontend-friendly alias для currency.",
             ),
             OpenApiParameter(
                 "kind",
@@ -608,7 +631,8 @@ class TransactionExportView(APIView):
             "Создаёт финансовую операцию текущего пользователя. "
             "Счёт и категория должны принадлежать текущему пользователю. "
             "Тип категории должен совпадать с типом операции. "
-            "Теги передаются через tagIds и должны быть видимыми для выбора."
+            "Теги передаются через tagIds и должны быть видимыми для выбора. "
+            "Валюта операции определяется валютой выбранного счёта; скрытые валюты нельзя использовать в новых операциях."
         ),
         request=TransactionSerializer,
         responses={201: TransactionSerializer},

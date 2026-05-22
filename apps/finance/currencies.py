@@ -255,6 +255,73 @@ def get_primary_currency(user) -> UserCurrency | None:
     return get_user_currencies(user).filter(is_primary=True).first()
 
 
+
+
+def get_user_primary_currency_code(user) -> str:
+    primary = get_primary_currency(user)
+    return primary.code if primary else DEFAULT_CURRENCY_CODE
+
+
+def get_user_visible_currency_codes(user) -> set[str]:
+    return set(get_visible_user_currencies(user).values_list("currency__code", flat=True))
+
+
+def get_user_available_currency_codes(user, *, include_hidden: bool = True) -> set[str]:
+    queryset = get_user_currencies(user)
+    if not include_hidden:
+        queryset = queryset.filter(is_visible=True)
+    return set(queryset.values_list("currency__code", flat=True))
+
+
+def get_user_currency_by_code(user, code: str) -> UserCurrency | None:
+    normalized_code = normalize_currency_code(code)
+    if not normalized_code:
+        return None
+    return get_user_currencies(user).filter(currency__code=normalized_code).first()
+
+
+def validate_user_currency_available(
+    user,
+    code: str,
+    *,
+    field_name: str | None = "currency",
+    require_visible: bool = True,
+) -> str:
+    from rest_framework.exceptions import ValidationError
+
+    normalized_code = normalize_currency_code(code)
+
+    def _raise(message: str):
+        if field_name is None:
+            raise ValidationError([message])
+        raise ValidationError({field_name: [message]})
+
+    if not is_valid_currency_code(normalized_code):
+        _raise("Валюта должна быть указана ISO-кодом из 3 латинских букв.")
+
+    user_currency = get_user_currency_by_code(user, normalized_code)
+
+    if user_currency is None:
+        _raise("Валюта не добавлена в список валют пользователя.")
+
+    if require_visible and not user_currency.is_visible:
+        _raise("Скрытую валюту нельзя выбрать для новых данных.")
+
+    return normalized_code
+
+
+def build_currency_select_options(user) -> list[dict]:
+    return [
+        {
+            "title": f"{item.code} · {item.display_name}",
+            "value": item.code,
+            "symbol": item.display_symbol,
+            "isPrimary": item.is_primary,
+        }
+        for item in get_visible_user_currencies(user)
+    ]
+
+
 def get_currency_usage_count(user, code: str) -> int:
     normalized_code = normalize_currency_code(code)
     account_ids = list(

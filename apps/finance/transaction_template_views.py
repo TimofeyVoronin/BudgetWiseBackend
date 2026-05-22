@@ -73,7 +73,8 @@ TEMPLATE_LIST_PARAMETERS = [
         summary="Получить список шаблонов операций",
         description=(
             "Возвращает сохранённые шаблоны операций текущего пользователя. "
-            "Ответ содержит items, summary и pagination для страницы шаблонов."
+            "Ответ содержит items, summary и pagination для страницы шаблонов. "
+            "В meta возвращается defaultCurrency и список видимых валют пользователя для форм."
         ),
         parameters=TEMPLATE_LIST_PARAMETERS,
         responses={200: TransactionTemplateListResponseSerializer, 400: OpenApiTypes.OBJECT},
@@ -135,7 +136,8 @@ TEMPLATE_LIST_PARAMETERS = [
         summary="Создать шаблон операции",
         description=(
             "Создаёт шаблон операции. Счёт, категория и теги должны принадлежать "
-            "текущему пользователю, категория должна соответствовать типу шаблона."
+            "текущему пользователю, категория должна соответствовать типу шаблона. "
+            "Валюта шаблона должна быть доступна пользователю и совпадать с валютой выбранного счёта."
         ),
         request=TransactionTemplateSerializer,
         responses={201: TransactionTemplateSerializer, 400: OpenApiTypes.OBJECT},
@@ -148,6 +150,7 @@ TEMPLATE_LIST_PARAMETERS = [
                     "amountRub": 180.0,
                     "accountId": 1,
                     "categoryId": 2,
+                    "currency": "RUB",
                     "tagIds": [3],
                     "note": "Кофе перед работой",
                 },
