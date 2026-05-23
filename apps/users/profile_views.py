@@ -1,4 +1,5 @@
 from django.core.files.storage import default_storage
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework.generics import GenericAPIView
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -13,11 +14,78 @@ from apps.users.profile_audit import (
 from apps.users.models import UserProfileAuditAction
 from apps.users.profile_serializers import (
     CurrentUserSerializer,
+    HomeGreetingSerializer,
     UserProfileAvatarDeleteResponseSerializer,
     UserProfileAvatarResponseSerializer,
     UserProfileAvatarUploadSerializer,
     UserProfileMeSerializer,
 )
+
+
+
+def get_home_greeting_phrase(user) -> str:
+    from apps.users.app_settings_formatting import get_user_app_timezone
+
+    current_time = timezone.localtime(
+        timezone.now(),
+        timezone=get_user_app_timezone(user),
+    )
+    hour = current_time.hour
+
+    if 5 <= hour < 12:
+        return "Доброе утро"
+
+    if 12 <= hour < 18:
+        return "Добрый день"
+
+    if 18 <= hour < 23:
+        return "Добрый вечер"
+
+    return "Доброй ночи"
+
+
+def get_home_greeting_user_name(user) -> str:
+    return (
+        str(getattr(user, "first_name", "") or "").strip()
+        or str(getattr(user, "username", "") or "").strip()
+        or str(getattr(user, "email", "") or "").strip()
+    )
+
+
+class HomeGreetingView(GenericAPIView):
+    serializer_class = HomeGreetingSerializer
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["users"],
+        operation_id="home_greeting_retrieve",
+        summary="Получить приветствие для главной страницы",
+        description=(
+            "Возвращает короткую модель приветствия для главной страницы. "
+            "Фраза рассчитывается по текущему времени в часовом поясе пользователя "
+            "из настроек приложения. Имя берётся из first_name, затем из username, "
+            "затем из email."
+        ),
+        responses={200: HomeGreetingSerializer},
+        examples=[
+            OpenApiExample(
+                "Приветствие",
+                value={
+                    "phrase": "Добрый день",
+                    "userName": "Тимофей",
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def get(self, request):
+        serializer = self.get_serializer(
+            {
+                "phrase": get_home_greeting_phrase(request.user),
+                "userName": get_home_greeting_user_name(request.user),
+            }
+        )
+        return Response(serializer.data)
 
 
 class CurrentUserView(GenericAPIView):

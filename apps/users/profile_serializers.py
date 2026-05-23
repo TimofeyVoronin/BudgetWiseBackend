@@ -13,6 +13,11 @@ NAME_PATTERN = re.compile(r"^[A-Za-zА-Яа-яЁё\-\s]+$")
 CITY_PATTERN = re.compile(r"^[A-Za-zА-Яа-яЁё0-9\-\s.,()]+$")
 
 
+class HomeGreetingSerializer(serializers.Serializer):
+    phrase = serializers.CharField(read_only=True)
+    userName = serializers.CharField(read_only=True)
+
+
 class CurrentUserSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField(read_only=True)
 

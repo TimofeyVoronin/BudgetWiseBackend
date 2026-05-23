@@ -2760,6 +2760,215 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateCustomCurrencyResponse'
           description: ''
+  /api/v1/finance/dashboard/accounts-summary/:
+    get:
+      operationId: finance_dashboard_accounts_summary_retrieve
+      description: Возвращает превью активных неархивных счетов пользователя для dashboard.
+        Параметр currency фильтрует счета по валюте. Параметр period принимается для
+        единого frontend-контракта, но на список счетов не влияет.
+      summary: Получить карточку счетов
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO-код видимой валюты пользователя. Если не передан, используется
+          валюта по умолчанию из настроек приложения.
+      - in: query
+        name: period
+        schema:
+          type: string
+        description: 'Период dashboard: week, month или year. По умолчанию month.'
+      tags:
+      - finance-dashboard
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountsCard'
+              examples:
+                КарточкаСчетов:
+                  value:
+                    title: Счета
+                    headerIcon: credit-card
+                    rows:
+                    - id: '1'
+                      name: Основная карта
+                      amountRub: 10000.0
+                      icon: card
+                    footerLinkLabel: Все счета
+                  summary: Карточка счетов
+          description: ''
+  /api/v1/finance/dashboard/balance-summary/:
+    get:
+      operationId: finance_dashboard_balance_summary_retrieve
+      description: Возвращает данные карточки текущего баланса для главной страницы.
+        Параметр period задаёт период для расчёта тренда, currency фильтрует счета
+        и операции по валюте счёта. Конвертация валют не выполняется.
+      summary: Получить карточку текущего баланса
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO-код видимой валюты пользователя. Если не передан, используется
+          валюта по умолчанию из настроек приложения.
+      - in: query
+        name: period
+        schema:
+          type: string
+        description: 'Период тренда: week, month или year. По умолчанию month.'
+      tags:
+      - finance-dashboard
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceCard'
+              examples:
+                КарточкаБаланса:
+                  value:
+                    title: Текущий баланс
+                    headerIcon: wallet
+                    amountRub: 13000.0
+                    trendLabel: +12.5% к прошлому месяцу
+                  summary: Карточка баланса
+          description: ''
+  /api/v1/finance/dashboard/expense-dynamics/:
+    get:
+      operationId: finance_dashboard_expense_dynamics_retrieve
+      description: Возвращает модель столбчатого графика доходов и расходов. Месяц
+        задаётся параметром month в формате YYYY-MM. Каждая точка weeks является неделей
+        внутри выбранного месяца. Значения income и expenses нормализованы в диапазон
+        0-100 относительно максимального значения месяца.
+      summary: Получить динамику расходов и доходов по неделям месяца
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO-код видимой валюты пользователя. Если не передан, используется
+          валюта по умолчанию из настроек приложения.
+      - in: query
+        name: month
+        schema:
+          type: string
+        description: Месяц графика в формате YYYY-MM, например 2026-05.
+      tags:
+      - finance-dashboard
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpenseDynamicsCard'
+              examples:
+                ДинамикаПоНеделям:
+                  value:
+                    title: Динамика расходов и доходов
+                    headerIcon: bar-chart-3
+                    monthLabel: Май
+                    legendIncome: Доходы
+                    legendExpenses: Расходы
+                    yAxisLabels:
+                    - '0'
+                    - '25'
+                    - '50'
+                    - '75'
+                    - '100'
+                    weeks:
+                    - label: 1 неделя
+                      income: 100
+                      expenses: 40
+                    - label: 2 неделя
+                      income: 0
+                      expenses: 25
+                  summary: Динамика по неделям
+          description: ''
+  /api/v1/finance/dashboard/goals-summary/:
+    get:
+      operationId: finance_dashboard_goals_summary_retrieve
+      description: Возвращает список активных целей для карточки на главной странице.
+        Если цель привязана к счёту, она попадает в ответ только для валюты этого
+        счёта. Цели без счёта показываются только для валюты по умолчанию из настроек
+        приложения. Конвертация валют не выполняется.
+      summary: Получить карточку целей
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO-код видимой валюты пользователя. Если не передан, используется
+          валюта по умолчанию из настроек приложения.
+      tags:
+      - finance-dashboard
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalsCard'
+              examples:
+                КарточкаЦелей:
+                  value:
+                    title: Цели
+                    headerIcon: target
+                    goals:
+                    - id: '1'
+                      name: Ремонт
+                      targetRub: 500000.0
+                      currentRub: 455000.0
+                      percent: 91.0
+                  summary: Карточка целей
+          description: ''
+  /api/v1/finance/dashboard/period-currency/:
+    get:
+      operationId: finance_dashboard_period_currency_retrieve
+      description: 'Возвращает модель верхней панели dashboard: период по умолчанию,
+        валюту по умолчанию из настроек приложения и списки доступных периодов и видимых
+        валют пользователя.'
+      summary: Получить настройки периода и валюты для dashboard
+      tags:
+      - finance-dashboard
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeriodCurrencyBar'
+              examples:
+                ПериодИВалютаDashboard:
+                  value:
+                    defaultPeriod: month
+                    defaultCurrency: RUB
+                    periodOptions:
+                    - value: week
+                      label: Неделя
+                    - value: month
+                      label: Месяц
+                    - value: year
+                      label: Год
+                    currencies:
+                    - title: Руб.
+                      value: RUB
+                    - title: Долл.
+                      value: USD
+                    - title: Евро
+                      value: EUR
+                  summary: Период и валюта dashboard
+          description: ''
   /api/v1/finance/dashboard/summary/:
     get:
       operationId: finance_dashboard_summary_retrieve
@@ -6828,6 +7037,29 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+  /api/v1/me/:
+    get:
+      operationId: home_greeting_retrieve
+      description: Возвращает короткую модель приветствия для главной страницы. Фраза
+        рассчитывается по текущему времени в часовом поясе пользователя из настроек
+        приложения. Имя берётся из first_name, затем из username, затем из email.
+      summary: Получить приветствие для главной страницы
+      tags:
+      - users
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomeGreeting'
+              examples:
+                Приветствие:
+                  value:
+                    phrase: Добрый день
+                    userName: Тимофей
+          description: ''
   /api/v1/profile/me/:
     get:
       operationId: profile_me_retrieve
@@ -7907,6 +8139,49 @@ components:
       - icon
       - title
       - value
+    AccountsCard:
+      type: object
+      properties:
+        title:
+          type: string
+          readOnly: true
+        headerIcon:
+          type: string
+          readOnly: true
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountsCardRow'
+          readOnly: true
+        footerLinkLabel:
+          type: string
+          readOnly: true
+      required:
+      - footerLinkLabel
+      - headerIcon
+      - rows
+      - title
+    AccountsCardRow:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        amountRub:
+          type: number
+          format: double
+          readOnly: true
+        icon:
+          type: string
+          readOnly: true
+      required:
+      - amountRub
+      - icon
+      - id
+      - name
     AddCurrencyFromCatalogRequest:
       type: object
       properties:
@@ -8185,6 +8460,27 @@ components:
       required:
       - code
       - message
+    BalanceCard:
+      type: object
+      properties:
+        title:
+          type: string
+          readOnly: true
+        headerIcon:
+          type: string
+          readOnly: true
+        amountRub:
+          type: number
+          format: double
+          readOnly: true
+        trendLabel:
+          type: string
+          readOnly: true
+      required:
+      - amountRub
+      - headerIcon
+      - title
+      - trendLabel
     Budget:
       type: object
       properties:
@@ -10153,6 +10449,18 @@ components:
       - is_active
       - role
       - username
+    DashboardCurrencyOption:
+      type: object
+      properties:
+        title:
+          type: string
+          readOnly: true
+        value:
+          type: string
+          readOnly: true
+      required:
+      - title
+      - value
     DashboardPeriod:
       type: object
       properties:
@@ -10171,6 +10479,18 @@ components:
       - date_from
       - date_to
       - type
+    DashboardPeriodOption:
+      type: object
+      properties:
+        value:
+          type: string
+          readOnly: true
+        label:
+          type: string
+          readOnly: true
+      required:
+      - label
+      - value
     DashboardReminderRow:
       type: object
       properties:
@@ -10483,6 +10803,62 @@ components:
       description: |-
         * `none` - Нет
         * `monthly` - Ежемесячно
+    ExpenseDynamicsCard:
+      type: object
+      properties:
+        title:
+          type: string
+          readOnly: true
+        headerIcon:
+          type: string
+          readOnly: true
+        monthLabel:
+          type: string
+          readOnly: true
+        legendIncome:
+          type: string
+          readOnly: true
+        legendExpenses:
+          type: string
+          readOnly: true
+        yAxisLabels:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        weeks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExpenseDynamicsWeek'
+          readOnly: true
+      required:
+      - headerIcon
+      - legendExpenses
+      - legendIncome
+      - monthLabel
+      - title
+      - weeks
+      - yAxisLabels
+    ExpenseDynamicsWeek:
+      type: object
+      properties:
+        label:
+          type: string
+          readOnly: true
+        income:
+          type: integer
+          maximum: 100
+          minimum: 0
+          readOnly: true
+        expenses:
+          type: integer
+          maximum: 100
+          minimum: 0
+          readOnly: true
+      required:
+      - expenses
+      - income
+      - label
     FinancialCalendarAccountOption:
       type: object
       properties:
@@ -11335,6 +11711,51 @@ components:
       - accountId
       - amountRub
       - date
+    GoalsCard:
+      type: object
+      properties:
+        title:
+          type: string
+          readOnly: true
+        headerIcon:
+          type: string
+          readOnly: true
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalsCardItem'
+          readOnly: true
+      required:
+      - goals
+      - headerIcon
+      - title
+    GoalsCardItem:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        targetRub:
+          type: number
+          format: double
+          readOnly: true
+        currentRub:
+          type: number
+          format: double
+          readOnly: true
+        percent:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - currentRub
+      - id
+      - name
+      - percent
+      - targetRub
     HealthCheckResponse:
       type: object
       properties:
@@ -11356,6 +11777,18 @@ components:
       - status
       - timestamp
       - version
+    HomeGreeting:
+      type: object
+      properties:
+        phrase:
+          type: string
+          readOnly: true
+        userName:
+          type: string
+          readOnly: true
+      required:
+      - phrase
+      - userName
     InflationCalculationResult:
       type: object
       properties:
@@ -13397,6 +13830,30 @@ components:
       - contributions
       - growth
       - total
+    PeriodCurrencyBar:
+      type: object
+      properties:
+        defaultPeriod:
+          type: string
+          readOnly: true
+        defaultCurrency:
+          type: string
+          readOnly: true
+        periodOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardPeriodOption'
+          readOnly: true
+        currencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardCurrencyOption'
+          readOnly: true
+      required:
+      - currencies
+      - defaultCurrency
+      - defaultPeriod
+      - periodOptions
     PlannedCalendarDayBadge:
       type: object
       properties:

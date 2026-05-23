@@ -50,3 +50,74 @@ class DashboardSummarySerializer(serializers.Serializer):
         read_only=True,
     )
     reminders = DashboardRemindersCardSerializer(read_only=True)
+
+
+class DashboardPeriodOptionSerializer(serializers.Serializer):
+    value = serializers.CharField(read_only=True)
+    label = serializers.CharField(read_only=True)
+
+
+class DashboardCurrencyOptionSerializer(serializers.Serializer):
+    title = serializers.CharField(read_only=True)
+    value = serializers.CharField(read_only=True)
+
+
+class PeriodCurrencyBarSerializer(serializers.Serializer):
+    defaultPeriod = serializers.CharField(read_only=True)
+    defaultCurrency = serializers.CharField(read_only=True)
+    periodOptions = DashboardPeriodOptionSerializer(many=True, read_only=True)
+    currencies = DashboardCurrencyOptionSerializer(many=True, read_only=True)
+
+
+class BalanceCardSerializer(serializers.Serializer):
+    title = serializers.CharField(read_only=True)
+    headerIcon = serializers.CharField(read_only=True)
+    amountRub = serializers.FloatField(read_only=True)
+    trendLabel = serializers.CharField(read_only=True)
+
+
+class AccountsCardRowSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    amountRub = serializers.FloatField(read_only=True)
+    icon = serializers.CharField(read_only=True)
+
+
+class AccountsCardSerializer(serializers.Serializer):
+    title = serializers.CharField(read_only=True)
+    headerIcon = serializers.CharField(read_only=True)
+    rows = AccountsCardRowSerializer(many=True, read_only=True)
+    footerLinkLabel = serializers.CharField(read_only=True)
+
+
+class GoalsCardItemSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    targetRub = serializers.FloatField(read_only=True)
+    currentRub = serializers.FloatField(read_only=True)
+    percent = serializers.FloatField(read_only=True)
+
+
+class GoalsCardSerializer(serializers.Serializer):
+    title = serializers.CharField(read_only=True)
+    headerIcon = serializers.CharField(read_only=True)
+    goals = GoalsCardItemSerializer(many=True, read_only=True)
+
+
+class ExpenseDynamicsWeekSerializer(serializers.Serializer):
+    label = serializers.CharField(read_only=True)
+    income = serializers.IntegerField(read_only=True, min_value=0, max_value=100)
+    expenses = serializers.IntegerField(read_only=True, min_value=0, max_value=100)
+
+
+class ExpenseDynamicsCardSerializer(serializers.Serializer):
+    title = serializers.CharField(read_only=True)
+    headerIcon = serializers.CharField(read_only=True)
+    monthLabel = serializers.CharField(read_only=True)
+    legendIncome = serializers.CharField(read_only=True)
+    legendExpenses = serializers.CharField(read_only=True)
+    yAxisLabels = serializers.ListField(
+        child=serializers.CharField(),
+        read_only=True,
+    )
+    weeks = ExpenseDynamicsWeekSerializer(many=True, read_only=True)

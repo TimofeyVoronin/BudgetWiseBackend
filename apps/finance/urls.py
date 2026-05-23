@@ -18,7 +18,14 @@ from apps.finance.budget_notification_views import (
 )
 from apps.finance.category_views import CategoryViewSet
 from apps.finance.currency_views import CurrencyViewSet
-from apps.finance.dashboard_views import DashboardSummaryView
+from apps.finance.dashboard_views import (
+    DashboardAccountsSummaryView,
+    DashboardBalanceSummaryView,
+    DashboardExpenseDynamicsView,
+    DashboardGoalsSummaryView,
+    DashboardPeriodCurrencyView,
+    DashboardSummaryView,
+)
 from apps.finance.financial_calendar_views import (
     FinancialCalendarDayView,
     FinancialCalendarEventsView,
@@ -104,6 +111,31 @@ urlpatterns = [
         "dashboard/summary/",
         DashboardSummaryView.as_view(),
         name="dashboard-summary",
+    ),
+    path(
+        "dashboard/period-currency/",
+        DashboardPeriodCurrencyView.as_view(),
+        name="dashboard-period-currency",
+    ),
+    path(
+        "dashboard/balance-summary/",
+        DashboardBalanceSummaryView.as_view(),
+        name="dashboard-balance-summary",
+    ),
+    path(
+        "dashboard/accounts-summary/",
+        DashboardAccountsSummaryView.as_view(),
+        name="dashboard-accounts-summary",
+    ),
+    path(
+        "dashboard/goals-summary/",
+        DashboardGoalsSummaryView.as_view(),
+        name="dashboard-goals-summary",
+    ),
+    path(
+        "dashboard/expense-dynamics/",
+        DashboardExpenseDynamicsView.as_view(),
+        name="dashboard-expense-dynamics",
     ),
 
     path(

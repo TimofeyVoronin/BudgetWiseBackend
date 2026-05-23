@@ -1,3 +1,5 @@
+from datetime import date
+
 from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiParameter,
@@ -22,11 +24,26 @@ from apps.finance.dashboard import (
     DASHBOARD_PERIOD_TYPES,
     DEFAULT_DASHBOARD_PERIOD,
     DEFAULT_DASHBOARD_RECENT_LIMIT,
+    DASHBOARD_PERIOD_MONTH,
+    DASHBOARD_WIDGET_PERIOD_TYPES,
     MAX_DASHBOARD_RECENT_LIMIT,
+    build_dashboard_accounts_summary,
+    build_dashboard_balance_summary,
+    build_dashboard_expense_dynamics,
+    build_dashboard_goals_summary,
+    build_dashboard_period_currency_bar,
     get_cached_dashboard_summary,
 )
-from apps.finance.dashboard_serializers import DashboardSummarySerializer
+from apps.finance.dashboard_serializers import (
+    AccountsCardSerializer,
+    BalanceCardSerializer,
+    DashboardSummarySerializer,
+    ExpenseDynamicsCardSerializer,
+    GoalsCardSerializer,
+    PeriodCurrencyBarSerializer,
+)
 from apps.finance.tags import get_tag_ids_query_param
+from apps.users.app_settings_formatting import get_user_app_today
 
 
 def get_dashboard_recent_limit(query_params) -> int:
@@ -272,4 +289,325 @@ class DashboardSummaryView(APIView):
         )
         serializer = DashboardSummarySerializer(dashboard_data)
 
+        return Response(serializer.data)
+
+
+def get_dashboard_widget_period_query_param(query_params) -> str:
+    period = query_params.get("period") or DEFAULT_DASHBOARD_PERIOD
+
+    if period not in DASHBOARD_WIDGET_PERIOD_TYPES:
+        raise ValidationError(
+            {
+                "period": [
+                    "Параметр period должен быть week, month или year."
+                ]
+            }
+        )
+
+    return period
+
+
+def get_dashboard_month_query_param(query_params, user) -> date:
+    value = query_params.get("month")
+
+    if value in (None, ""):
+        today = get_user_app_today(user)
+        return today.replace(day=1)
+
+    normalized = str(value).strip()
+
+    try:
+        year_raw, month_raw = normalized.split("-", 1)
+        year = int(year_raw)
+        month = int(month_raw)
+        return date(year, month, 1)
+    except (TypeError, ValueError):
+        raise ValidationError(
+            {
+                "month": [
+                    "Параметр month должен быть в формате YYYY-MM, например 2026-05."
+                ]
+            }
+        )
+
+
+def get_dashboard_common_query_params(query_params, user) -> dict:
+    period = get_dashboard_widget_period_query_param(query_params)
+    return {
+        "period_type": period,
+        "currency": get_dashboard_currency_query_param(query_params, user),
+    }
+
+
+class DashboardPeriodCurrencyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-dashboard"],
+        operation_id="finance_dashboard_period_currency_retrieve",
+        summary="Получить настройки периода и валюты для dashboard",
+        description=(
+            "Возвращает модель верхней панели dashboard: период по умолчанию, "
+            "валюту по умолчанию из настроек приложения и списки доступных периодов "
+            "и видимых валют пользователя."
+        ),
+        responses={200: PeriodCurrencyBarSerializer},
+        examples=[
+            OpenApiExample(
+                "Период и валюта dashboard",
+                value={
+                    "defaultPeriod": "month",
+                    "defaultCurrency": "RUB",
+                    "periodOptions": [
+                        {"value": "week", "label": "Неделя"},
+                        {"value": "month", "label": "Месяц"},
+                        {"value": "year", "label": "Год"},
+                    ],
+                    "currencies": [
+                        {"title": "Руб.", "value": "RUB"},
+                        {"title": "Долл.", "value": "USD"},
+                        {"title": "Евро", "value": "EUR"},
+                    ],
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def get(self, request):
+        serializer = PeriodCurrencyBarSerializer(
+            build_dashboard_period_currency_bar(user=request.user)
+        )
+        return Response(serializer.data)
+
+
+class DashboardBalanceSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-dashboard"],
+        operation_id="finance_dashboard_balance_summary_retrieve",
+        summary="Получить карточку текущего баланса",
+        description=(
+            "Возвращает данные карточки текущего баланса для главной страницы. "
+            "Параметр period задаёт период для расчёта тренда, currency фильтрует "
+            "счета и операции по валюте счёта. Конвертация валют не выполняется."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "period",
+                OpenApiTypes.STR,
+                description="Период тренда: week, month или year. По умолчанию month.",
+            ),
+            OpenApiParameter(
+                "currency",
+                OpenApiTypes.STR,
+                description=(
+                    "ISO-код видимой валюты пользователя. Если не передан, "
+                    "используется валюта по умолчанию из настроек приложения."
+                ),
+            ),
+        ],
+        responses={200: BalanceCardSerializer},
+        examples=[
+            OpenApiExample(
+                "Карточка баланса",
+                value={
+                    "title": "Текущий баланс",
+                    "headerIcon": "wallet",
+                    "amountRub": 13000.0,
+                    "trendLabel": "+12.5% к прошлому месяцу",
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def get(self, request):
+        query_params = get_dashboard_common_query_params(
+            request.query_params,
+            request.user,
+        )
+        serializer = BalanceCardSerializer(
+            build_dashboard_balance_summary(
+                user=request.user,
+                **query_params,
+            )
+        )
+        return Response(serializer.data)
+
+
+class DashboardAccountsSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-dashboard"],
+        operation_id="finance_dashboard_accounts_summary_retrieve",
+        summary="Получить карточку счетов",
+        description=(
+            "Возвращает превью активных неархивных счетов пользователя для dashboard. "
+            "Параметр currency фильтрует счета по валюте. Параметр period принимается "
+            "для единого frontend-контракта, но на список счетов не влияет."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "period",
+                OpenApiTypes.STR,
+                description="Период dashboard: week, month или year. По умолчанию month.",
+            ),
+            OpenApiParameter(
+                "currency",
+                OpenApiTypes.STR,
+                description=(
+                    "ISO-код видимой валюты пользователя. Если не передан, "
+                    "используется валюта по умолчанию из настроек приложения."
+                ),
+            ),
+        ],
+        responses={200: AccountsCardSerializer},
+        examples=[
+            OpenApiExample(
+                "Карточка счетов",
+                value={
+                    "title": "Счета",
+                    "headerIcon": "credit-card",
+                    "rows": [
+                        {
+                            "id": "1",
+                            "name": "Основная карта",
+                            "amountRub": 10000.0,
+                            "icon": "card",
+                        }
+                    ],
+                    "footerLinkLabel": "Все счета",
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def get(self, request):
+        query_params = get_dashboard_common_query_params(
+            request.query_params,
+            request.user,
+        )
+        serializer = AccountsCardSerializer(
+            build_dashboard_accounts_summary(
+                user=request.user,
+                **query_params,
+            )
+        )
+        return Response(serializer.data)
+
+
+class DashboardGoalsSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-dashboard"],
+        operation_id="finance_dashboard_goals_summary_retrieve",
+        summary="Получить карточку целей",
+        description=(
+            "Возвращает список активных целей для карточки на главной странице. "
+            "Если цель привязана к счёту, она попадает в ответ только для валюты этого счёта. "
+            "Цели без счёта показываются только для валюты по умолчанию из настроек приложения. "
+            "Конвертация валют не выполняется."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "currency",
+                OpenApiTypes.STR,
+                description=(
+                    "ISO-код видимой валюты пользователя. Если не передан, "
+                    "используется валюта по умолчанию из настроек приложения."
+                ),
+            ),
+        ],
+        responses={200: GoalsCardSerializer},
+        examples=[
+            OpenApiExample(
+                "Карточка целей",
+                value={
+                    "title": "Цели",
+                    "headerIcon": "target",
+                    "goals": [
+                        {
+                            "id": "1",
+                            "name": "Ремонт",
+                            "targetRub": 500000.0,
+                            "currentRub": 455000.0,
+                            "percent": 91.0,
+                        }
+                    ],
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def get(self, request):
+        currency = get_dashboard_currency_query_param(request.query_params, request.user)
+        serializer = GoalsCardSerializer(
+            build_dashboard_goals_summary(
+                user=request.user,
+                currency=currency,
+            )
+        )
+        return Response(serializer.data)
+
+
+class DashboardExpenseDynamicsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-dashboard"],
+        operation_id="finance_dashboard_expense_dynamics_retrieve",
+        summary="Получить динамику расходов и доходов по неделям месяца",
+        description=(
+            "Возвращает модель столбчатого графика доходов и расходов. "
+            "Месяц задаётся параметром month в формате YYYY-MM. Каждая точка weeks "
+            "является неделей внутри выбранного месяца. Значения income и expenses "
+            "нормализованы в диапазон 0-100 относительно максимального значения месяца."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "month",
+                OpenApiTypes.STR,
+                description="Месяц графика в формате YYYY-MM, например 2026-05.",
+            ),
+            OpenApiParameter(
+                "currency",
+                OpenApiTypes.STR,
+                description=(
+                    "ISO-код видимой валюты пользователя. Если не передан, "
+                    "используется валюта по умолчанию из настроек приложения."
+                ),
+            ),
+        ],
+        responses={200: ExpenseDynamicsCardSerializer},
+        examples=[
+            OpenApiExample(
+                "Динамика по неделям",
+                value={
+                    "title": "Динамика расходов и доходов",
+                    "headerIcon": "bar-chart-3",
+                    "monthLabel": "Май",
+                    "legendIncome": "Доходы",
+                    "legendExpenses": "Расходы",
+                    "yAxisLabels": ["0", "25", "50", "75", "100"],
+                    "weeks": [
+                        {"label": "1 неделя", "income": 100, "expenses": 40},
+                        {"label": "2 неделя", "income": 0, "expenses": 25},
+                    ],
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def get(self, request):
+        currency = get_dashboard_currency_query_param(request.query_params, request.user)
+        month = get_dashboard_month_query_param(request.query_params, request.user)
+        serializer = ExpenseDynamicsCardSerializer(
+            build_dashboard_expense_dynamics(
+                user=request.user,
+                month=month,
+                currency=currency,
+            )
+        )
         return Response(serializer.data)
