@@ -32,6 +32,32 @@ PROVERKACHEKA_ENABLED = env.bool(
 )
 
 
+CURRENCY_RATES_ENABLED = env.bool(
+    "CURRENCY_RATES_ENABLED",
+    default=True,
+)
+CURRENCY_RATES_CACHE_SECONDS = env.int(
+    "CURRENCY_RATES_CACHE_SECONDS",
+    default=15 * 60,
+)
+CURRENCY_RATES_FAILURE_CACHE_SECONDS = env.int(
+    "CURRENCY_RATES_FAILURE_CACHE_SECONDS",
+    default=5 * 60,
+)
+CURRENCY_RATES_TIMEOUT_SECONDS = env.float(
+    "CURRENCY_RATES_TIMEOUT_SECONDS",
+    default=2.0,
+)
+CURRENCY_FIAT_RATES_URL = env(
+    "CURRENCY_FIAT_RATES_URL",
+    default="https://www.cbr.ru/scripts/XML_daily.asp",
+)
+CURRENCY_CRYPTO_RATES_URL = env(
+    "CURRENCY_CRYPTO_RATES_URL",
+    default="https://api.coingecko.com/api/v3/simple/price",
+)
+
+
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
     default="django.core.mail.backends.console.EmailBackend",

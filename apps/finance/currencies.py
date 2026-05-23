@@ -42,7 +42,7 @@ CURRENCY_CATALOG = [
         "flagIcon": "usd",
         "decimalPlaces": 2,
         "popular": True,
-        "rateToPrimary": Decimal("0.00890000"),
+        "rateToPrimary": Decimal("90.00000000"),
         "defaultVisible": True,
     },
     {
@@ -52,7 +52,7 @@ CURRENCY_CATALOG = [
         "flagIcon": "eur",
         "decimalPlaces": 2,
         "popular": True,
-        "rateToPrimary": Decimal("0.00820000"),
+        "rateToPrimary": Decimal("98.00000000"),
         "defaultVisible": True,
     },
     {
@@ -62,7 +62,7 @@ CURRENCY_CATALOG = [
         "flagIcon": "kzt",
         "decimalPlaces": 2,
         "popular": True,
-        "rateToPrimary": Decimal("4.08270000"),
+        "rateToPrimary": Decimal("0.18000000"),
         "defaultVisible": True,
     },
     {
@@ -72,7 +72,7 @@ CURRENCY_CATALOG = [
         "flagIcon": "cny",
         "decimalPlaces": 2,
         "popular": True,
-        "rateToPrimary": Decimal("0.06470000"),
+        "rateToPrimary": Decimal("12.50000000"),
         "defaultVisible": False,
     },
     {
@@ -82,7 +82,7 @@ CURRENCY_CATALOG = [
         "flagIcon": "thb",
         "decimalPlaces": 2,
         "popular": False,
-        "rateToPrimary": Decimal("0.31000000"),
+        "rateToPrimary": Decimal("2.70000000"),
         "defaultVisible": True,
     },
     {
@@ -92,7 +92,7 @@ CURRENCY_CATALOG = [
         "flagIcon": "byn",
         "decimalPlaces": 2,
         "popular": False,
-        "rateToPrimary": Decimal("0.02900000"),
+        "rateToPrimary": Decimal("30.00000000"),
         "defaultVisible": True,
     },
     {
@@ -102,7 +102,7 @@ CURRENCY_CATALOG = [
         "flagIcon": "gbp",
         "decimalPlaces": 2,
         "popular": True,
-        "rateToPrimary": Decimal("0.00710000"),
+        "rateToPrimary": Decimal("115.00000000"),
         "defaultVisible": True,
     },
     {
@@ -112,7 +112,7 @@ CURRENCY_CATALOG = [
         "flagIcon": "btc",
         "decimalPlaces": 8,
         "popular": False,
-        "rateToPrimary": Decimal("0.00000012"),
+        "rateToPrimary": Decimal("9000000.00000000"),
         "defaultVisible": True,
     },
     {
@@ -122,7 +122,7 @@ CURRENCY_CATALOG = [
         "flagIcon": "eth",
         "decimalPlaces": 8,
         "popular": False,
-        "rateToPrimary": Decimal("0.00000210"),
+        "rateToPrimary": Decimal("300000.00000000"),
         "defaultVisible": False,
     },
 ]
@@ -470,13 +470,19 @@ def build_catalog_items(user, *, search: str = "", exclude_added: bool = False) 
 
 @transaction.atomic
 def set_primary_currency(user, user_currency: UserCurrency) -> UserCurrency:
-    UserCurrency.objects.filter(user=user, is_primary=True).exclude(pk=user_currency.pk).update(
-        is_primary=False,
-    )
-    user_currency.is_primary = True
-    user_currency.is_visible = True
-    user_currency.rate_to_primary = Decimal("1.00000000")
-    user_currency.save(update_fields=["is_primary", "is_visible", "rate_to_primary", "updated_at"])
+    from apps.finance.currency_rates import refresh_user_currency_rates
+
+    with transaction.atomic():
+        UserCurrency.objects.filter(user=user, is_primary=True).exclude(pk=user_currency.pk).update(
+            is_primary=False,
+        )
+        user_currency.is_primary = True
+        user_currency.is_visible = True
+        user_currency.rate_to_primary = Decimal("1.00000000")
+        user_currency.save(update_fields=["is_primary", "is_visible", "rate_to_primary", "updated_at"])
+
+    refresh_user_currency_rates(user, force=True)
+    user_currency.refresh_from_db()
     return user_currency
 
 

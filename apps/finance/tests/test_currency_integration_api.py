@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
@@ -20,6 +21,8 @@ from apps.finance.tests.base import FinanceAPITestCase
 CURRENCIES_URL = "/api/v1/finance/currencies/"
 
 
+
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceCurrencyIntegrationAPITests(FinanceAPITestCase):
     def get_currency_row(self, code: str):
         response = self.client.get(CURRENCIES_URL)

@@ -69,7 +69,7 @@ class CurrencyListRowSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data["id"] = instance.pk
+        data["id"] = str(instance.pk)
         if instance.is_primary:
             data["rateToPrimary"] = 1.0
         return data
@@ -206,7 +206,7 @@ class SetCurrencyVisibilitySerializer(serializers.Serializer):
 
 class DeleteCurrencyResponseSerializer(serializers.Serializer):
     deleted = serializers.BooleanField(help_text="Признак успешного удаления.")
-    id = serializers.IntegerField(help_text="ID удалённой валюты пользователя.")
+    id = serializers.CharField(help_text="ID удалённой валюты пользователя.")
 
 
 class DeleteCurrencyConflictResponseSerializer(serializers.Serializer):

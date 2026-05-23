@@ -1,5 +1,8 @@
 from decimal import Decimal
+from unittest.mock import patch
 
+from django.core.cache import cache
+from django.test import override_settings
 from rest_framework import status
 
 from apps.finance.currencies import get_user_currencies
@@ -10,6 +13,8 @@ from apps.finance.tests.base import FinanceAPITestCase
 CURRENCIES_URL = "/api/v1/finance/currencies/"
 
 
+
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceCurrenciesAPITests(FinanceAPITestCase):
     def get_currency_row(self, code: str, response=None):
         if response is None:
@@ -317,3 +322,62 @@ class FinanceCurrenciesAPITests(FinanceAPITestCase):
         self.assertIn("code", response.data["fieldErrors"])
         self.assertIn("name", response.data["fieldErrors"])
         self.assertIn("symbol", response.data["fieldErrors"])
+
+
+
+@override_settings(CURRENCY_RATES_ENABLED=True)
+class FinanceCurrencyRatesAPITests(FinanceAPITestCase):
+    def get_currency_row(self, code: str, response=None):
+        if response is None:
+            response = self.client.get(CURRENCIES_URL)
+        return next(item for item in response.data["items"] if item["code"] == code)
+
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+
+    @patch("apps.finance.currency_rates.fetch_crypto_rub_values")
+    @patch("apps.finance.currency_rates.fetch_cbr_rub_values")
+    def test_currency_list_refreshes_rates_against_primary_currency(self, mock_cbr_rates, mock_crypto_rates):
+        self.authenticate()
+        mock_cbr_rates.return_value = {
+            "RUB": Decimal("1.00000000"),
+            "USD": Decimal("100.00000000"),
+            "EUR": Decimal("120.00000000"),
+        }
+        mock_crypto_rates.return_value = {
+            "BTC": Decimal("10000000.00000000"),
+        }
+
+        response = self.client.get(CURRENCIES_URL)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.get_currency_row("USD", response)["rateToPrimary"], Decimal("100.00000000"))
+        self.assertEqual(self.get_currency_row("EUR", response)["rateToPrimary"], Decimal("120.00000000"))
+        self.assertEqual(self.get_currency_row("BTC", response)["rateToPrimary"], Decimal("10000000.00000000"))
+
+    @patch("apps.finance.currency_rates.fetch_crypto_rub_values")
+    @patch("apps.finance.currency_rates.fetch_cbr_rub_values")
+    def test_set_primary_currency_recalculates_rates_and_keeps_single_primary(self, mock_cbr_rates, mock_crypto_rates):
+        self.authenticate()
+        cache.clear()
+        mock_cbr_rates.return_value = {
+            "RUB": Decimal("1.00000000"),
+            "USD": Decimal("100.00000000"),
+            "EUR": Decimal("120.00000000"),
+        }
+        mock_crypto_rates.return_value = {}
+
+        initial_response = self.client.get(CURRENCIES_URL)
+        usd = self.get_currency_row("USD", initial_response)
+
+        response = self.client.patch(f"{CURRENCIES_URL}{usd['id']}/set-primary/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["primaryCode"], "USD")
+        primary_items = [item for item in response.data["items"] if item["isPrimary"]]
+        self.assertEqual(len(primary_items), 1)
+        self.assertEqual(primary_items[0]["code"], "USD")
+        self.assertEqual(self.get_currency_row("USD", response)["rateToPrimary"], 1.0)
+        self.assertEqual(self.get_currency_row("RUB", response)["rateToPrimary"], Decimal("0.01000000"))
+        self.assertEqual(self.get_currency_row("EUR", response)["rateToPrimary"], Decimal("1.20000000"))

@@ -48,6 +48,7 @@ from apps.finance.currency_serializers import (
     build_select_options_payload,
 )
 from apps.finance.models import Currency, UserCurrency
+from apps.finance.currency_rates import refresh_user_currency_rates
 from apps.finance.permissions import IsObjectOwner
 
 
@@ -159,7 +160,12 @@ class CurrencyViewSet(viewsets.ModelViewSet):
         return queryset
 
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
+        get_user_currencies(request.user)
+        refresh_user_currency_rates(request.user)
+        queryset = filter_user_currencies_queryset(
+            get_user_currencies(request.user),
+            request,
+        )
         serializer = self.get_serializer(queryset, many=True)
 
         return Response(
@@ -192,7 +198,7 @@ class CurrencyViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         self._ensure_can_delete(instance)
-        currency_id = instance.pk
+        currency_id = str(instance.pk)
         instance.delete()
         return Response({"deleted": True, "id": currency_id})
 
@@ -260,6 +266,8 @@ class CurrencyViewSet(viewsets.ModelViewSet):
                 "rate_to_primary": DEFAULT_RATE_BY_CODE.get(code, Decimal("1.00000000")),
             },
         )
+        refresh_user_currency_rates(request.user, force=True)
+        user_currency.refresh_from_db()
         return Response(
             self.get_serializer(user_currency).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
