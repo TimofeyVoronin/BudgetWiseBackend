@@ -13,6 +13,7 @@ from openpyxl import load_workbook
 from rest_framework import status
 
 from apps.finance.models import Account, Budget, Category, Transaction, TransactionType
+from apps.users.app_settings_formatting import get_user_app_today
 
 from .base import FinanceAPITestCase
 
@@ -73,12 +74,14 @@ class FinanceDashboardAPITests(FinanceAPITestCase):
             )
 
             response = self.client.get(reverse("finance:dashboard-summary"))
+            expected_today = get_user_app_today(self.user)
+            expected_month_start = expected_today.replace(day=1)
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
 
             self.assertEqual(response.data["period"]["type"], "month")
-            self.assertEqual(response.data["period"]["date_from"], str(month_start))
-            self.assertEqual(response.data["period"]["date_to"], str(self.today))
+            self.assertEqual(response.data["period"]["date_from"], str(expected_month_start))
+            self.assertEqual(response.data["period"]["date_to"], str(expected_today))
             self.assertEqual(response.data["currency"], "RUB")
 
             self.assertEqual(response.data["totals"]["accounts_balance"], "13000.00")
@@ -180,13 +183,14 @@ class FinanceDashboardAPITests(FinanceAPITestCase):
             self.assertEqual(week_response.status_code, status.HTTP_200_OK)
             self.assertEqual(week_response.data["period"]["type"], "week")
 
-            expected_week_start = self.today - timezone.timedelta(days=self.today.weekday())
+            expected_today = get_user_app_today(self.user)
+            expected_week_start = expected_today - timezone.timedelta(days=expected_today.weekday())
 
             self.assertEqual(
                 week_response.data["period"]["date_from"],
                 str(expected_week_start),
             )
-            self.assertEqual(week_response.data["period"]["date_to"], str(self.today))
+            self.assertEqual(week_response.data["period"]["date_to"], str(expected_today))
 
             year_response = self.client.get(
                 reverse("finance:dashboard-summary"),
@@ -199,9 +203,9 @@ class FinanceDashboardAPITests(FinanceAPITestCase):
             self.assertEqual(year_response.data["period"]["type"], "year")
             self.assertEqual(
                 year_response.data["period"]["date_from"],
-                str(self.today.replace(month=1, day=1)),
+                str(expected_today.replace(month=1, day=1)),
             )
-            self.assertEqual(year_response.data["period"]["date_to"], str(self.today))
+            self.assertEqual(year_response.data["period"]["date_to"], str(expected_today))
 
     def test_dashboard_summary_filters_by_currency(self):
             self.authenticate()

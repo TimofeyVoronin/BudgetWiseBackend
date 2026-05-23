@@ -14,6 +14,7 @@ from apps.finance.models import (
     TransactionType,
 )
 from apps.finance.tests.base import FinanceAPITestCase
+from apps.users.app_settings_formatting import get_user_app_today
 
 
 TEMPLATES_BASE_URL = "/api/v1/finance/transaction-templates/"
@@ -252,6 +253,28 @@ class FinanceTransactionTemplatesAPITests(FinanceAPITestCase):
         self.assertEqual(sort_response.data["pagination"]["totalItems"], 3)
         self.assertEqual(sort_response.data["pagination"]["totalPages"], 2)
 
+    def test_template_meta_uses_app_default_currency_after_settings_update(self):
+        self.authenticate()
+
+        settings_response = self.client.patch(
+            "/api/v1/settings/app/",
+            {
+                "timezone": "Asia/Krasnoyarsk",
+                "dateFormat": "DD.MM.YYYY",
+                "numberFormat": "ru-RU",
+                "defaultCurrency": "USD",
+            },
+            format="json",
+        )
+        self.assertEqual(settings_response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get(f"{TEMPLATES_BASE_URL}meta/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["defaultCurrency"], "USD")
+        usd_option = next(item for item in response.data["currencies"] if item["value"] == "USD")
+        self.assertTrue(usd_option["isDefault"])
+
     def test_template_custom_actions_archive_restore_duplicate_apply_draft_and_meta(self):
         self.authenticate()
         tag = self.create_tag(name="обед")
@@ -268,7 +291,7 @@ class FinanceTransactionTemplatesAPITests(FinanceAPITestCase):
         self.assertEqual(draft_response.data["templateId"], template.id)
         self.assertEqual(draft_response.data["templateName"], template.name)
         self.assertEqual(draft_response.data["tagIds"], [tag.id])
-        self.assertEqual(str(draft_response.data["operationDate"]), str(self.today))
+        self.assertEqual(str(draft_response.data["operationDate"]), str(get_user_app_today(self.user)))
 
         duplicate_response = self.client.post(f"{TEMPLATES_BASE_URL}{template.id}/duplicate/")
         self.assertEqual(duplicate_response.status_code, status.HTTP_201_CREATED)

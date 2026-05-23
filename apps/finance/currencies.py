@@ -262,6 +262,25 @@ def get_user_primary_currency_code(user) -> str:
     return primary.code if primary else DEFAULT_CURRENCY_CODE
 
 
+def get_user_default_currency_code(user) -> str:
+    """Return currency selected in app settings, falling back to primary currency."""
+    primary_code = get_user_primary_currency_code(user)
+
+    try:
+        from apps.users.app_settings import get_or_create_user_app_settings
+
+        settings = get_or_create_user_app_settings(user)
+        default_code = normalize_currency_code(settings.default_currency)
+    except Exception:
+        return primary_code
+
+    user_currency = get_user_currency_by_code(user, default_code)
+    if user_currency is None or not user_currency.is_visible:
+        return primary_code
+
+    return default_code
+
+
 def get_user_visible_currency_codes(user) -> set[str]:
     return set(get_visible_user_currencies(user).values_list("currency__code", flat=True))
 
@@ -311,12 +330,15 @@ def validate_user_currency_available(
 
 
 def build_currency_select_options(user) -> list[dict]:
+    default_currency_code = get_user_default_currency_code(user)
+
     return [
         {
             "title": f"{item.code} · {item.display_name}",
             "value": item.code,
             "symbol": item.display_symbol,
             "isPrimary": item.is_primary,
+            "isDefault": item.code == default_currency_code,
         }
         for item in get_visible_user_currencies(user)
     ]

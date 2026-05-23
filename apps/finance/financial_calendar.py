@@ -16,6 +16,14 @@ from apps.finance.models import (
     Transaction,
     TransactionType,
 )
+from apps.users.app_settings import TIMEZONE_OPTIONS, is_valid_timezone
+from apps.users.app_settings_formatting import (
+    AppSettingsFormattingContext,
+    LEGACY_TIMEZONE_OFFSETS,
+    build_app_formatting_context,
+    format_app_date,
+    format_app_money,
+)
 
 
 FINANCIAL_CALENDAR_EVENT_INCOME = "income"
@@ -37,24 +45,8 @@ FINANCIAL_CALENDAR_RISK_SAFE = "safe"
 FINANCIAL_CALENDAR_RISK_CAUTION = "caution"
 FINANCIAL_CALENDAR_RISK_RISK = "risk"
 
-DEFAULT_FINANCIAL_CALENDAR_TIMEZONE = "UTC+7"
-FINANCIAL_CALENDAR_TIMEZONES = [
-    {
-        "value": "UTC+0",
-        "label": "UTC+0",
-        "offsetHours": 0,
-    },
-    {
-        "value": "UTC+3",
-        "label": "UTC+3 Москва",
-        "offsetHours": 3,
-    },
-    {
-        "value": "UTC+7",
-        "label": "UTC+7 Красноярск",
-        "offsetHours": 7,
-    },
-]
+DEFAULT_FINANCIAL_CALENDAR_TIMEZONE = "Asia/Krasnoyarsk"
+FINANCIAL_CALENDAR_TIMEZONES = TIMEZONE_OPTIONS
 
 MAX_FINANCIAL_CALENDAR_RANGE_DAYS = 370
 
@@ -98,8 +90,9 @@ def build_financial_calendar_month(
     event_types: Iterable[str] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    timezone_value: str = DEFAULT_FINANCIAL_CALENDAR_TIMEZONE,
+    timezone_value: str | None = None,
 ) -> dict:
+    formatting_context = build_app_formatting_context(user, timezone_value=timezone_value)
     query = build_financial_calendar_query(
         user=user,
         year=year,
@@ -108,7 +101,7 @@ def build_financial_calendar_month(
         event_types=event_types,
         date_from=date_from,
         date_to=date_to,
-        timezone_value=timezone_value,
+        timezone_value=formatting_context.timezone_name,
     )
 
     events = get_financial_calendar_events(
@@ -117,6 +110,7 @@ def build_financial_calendar_month(
         date_to=query.date_to,
         account_ids=query.account_ids,
         event_types=query.event_types,
+        formatting_context=formatting_context,
     )
     projection = calculate_financial_calendar_projection(
         user=user,
@@ -124,6 +118,7 @@ def build_financial_calendar_month(
         date_to=query.date_to,
         account_ids=query.account_ids,
         events=events,
+        formatting_context=formatting_context,
     )
     mark_sharp_change_events(
         events=events,
@@ -134,13 +129,19 @@ def build_financial_calendar_month(
         month=month,
         day_forecasts=projection.day_forecasts,
         events=events,
+        formatting_context=formatting_context,
+        user=user,
     )
+
+    today = timezone.localdate(timezone=formatting_context.timezone)
 
     return {
         "year": year,
         "month": month,
-        "todayIso": timezone.localdate().isoformat(),
+        "todayIso": today.isoformat(),
+        "todayLabel": format_app_date(today, formatting_context),
         "openingBalanceRub": format_money(projection.opening_balance),
+        "openingBalanceLabel": format_app_money(projection.opening_balance, formatting_context, user=user, currency_code="RUB"),
         "cells": cells,
         "events": events,
         "dayForecasts": projection.day_forecasts,
@@ -157,7 +158,7 @@ def build_financial_calendar_query(
     event_types: Iterable[str] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    timezone_value: str = DEFAULT_FINANCIAL_CALENDAR_TIMEZONE,
+    timezone_value: str | None = None,
 ) -> FinancialCalendarQuery:
     if month < 1 or month > 12:
         raise ValueError("Месяц должен быть от 1 до 12.")
@@ -182,7 +183,8 @@ def build_financial_calendar_query(
         allowed_values = ", ".join(sorted(FINANCIAL_CALENDAR_EVENT_TYPES))
         raise ValueError(f"Недопустимые типы событий. Допустимые значения: {allowed_values}.")
 
-    if timezone_value not in {item["value"] for item in FINANCIAL_CALENDAR_TIMEZONES}:
+    resolved_timezone_value = timezone_value or DEFAULT_FINANCIAL_CALENDAR_TIMEZONE
+    if not is_valid_financial_calendar_timezone(resolved_timezone_value):
         raise ValueError("Недопустимый часовой пояс календаря.")
 
     return FinancialCalendarQuery(
@@ -194,8 +196,20 @@ def build_financial_calendar_query(
         grid_date_to=grid_date_to,
         account_ids=resolved_account_ids,
         event_types=resolved_event_types,
-        timezone_value=timezone_value,
+        timezone_value=resolved_timezone_value,
     )
+
+
+def is_valid_financial_calendar_timezone(value: str) -> bool:
+    return is_valid_timezone(value) or value in LEGACY_TIMEZONE_OFFSETS
+
+
+def get_context_today(context: AppSettingsFormattingContext) -> date:
+    return timezone.localdate(timezone=context.timezone)
+
+
+def get_calendar_money_label(value: Decimal | None, context: AppSettingsFormattingContext, user) -> str | None:
+    return format_app_money(value, context, user=user, currency_code="RUB")
 
 
 def get_financial_calendar_account_ids(user, account_ids: list[int] | None = None) -> list[int]:
@@ -309,9 +323,9 @@ def calculate_projection_opening_balance(
     user,
     account_ids: list[int],
     date_from: date,
+    today: date,
 ) -> Decimal:
     current_balance = get_accounts_opening_balance(user, account_ids)
-    today = timezone.localdate()
 
     if date_from <= today:
         actual_delta = get_actual_transactions_delta(
@@ -338,11 +352,13 @@ def get_financial_calendar_events(
     date_to: date,
     account_ids: list[int],
     event_types: set[str] | None = None,
+    formatting_context: AppSettingsFormattingContext | None = None,
 ) -> list[dict]:
     if not account_ids:
         return []
 
     event_types = event_types or FINANCIAL_CALENDAR_EVENT_TYPES
+    formatting_context = formatting_context or get_default_financial_calendar_context(user)
     events: list[dict] = []
 
     if FINANCIAL_CALENDAR_EVENT_INCOME in event_types or FINANCIAL_CALENDAR_EVENT_EXPENSE in event_types:
@@ -362,7 +378,7 @@ def get_financial_calendar_events(
             event_type = transaction.type
             if event_type not in event_types:
                 continue
-            events.append(transaction_to_calendar_event(transaction))
+            events.append(transaction_to_calendar_event(transaction, formatting_context, user))
 
     if FINANCIAL_CALENDAR_EVENT_INCOME in event_types or FINANCIAL_CALENDAR_EVENT_EXPENSE in event_types:
         planned_queryset = (
@@ -383,13 +399,17 @@ def get_financial_calendar_events(
             event_type = planned.type
             if event_type not in event_types:
                 continue
-            events.append(planned_to_calendar_event(planned))
+            events.append(planned_to_calendar_event(planned, formatting_context, user))
 
     events.sort(key=lambda item: (item["date"], item["status"], item["id"]))
     return events
 
 
-def transaction_to_calendar_event(transaction: Transaction) -> dict:
+def get_default_financial_calendar_context(user) -> AppSettingsFormattingContext:
+    return build_app_formatting_context(user)
+
+
+def transaction_to_calendar_event(transaction: Transaction, formatting_context: AppSettingsFormattingContext, user) -> dict:
     signed_amount = get_signed_amount(transaction.type, transaction.amount)
     title = transaction.description.strip() if transaction.description else transaction.category.name
 
@@ -398,10 +418,12 @@ def transaction_to_calendar_event(transaction: Transaction) -> dict:
         "sourceId": transaction.id,
         "sourceType": "transaction",
         "date": transaction.operation_date.isoformat(),
+        "dateLabel": format_app_date(transaction.operation_date, formatting_context),
         "type": transaction.type,
         "title": title,
         "subtitle": transaction.category.name,
         "amountRub": format_money(signed_amount),
+        "amountLabel": get_calendar_money_label(signed_amount, formatting_context, user),
         "accountId": transaction.account_id,
         "accountName": transaction.account.name,
         "status": FINANCIAL_CALENDAR_STATUS_CONFIRMED,
@@ -409,7 +431,7 @@ def transaction_to_calendar_event(transaction: Transaction) -> dict:
     }
 
 
-def planned_to_calendar_event(planned: PlannedTransaction) -> dict:
+def planned_to_calendar_event(planned: PlannedTransaction, formatting_context: AppSettingsFormattingContext, user) -> dict:
     signed_amount = get_signed_amount(planned.type, planned.amount)
 
     return {
@@ -417,10 +439,12 @@ def planned_to_calendar_event(planned: PlannedTransaction) -> dict:
         "sourceId": planned.id,
         "sourceType": "planned_transaction",
         "date": planned.planned_date.isoformat(),
+        "dateLabel": format_app_date(planned.planned_date, formatting_context),
         "type": planned.type,
         "title": planned.name,
         "subtitle": planned.category.name,
         "amountRub": format_money(signed_amount),
+        "amountLabel": get_calendar_money_label(signed_amount, formatting_context, user),
         "accountId": planned.account_id,
         "accountName": planned.account.name,
         "status": FINANCIAL_CALENDAR_STATUS_PENDING,
@@ -435,18 +459,21 @@ def calculate_financial_calendar_projection(
     date_to: date,
     account_ids: list[int],
     events: list[dict],
+    formatting_context: AppSettingsFormattingContext | None = None,
 ) -> FinancialCalendarProjection:
+    formatting_context = formatting_context or get_default_financial_calendar_context(user)
+    today = get_context_today(formatting_context)
     opening_balance = calculate_projection_opening_balance(
         user=user,
         account_ids=account_ids,
         date_from=date_from,
+        today=today,
     )
     events_by_date: dict[str, list[dict]] = {}
 
     for event in events:
         events_by_date.setdefault(event["date"], []).append(event)
 
-    today = timezone.localdate()
     current_date = date_from
     forecast_balance = opening_balance
     actual_balance = opening_balance
@@ -477,9 +504,13 @@ def calculate_financial_calendar_projection(
         rows.append(
             {
                 "date": iso,
+                "dateLabel": format_app_date(current_date, formatting_context),
                 "actualBalanceRub": format_money(actual_balance_value) if actual_balance_value is not None else None,
+                "actualBalanceLabel": get_calendar_money_label(actual_balance_value, formatting_context, user),
                 "forecastBalanceRub": format_money(forecast_balance),
+                "forecastBalanceLabel": get_calendar_money_label(forecast_balance, formatting_context, user),
                 "totalDelta": format_money(total_delta),
+                "totalDeltaLabel": get_calendar_money_label(total_delta, formatting_context, user),
                 "hasEvents": bool(day_events),
                 "riskLevel": get_calendar_risk_level(
                     opening_balance=opening_balance,
@@ -505,6 +536,7 @@ def calculate_financial_calendar_day_forecasts(
     date_to: date,
     account_ids: list[int],
     events: list[dict],
+    formatting_context: AppSettingsFormattingContext | None = None,
 ) -> list[dict]:
     return calculate_financial_calendar_projection(
         user=user,
@@ -512,6 +544,7 @@ def calculate_financial_calendar_day_forecasts(
         date_to=date_to,
         account_ids=account_ids,
         events=events,
+        formatting_context=formatting_context,
     ).day_forecasts
 
 
@@ -535,6 +568,8 @@ def build_financial_calendar_cells(
     month: int,
     day_forecasts: list[dict],
     events: list[dict],
+    formatting_context: AppSettingsFormattingContext,
+    user,
 ) -> list[dict]:
     forecasts_by_date = {item["date"]: item for item in day_forecasts}
     events_by_date: dict[str, list[dict]] = {}
@@ -548,13 +583,16 @@ def build_financial_calendar_cells(
         cells.append(
             {
                 "iso": iso,
+                "dateLabel": format_app_date(current_date, formatting_context),
                 "day": current_date.day,
                 "inMonth": current_date.year == year and current_date.month == month,
                 "isToday": forecast["isToday"],
                 "isSaturday": current_date.weekday() == 5,
                 "isSunday": current_date.weekday() == 6,
                 "forecastBalanceRub": forecast["forecastBalanceRub"],
+                "forecastBalanceLabel": forecast["forecastBalanceLabel"],
                 "actualBalanceRub": forecast["actualBalanceRub"],
+                "actualBalanceLabel": forecast["actualBalanceLabel"],
                 "riskLevel": forecast["riskLevel"],
                 "events": events_by_date.get(iso, []),
             }
@@ -568,7 +606,9 @@ def get_financial_calendar_day(
     iso: date,
     account_ids: list[int] | None = None,
     event_types: Iterable[str] | None = None,
+    timezone_value: str | None = None,
 ) -> dict:
+    formatting_context = build_app_formatting_context(user, timezone_value=timezone_value)
     resolved_account_ids = get_financial_calendar_account_ids(user, account_ids)
     resolved_event_types = set(event_types or FINANCIAL_CALENDAR_EVENT_TYPES)
     events = get_financial_calendar_events(
@@ -577,6 +617,7 @@ def get_financial_calendar_day(
         date_to=iso,
         account_ids=resolved_account_ids,
         event_types=resolved_event_types,
+        formatting_context=formatting_context,
     )
     projection = calculate_financial_calendar_projection(
         user=user,
@@ -584,6 +625,7 @@ def get_financial_calendar_day(
         date_to=iso,
         account_ids=resolved_account_ids,
         events=events,
+        formatting_context=formatting_context,
     )
     mark_sharp_change_events(
         events=events,
@@ -592,12 +634,14 @@ def get_financial_calendar_day(
 
     return {
         "iso": iso.isoformat(),
+        "dateLabel": format_app_date(iso, formatting_context),
         "dayBalance": projection.day_forecasts[0] if projection.day_forecasts else None,
         "events": events,
     }
 
 
 def get_financial_calendar_meta(user) -> dict:
+    formatting_context = build_app_formatting_context(user)
     accounts = Account.objects.filter(
         user=user,
         is_active=True,
@@ -642,8 +686,9 @@ def get_financial_calendar_meta(user) -> dict:
             },
         ],
         "timezones": FINANCIAL_CALENDAR_TIMEZONES,
-        "defaultTimezone": DEFAULT_FINANCIAL_CALENDAR_TIMEZONE,
+        "defaultTimezone": formatting_context.timezone_name,
         "openingBalanceRub": format_money(opening_balance),
+        "openingBalanceLabel": get_calendar_money_label(opening_balance, formatting_context, user),
     }
 
 

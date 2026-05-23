@@ -28,7 +28,7 @@ from apps.finance.account_serializers import (
     get_account_meta_payload,
 )
 from apps.finance.currencies import (
-    get_user_primary_currency_code,
+    get_user_default_currency_code,
     validate_user_currency_available,
 )
 from apps.finance.models import Account, AccountType, Transaction, TransactionType
@@ -138,7 +138,7 @@ ACCOUNT_STATUS_VALUES = {
             "Создаёт счёт текущего пользователя. Текущий баланс при создании "
             "устанавливается равным начальному балансу. Если счёт отмечен как "
             "основной, остальные основные счета пользователя сбрасываются. "
-            "Если currency не передан, используется основная валюта пользователя; "
+            "Если currency не передан, используется валюта по умолчанию из настроек приложения; "
             "скрытые валюты нельзя выбирать для нового счёта."
         ),
         request=AccountSerializer,
@@ -313,13 +313,13 @@ class AccountViewSet(viewsets.ModelViewSet):
         description=(
             "Возвращает общий баланс активных неархивных счетов текущего пользователя, "
             "количество активных счетов и количество счетов в архиве. По умолчанию "
-            "используется основная валюта пользователя."
+            "используется валюта по умолчанию из настроек приложения."
         ),
         parameters=[
             OpenApiParameter(
                 "currency",
                 OpenApiTypes.STR,
-                description="ISO-код добавленной валюты пользователя. По умолчанию основная валюта.",
+                description="ISO-код добавленной валюты пользователя. По умолчанию используется валюта из настроек приложения.",
             ),
         ],
         responses={200: AccountSummarySerializer},
@@ -345,7 +345,7 @@ class AccountViewSet(viewsets.ModelViewSet):
     def summary(self, request):
         currency = request.query_params.get("currency")
         if currency in (None, ""):
-            currency = get_user_primary_currency_code(request.user)
+            currency = get_user_default_currency_code(request.user)
         else:
             currency = validate_user_currency_available(
                 request.user,
@@ -406,6 +406,7 @@ class AccountViewSet(viewsets.ModelViewSet):
                         {"title": "USD · Доллар США", "value": "USD"},
                     ],
                     "primaryCurrencyCode": "RUB",
+                        "defaultCurrencyCode": "RUB",
                 },
                 response_only=True,
             )

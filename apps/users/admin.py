@@ -1,8 +1,24 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from apps.users.models import User, UserProfileAuditLog
+from apps.users.models import User, UserAppSettings, UserProfileAuditLog
 
+
+
+
+class UserAppSettingsInline(admin.StackedInline):
+    model = UserAppSettings
+    extra = 0
+    can_delete = False
+    fields = (
+        "timezone",
+        "date_format",
+        "number_format",
+        "default_currency",
+        "created_at",
+        "updated_at",
+    )
+    readonly_fields = ("created_at", "updated_at")
 
 class UserProfileAuditLogInline(admin.TabularInline):
     model = UserProfileAuditLog
@@ -30,7 +46,7 @@ class CustomUserAdmin(UserAdmin):
     list_display = ("id", "username", "email", "first_name", "last_name", "phone", "city", "avatar", "is_staff")
     search_fields = ("username", "email", "first_name", "last_name", "middle_name", "phone", "city")
     ordering = ("id",)
-    inlines = [UserProfileAuditLogInline]
+    inlines = [UserAppSettingsInline, UserProfileAuditLogInline]
     fieldsets = UserAdmin.fieldsets + (
         (
             "Профиль",
@@ -67,3 +83,12 @@ class UserProfileAuditLogAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(UserAppSettings)
+class UserAppSettingsAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "timezone", "date_format", "number_format", "default_currency", "updated_at")
+    list_filter = ("timezone", "date_format", "number_format", "default_currency")
+    search_fields = ("user__email", "user__username", "default_currency")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("user_id",)

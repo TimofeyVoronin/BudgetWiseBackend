@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
 
 from apps.finance.currencies import (
-    get_user_primary_currency_code,
+    get_user_default_currency_code,
     get_user_visible_currency_codes,
     validate_user_currency_available,
 )
@@ -24,6 +23,7 @@ from apps.finance.models import (
 )
 from apps.finance.tags import get_accessible_tags
 from apps.finance.transaction_serializers import TransactionSerializer, TransactionTagSerializer
+from apps.users.app_settings_formatting import get_user_app_today
 from apps.finance.transaction_templates import (
     MAX_TEMPLATE_PAGE_SIZE,
     DEFAULT_TEMPLATE_PAGE_SIZE,
@@ -275,7 +275,7 @@ class TransactionTemplateSerializer(serializers.ModelSerializer):
                 attrs["currency"] = account.currency
                 currency = account.currency
             else:
-                attrs["currency"] = get_user_primary_currency_code(request.user)
+                attrs["currency"] = get_user_default_currency_code(request.user)
                 currency = attrs["currency"]
 
         if request and account is not None:
@@ -574,6 +574,7 @@ class TransactionTemplateCurrencyOptionSerializer(serializers.Serializer):
     value = serializers.CharField()
     symbol = serializers.CharField(required=False)
     isPrimary = serializers.BooleanField(required=False)
+    isDefault = serializers.BooleanField(required=False)
 
 
 class TransactionTemplateKindOptionSerializer(serializers.Serializer):
@@ -608,7 +609,7 @@ def build_apply_draft_payload(template: TransactionTemplate) -> dict:
         "tags": TransactionTagSerializer(template.tags.all(), many=True).data,
         "note": template.note or "",
         "description": template.note or template.name,
-        "operationDate": timezone.localdate(),
+        "operationDate": get_user_app_today(template.user),
     }
 
 
