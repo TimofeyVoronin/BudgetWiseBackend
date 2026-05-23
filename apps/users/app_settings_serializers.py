@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.users.app_settings import (
     build_app_settings_meta,
+    get_allowed_timezone_values,
     is_valid_timezone,
     validate_default_currency_for_user,
 )
@@ -59,8 +60,9 @@ class AppSettingsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Часовой пояс обязателен.", code="required")
 
         if not is_valid_timezone(value):
+            allowed = ", ".join(sorted(get_allowed_timezone_values()))
             raise serializers.ValidationError(
-                "Укажите корректный часовой пояс IANA, например Asia/Krasnoyarsk.",
+                f"Выберите часовой пояс из списка доступных значений: {allowed}.",
                 code="invalid_timezone",
             )
 
@@ -92,7 +94,16 @@ class AppSettingsSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if request is None:
             return str(value or "").strip().upper()
-        return validate_default_currency_for_user(request.user, value)
+
+        current_value = None
+        if self.instance is not None:
+            current_value = getattr(self.instance, "default_currency", None)
+
+        return validate_default_currency_for_user(
+            request.user,
+            value,
+            current_value=current_value,
+        )
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -154,7 +165,7 @@ class AppSettingsMetaResponseSerializer(serializers.Serializer):
 
 
 class AppSettingsValidationErrorSerializer(serializers.Serializer):
-    code = serializers.CharField(help_text="Код ошибки, например VALIDATION_FAILED.")
+    code = serializers.CharField(help_text="Код ошибки, например invalid.")
     message = serializers.CharField(help_text="Сообщение для пользователя.")
     fieldErrors = serializers.DictField(
         child=serializers.CharField(),

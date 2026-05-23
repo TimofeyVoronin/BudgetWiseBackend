@@ -14,6 +14,7 @@ from apps.users.app_settings_serializers import (
     AppSettingsMetaResponseSerializer,
     AppSettingsResetResponseSerializer,
     AppSettingsSerializer,
+    AppSettingsValidationErrorSerializer,
 )
 
 
@@ -65,7 +66,7 @@ class AppSettingsView(GenericAPIView):
             "используются для display-полей и поведения интерфейса."
         ),
         request=AppSettingsSerializer,
-        responses={200: AppSettingsSerializer},
+        responses={200: AppSettingsSerializer, 400: AppSettingsValidationErrorSerializer},
         examples=[
             OpenApiExample(
                 "Пример запроса",
@@ -76,7 +77,25 @@ class AppSettingsView(GenericAPIView):
                     "defaultCurrency": "RUB",
                 },
                 request_only=True,
-            )
+            ),
+            OpenApiExample(
+                "Ошибка валидации",
+                value={
+                    "success": False,
+                    "error": {
+                        "code": "invalid",
+                        "message": "Некорректные данные запроса.",
+                        "field_errors": {
+                            "timezone": ["Выберите часовой пояс из списка доступных значений: Asia/Krasnoyarsk, Europe/Moscow, UTC."],
+                            "defaultCurrency": ["Скрытую валюту нельзя выбрать как новую валюту по умолчанию."],
+                        },
+                        "status_code": 400,
+                        "trace_id": None,
+                    },
+                },
+                response_only=True,
+                status_codes=["400"],
+            ),
         ],
     )
     def put(self, request, *args, **kwargs):
@@ -97,7 +116,7 @@ class AppSettingsView(GenericAPIView):
             "Можно передать только изменившиеся поля."
         ),
         request=AppSettingsSerializer,
-        responses={200: AppSettingsSerializer},
+        responses={200: AppSettingsSerializer, 400: AppSettingsValidationErrorSerializer},
         examples=[
             OpenApiExample(
                 "Пример запроса",
@@ -106,7 +125,24 @@ class AppSettingsView(GenericAPIView):
                     "numberFormat": "en-US",
                 },
                 request_only=True,
-            )
+            ),
+            OpenApiExample(
+                "Ошибка валидации",
+                value={
+                    "success": False,
+                    "error": {
+                        "code": "invalid",
+                        "message": "Некорректные данные запроса.",
+                        "field_errors": {
+                            "dateFormat": ["Недопустимый формат даты. Доступны: DD.MM.YYYY, YYYY-MM-DD, MM/DD/YYYY."],
+                        },
+                        "status_code": 400,
+                        "trace_id": None,
+                    },
+                },
+                response_only=True,
+                status_codes=["400"],
+            ),
         ],
     )
     def patch(self, request, *args, **kwargs):

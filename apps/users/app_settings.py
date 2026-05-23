@@ -67,11 +67,21 @@ NUMBER_FORMAT_OPTIONS = [
 ]
 
 
+def get_allowed_timezone_values() -> set[str]:
+    return {str(item["value"]) for item in TIMEZONE_OPTIONS}
+
+
 def is_valid_timezone(value: str) -> bool:
+    normalized = str(value or "").strip()
+
+    if normalized not in get_allowed_timezone_values():
+        return False
+
     try:
-        ZoneInfo(str(value or "").strip())
+        ZoneInfo(normalized)
     except (ZoneInfoNotFoundError, ValueError):
         return False
+
     return True
 
 
@@ -126,13 +136,27 @@ def reset_user_app_settings(user) -> UserAppSettings:
     return settings
 
 
-def validate_default_currency_for_user(user, value: str) -> str:
+def validate_default_currency_for_user(
+    user,
+    value: str,
+    *,
+    current_value: str | None = None,
+) -> str:
     normalized = normalize_currency_code(value)
+    current_normalized = normalize_currency_code(current_value or "")
 
     if not normalized:
         from rest_framework import serializers
 
         raise serializers.ValidationError("Валюта по умолчанию обязательна.", code="required")
+
+    if len(normalized) != 3 or not normalized.isalpha() or not normalized.isupper():
+        from rest_framework import serializers
+
+        raise serializers.ValidationError(
+            "Валюта должна быть указана ISO-кодом из 3 латинских букв.",
+            code="invalid_currency_code",
+        )
 
     user_currency = get_user_currency_by_code(user, normalized)
     if user_currency is None:
@@ -141,6 +165,14 @@ def validate_default_currency_for_user(user, value: str) -> str:
         raise serializers.ValidationError(
             "Валюта по умолчанию должна быть добавлена в список валют пользователя.",
             code="currency_not_available",
+        )
+
+    if not user_currency.is_visible and normalized != current_normalized:
+        from rest_framework import serializers
+
+        raise serializers.ValidationError(
+            "Скрытую валюту нельзя выбрать как новую валюту по умолчанию.",
+            code="currency_hidden",
         )
 
     return normalized

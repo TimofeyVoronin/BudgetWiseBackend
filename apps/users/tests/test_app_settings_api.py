@@ -170,7 +170,7 @@ class AppSettingsAPITests(APITestCase):
         self.assertEqual(settings["numberFormat"], "ru-RU")
         self.assertEqual(settings["defaultCurrency"], "RUB")
 
-    def test_hidden_currency_can_still_be_selected_as_existing_user_currency(self):
+    def test_hidden_currency_cannot_be_selected_as_new_default_currency(self):
         self.authenticate()
         ensure_user_currencies(self.user)
         usd = get_user_currency_by_code(self.user, "USD")
@@ -183,5 +183,42 @@ class AppSettingsAPITests(APITestCase):
             format="json",
         )
 
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("defaultCurrency", response.data["error"]["field_errors"])
+
+    def test_existing_hidden_default_currency_does_not_break_other_updates(self):
+        self.authenticate()
+        ensure_user_currencies(self.user)
+        usd = get_user_currency_by_code(self.user, "USD")
+        usd.is_visible = False
+        usd.save(update_fields=["is_visible", "updated_at"])
+        UserAppSettings.objects.create(
+            user=self.user,
+            timezone="Asia/Krasnoyarsk",
+            date_format="DD.MM.YYYY",
+            number_format="ru-RU",
+            default_currency="USD",
+        )
+
+        response = self.client.patch(
+            self.url,
+            {"timezone": "UTC", "defaultCurrency": "USD"},
+            format="json",
+        )
+
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["timezone"], "UTC")
         self.assertEqual(response.data["defaultCurrency"], "USD")
+
+    def test_app_settings_rejects_timezone_outside_meta_options(self):
+        self.authenticate()
+
+        response = self.client.patch(
+            self.url,
+            {"timezone": "Europe/Berlin"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("timezone", response.data["error"]["field_errors"])

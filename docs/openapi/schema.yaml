@@ -7056,6 +7056,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/AppSettings'
           description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSettingsValidationError'
+              examples:
+                ОшибкаВалидации:
+                  value:
+                    success: false
+                    error:
+                      code: invalid
+                      message: Некорректные данные запроса.
+                      field_errors:
+                        timezone:
+                        - 'Выберите часовой пояс из списка доступных значений: Asia/Krasnoyarsk,
+                          Europe/Moscow, UTC.'
+                        defaultCurrency:
+                        - Скрытую валюту нельзя выбрать как новую валюту по умолчанию.
+                      status_code: 400
+                      trace_id: null
+                  summary: Ошибка валидации
+          description: ''
     patch:
       operationId: app_settings_partial_update
       description: Частично обновляет настройки приложения текущего пользователя.
@@ -7088,6 +7110,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AppSettings'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSettingsValidationError'
+              examples:
+                ОшибкаВалидации:
+                  value:
+                    success: false
+                    error:
+                      code: invalid
+                      message: Некорректные данные запроса.
+                      field_errors:
+                        dateFormat:
+                        - 'Недопустимый формат даты. Доступны: DD.MM.YYYY, YYYY-MM-DD,
+                          MM/DD/YYYY.'
+                      status_code: 400
+                      trace_id: null
+                  summary: Ошибка валидации
           description: ''
   /api/v1/settings/app/meta/:
     get:
@@ -8112,6 +8154,23 @@ components:
       - label
       - offsetHours
       - value
+    AppSettingsValidationError:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Код ошибки, например invalid.
+        message:
+          type: string
+          description: Сообщение для пользователя.
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+          description: Ошибки по полям формы.
+      required:
+      - code
+      - message
     Budget:
       type: object
       properties:
