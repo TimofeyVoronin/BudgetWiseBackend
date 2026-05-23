@@ -38,7 +38,7 @@ from apps.finance.goals.views import GoalViewSet
 from apps.finance.notifications.views import NotificationViewSet
 from apps.finance.planned_transactions.views import PlannedTransactionViewSet
 from apps.finance.recurring_transactions.views import RecurringTransactionViewSet
-from apps.finance.receipts.views import ReceiptCreateTransactionsView
+from apps.finance.receipts.views import ReceiptCreateTransactionsView, ReceiptImportByQRView
 from apps.finance.tags.views import TagViewSet
 from apps.finance.transaction_templates.views import TransactionTemplateViewSet
 from apps.finance.transactions.views import (
@@ -169,6 +169,11 @@ urlpatterns = [
         "financial-calendar/export/",
         FinancialCalendarExportView.as_view(),
         name="financial-calendar-export",
+    ),
+    path(
+        "receipts/qr/",
+        ReceiptImportByQRView.as_view(),
+        name="receipt-qr",
     ),
     path(
         "receipts/<int:receipt_id>/create-transactions/",

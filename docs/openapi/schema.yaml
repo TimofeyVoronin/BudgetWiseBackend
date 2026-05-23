@@ -4923,6 +4923,72 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiErrorResponse'
           description: ''
+  /api/v1/finance/receipts/qr/:
+    get:
+      operationId: finance_receipts_qr_retrieve
+      description: Принимает исходную строку QR-кода чека, проверяет её, защищает
+        импорт от дублей и возвращает зарегистрированный чек. Если fetchProvider=true,
+        backend дополнительно пытается получить расширенные данные у внешнего сервиса
+        проверки чеков. Даже если провайдер временно недоступен или не настроен, корректный
+        QR-код сохраняется со статусом parsed, а frontend получает понятный ответ
+        с providerStatus=failed.
+      summary: Получить чек по QR-коду
+      parameters:
+      - in: query
+        name: fetchProvider
+        schema:
+          type: boolean
+        description: Получать ли расширенные данные чека у внешнего провайдера. По
+          умолчанию true.
+      - in: query
+        name: qrRaw
+        schema:
+          type: string
+        description: Исходная строка QR-кода чека. Значение нужно передавать URL-encoded.
+        required: true
+      tags:
+      - finance-receipts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptQRImportResponse'
+              examples:
+                ОтветПриУспешнойРегистрации:
+                  value:
+                    receipt:
+                      id: 1
+                      status: parsed
+                      store_name: ''
+                      seller_inn: ''
+                      receipt_datetime: '2024-05-22T14:21:00+07:00'
+                      total_amount: '270.00'
+                      fiscal_drive_number: '9280440300891234'
+                      fiscal_document_number: '12345'
+                      fiscal_sign: '987654321'
+                      transactionsCount: 0
+                      items: []
+                    created: true
+                    isDuplicate: false
+                    providerStatus: skipped
+                    providerError: null
+                  summary: Ответ при успешной регистрации
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+          description: ''
   /api/v1/finance/recurring-transactions/:
     get:
       operationId: finance_recurring_transactions_list
@@ -14557,6 +14623,16 @@ components:
       required:
       - fieldErrors
       - ok
+    ProviderStatusEnum:
+      enum:
+      - skipped
+      - fetched
+      - failed
+      type: string
+      description: |-
+        * `skipped` - Провайдер не вызывался
+        * `fetched` - Чек получен от провайдера
+        * `failed` - Провайдер вернул ошибку
     ReceiptBrief:
       type: object
       properties:
@@ -14681,6 +14757,51 @@ components:
       - name
       - suggestedCategoryId
       - suggestedCategoryName
+    ReceiptProviderErrorBrief:
+      type: object
+      properties:
+        code:
+          type: string
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+        fieldErrors:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+      required:
+      - code
+      - fieldErrors
+      - message
+    ReceiptQRImportResponse:
+      type: object
+      properties:
+        receipt:
+          allOf:
+          - $ref: '#/components/schemas/ReceiptBrief'
+          readOnly: true
+        created:
+          type: boolean
+          readOnly: true
+        isDuplicate:
+          type: boolean
+          readOnly: true
+        providerStatus:
+          allOf:
+          - $ref: '#/components/schemas/ProviderStatusEnum'
+          readOnly: true
+        providerError:
+          allOf:
+          - $ref: '#/components/schemas/ReceiptProviderErrorBrief'
+          readOnly: true
+          nullable: true
+      required:
+      - created
+      - isDuplicate
+      - providerError
+      - providerStatus
+      - receipt
     ReceiptTransactionItemInputRequest:
       type: object
       properties:

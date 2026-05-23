@@ -164,6 +164,70 @@ class ReceiptBriefSerializer(serializers.ModelSerializer):
         return obj.transactions.count()
 
 
+class ReceiptQRImportQuerySerializer(serializers.Serializer):
+    qrRaw = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        trim_whitespace=True,
+        help_text="Исходная строка QR-кода чека. Значение нужно передавать URL-encoded.",
+    )
+    fetchProvider = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text="Если true, backend попробует получить расширенные данные чека у внешнего провайдера.",
+    )
+
+    def to_internal_value(self, data):
+        mutable_data = data.copy()
+        alias_map = {
+            "qr_raw": "qrRaw",
+            "qr": "qrRaw",
+            "fetch_provider": "fetchProvider",
+        }
+        for alias, field_name in alias_map.items():
+            if alias in mutable_data and field_name not in mutable_data:
+                mutable_data[field_name] = mutable_data[alias]
+        return super().to_internal_value(mutable_data)
+
+
+class ReceiptProviderErrorBriefSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    message = serializers.CharField(read_only=True)
+    fieldErrors = serializers.DictField(read_only=True, required=False)
+
+
+class ReceiptQRImportResponseSerializer(serializers.Serializer):
+    receipt = ReceiptBriefSerializer(read_only=True)
+    created = serializers.BooleanField(read_only=True)
+    isDuplicate = serializers.BooleanField(read_only=True)
+    providerStatus = serializers.ChoiceField(
+        choices=(
+            ("skipped", "Провайдер не вызывался"),
+            ("fetched", "Чек получен от провайдера"),
+            ("failed", "Провайдер вернул ошибку"),
+        ),
+        read_only=True,
+    )
+    providerError = ReceiptProviderErrorBriefSerializer(read_only=True, allow_null=True)
+
+
+def build_receipt_qr_import_response(
+    *,
+    receipt: Receipt,
+    created: bool,
+    is_duplicate: bool,
+    provider_status: str,
+    provider_error: dict | None = None,
+) -> dict:
+    return {
+        "receipt": ReceiptBriefSerializer(receipt).data,
+        "created": created,
+        "isDuplicate": is_duplicate,
+        "providerStatus": provider_status,
+        "providerError": provider_error,
+    }
+
+
 class CreateReceiptTransactionsResponseSerializer(serializers.Serializer):
     receipt = ReceiptBriefSerializer(read_only=True)
     mode = serializers.CharField(read_only=True)
