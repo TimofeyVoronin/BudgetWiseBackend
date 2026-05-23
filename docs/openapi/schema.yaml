@@ -2879,9 +2879,10 @@ paths:
     get:
       operationId: finance_financial_calendar_retrieve
       description: 'Возвращает расширенную месячную сетку финансового календаря: ячейки
-        дней, фактические операции, плановые операции, дневные дельты, прогнозный
-        баланс и первый найденный кассовый разрыв. Месяц в API передаётся в формате
-        1-12. Конвертация валют не выполняется.'
+        дней, фактические операции, плановые операции, дневные дельты, фактический
+        баланс для прошлых дней, прогнозный баланс и первый найденный кассовый разрыв.
+        Месяц в API передаётся в формате 1-12. Прогноз строится в валюте выбранных
+        счетов; автоматическая конвертация валют не выполняется.'
       summary: Получить финансовый календарь на месяц
       parameters:
       - in: query
@@ -10088,12 +10089,13 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Прогнозный баланс на конец дня.
+          description: Прогнозный баланс на конец дня с учётом фактических и плановых
+            событий.
         totalDelta:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Суммарное изменение за день.
+          description: Суммарное изменение за день по фактическим и плановым событиям.
         hasEvents:
           type: boolean
           description: Есть ли события в этот день.
@@ -10101,7 +10103,7 @@ components:
           allOf:
           - $ref: '#/components/schemas/FinancialCalendarRiskLevelEnum'
           description: |-
-            Уровень риска по остатку дня.
+            Уровень риска по прогнозному остатку дня: safe, caution или risk.
 
             * `safe` - Безопасно
             * `caution` - Внимание
@@ -10325,7 +10327,8 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Прогнозный баланс на конец дня.
+          description: Прогнозный баланс на конец дня с учётом фактических и плановых
+            событий.
         actualBalanceRub:
           type: string
           format: decimal
@@ -10374,7 +10377,7 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Остаток активных счетов на начало расчёта.
+          description: Расчётный остаток активных счетов на начало диапазона календаря.
         cells:
           type: array
           items:

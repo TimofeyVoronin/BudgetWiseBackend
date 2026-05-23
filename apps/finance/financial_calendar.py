@@ -72,6 +72,12 @@ class FinancialCalendarQuery:
     timezone_value: str
 
 
+@dataclass(frozen=True)
+class FinancialCalendarProjection:
+    opening_balance: Decimal
+    day_forecasts: list[dict]
+
+
 def resolve_month_grid(year: int, month: int) -> tuple[date, date]:
     first_day = date(year, month, 1)
     _, last_day_number = calendar.monthrange(year, month)
@@ -107,22 +113,26 @@ def build_financial_calendar_month(
 
     events = get_financial_calendar_events(
         user=user,
-        date_from=query.grid_date_from,
-        date_to=query.grid_date_to,
+        date_from=query.date_from,
+        date_to=query.date_to,
         account_ids=query.account_ids,
         event_types=query.event_types,
     )
-    day_forecasts = calculate_financial_calendar_day_forecasts(
+    projection = calculate_financial_calendar_projection(
         user=user,
-        date_from=query.grid_date_from,
-        date_to=query.grid_date_to,
+        date_from=query.date_from,
+        date_to=query.date_to,
         account_ids=query.account_ids,
         events=events,
+    )
+    mark_sharp_change_events(
+        events=events,
+        opening_balance=projection.opening_balance,
     )
     cells = build_financial_calendar_cells(
         year=year,
         month=month,
-        day_forecasts=day_forecasts,
+        day_forecasts=projection.day_forecasts,
         events=events,
     )
 
@@ -130,11 +140,11 @@ def build_financial_calendar_month(
         "year": year,
         "month": month,
         "todayIso": timezone.localdate().isoformat(),
-        "openingBalanceRub": format_money(get_accounts_opening_balance(user, query.account_ids)),
+        "openingBalanceRub": format_money(projection.opening_balance),
         "cells": cells,
         "events": events,
-        "dayForecasts": day_forecasts,
-        "cashGap": find_cash_gap_range(day_forecasts),
+        "dayForecasts": projection.day_forecasts,
+        "cashGap": find_cash_gap_range(projection.day_forecasts),
     }
 
 
@@ -208,6 +218,12 @@ def get_financial_calendar_account_ids(user, account_ids: list[int] | None = Non
 
 
 def get_accounts_opening_balance(user, account_ids: list[int]) -> Decimal:
+    """Return the current stored balance for selected accounts.
+
+    Account.balance is the current balance maintained by transaction services.
+    The financial calendar uses this value as the anchor point and derives
+    historical/future opening balances from confirmed and planned events.
+    """
     if not account_ids:
         return Decimal("0.00")
 
@@ -218,6 +234,101 @@ def get_accounts_opening_balance(user, account_ids: list[int]) -> Decimal:
         .get("total")
     )
     return value or Decimal("0.00")
+
+
+def get_actual_transactions_delta(
+    *,
+    user,
+    account_ids: list[int],
+    date_from: date,
+    date_to: date,
+) -> Decimal:
+    if not account_ids or date_from > date_to:
+        return Decimal("0.00")
+
+    queryset = Transaction.objects.filter(
+        user=user,
+        account_id__in=account_ids,
+        operation_date__gte=date_from,
+        operation_date__lte=date_to,
+    )
+    income = (
+        queryset
+        .filter(type=TransactionType.INCOME)
+        .aggregate(total=Sum("amount"))
+        .get("total")
+        or Decimal("0.00")
+    )
+    expense = (
+        queryset
+        .filter(type=TransactionType.EXPENSE)
+        .aggregate(total=Sum("amount"))
+        .get("total")
+        or Decimal("0.00")
+    )
+    return income - expense
+
+
+def get_planned_transactions_delta(
+    *,
+    user,
+    account_ids: list[int],
+    date_from: date,
+    date_to: date,
+) -> Decimal:
+    if not account_ids or date_from > date_to:
+        return Decimal("0.00")
+
+    queryset = PlannedTransaction.objects.filter(
+        user=user,
+        account_id__in=account_ids,
+        planned_date__gte=date_from,
+        planned_date__lte=date_to,
+        include_in_forecast=True,
+        status__in=[PlannedStatus.PENDING, PlannedStatus.CONFIRMED],
+    )
+    income = (
+        queryset
+        .filter(type=TransactionType.INCOME)
+        .aggregate(total=Sum("amount"))
+        .get("total")
+        or Decimal("0.00")
+    )
+    expense = (
+        queryset
+        .filter(type=TransactionType.EXPENSE)
+        .aggregate(total=Sum("amount"))
+        .get("total")
+        or Decimal("0.00")
+    )
+    return income - expense
+
+
+def calculate_projection_opening_balance(
+    *,
+    user,
+    account_ids: list[int],
+    date_from: date,
+) -> Decimal:
+    current_balance = get_accounts_opening_balance(user, account_ids)
+    today = timezone.localdate()
+
+    if date_from <= today:
+        actual_delta = get_actual_transactions_delta(
+            user=user,
+            account_ids=account_ids,
+            date_from=date_from,
+            date_to=today,
+        )
+        return current_balance - actual_delta
+
+    planned_delta = get_planned_transactions_delta(
+        user=user,
+        account_ids=account_ids,
+        date_from=today + timedelta(days=1),
+        date_to=date_from - timedelta(days=1),
+    )
+    return current_balance + planned_delta
 
 
 def get_financial_calendar_events(
@@ -317,15 +428,19 @@ def planned_to_calendar_event(planned: PlannedTransaction) -> dict:
     }
 
 
-def calculate_financial_calendar_day_forecasts(
+def calculate_financial_calendar_projection(
     *,
     user,
     date_from: date,
     date_to: date,
     account_ids: list[int],
     events: list[dict],
-) -> list[dict]:
-    opening_balance = get_accounts_opening_balance(user, account_ids)
+) -> FinancialCalendarProjection:
+    opening_balance = calculate_projection_opening_balance(
+        user=user,
+        account_ids=account_ids,
+        date_from=date_from,
+    )
     events_by_date: dict[str, list[dict]] = {}
 
     for event in events:
@@ -334,25 +449,35 @@ def calculate_financial_calendar_day_forecasts(
     today = timezone.localdate()
     current_date = date_from
     forecast_balance = opening_balance
+    actual_balance = opening_balance
     rows: list[dict] = []
 
     while current_date <= date_to:
         iso = current_date.isoformat()
         day_events = events_by_date.get(iso, [])
-        total_delta = sum(
-            (Decimal(str(event.get("amountRub") or "0.00")) for event in day_events),
-            Decimal("0.00"),
+        confirmed_delta = sum_event_amounts(
+            event for event in day_events if event["status"] == FINANCIAL_CALENDAR_STATUS_CONFIRMED
         )
-        forecast_balance += total_delta
+        pending_delta = sum_event_amounts(
+            event for event in day_events if event["status"] == FINANCIAL_CALENDAR_STATUS_PENDING
+        )
+        total_delta = confirmed_delta + pending_delta
+
+        if current_date <= today:
+            actual_balance += confirmed_delta
+            forecast_balance += total_delta
+            actual_balance_value = actual_balance
+        else:
+            forecast_balance += total_delta
+            actual_balance_value = None
 
         is_past = current_date < today
         is_today = current_date == today
-        actual_balance = forecast_balance if current_date <= today else None
 
         rows.append(
             {
                 "date": iso,
-                "actualBalanceRub": format_money(actual_balance) if actual_balance is not None else None,
+                "actualBalanceRub": format_money(actual_balance_value) if actual_balance_value is not None else None,
                 "forecastBalanceRub": format_money(forecast_balance),
                 "totalDelta": format_money(total_delta),
                 "hasEvents": bool(day_events),
@@ -367,7 +492,41 @@ def calculate_financial_calendar_day_forecasts(
         )
         current_date += timedelta(days=1)
 
-    return rows
+    return FinancialCalendarProjection(
+        opening_balance=opening_balance,
+        day_forecasts=rows,
+    )
+
+
+def calculate_financial_calendar_day_forecasts(
+    *,
+    user,
+    date_from: date,
+    date_to: date,
+    account_ids: list[int],
+    events: list[dict],
+) -> list[dict]:
+    return calculate_financial_calendar_projection(
+        user=user,
+        date_from=date_from,
+        date_to=date_to,
+        account_ids=account_ids,
+        events=events,
+    ).day_forecasts
+
+
+def sum_event_amounts(events: Iterable[dict]) -> Decimal:
+    return sum(
+        (Decimal(str(event.get("amountRub") or "0.00")) for event in events),
+        Decimal("0.00"),
+    )
+
+
+def mark_sharp_change_events(*, events: list[dict], opening_balance: Decimal) -> None:
+    threshold = get_sharp_change_threshold(opening_balance)
+    for event in events:
+        amount = Decimal(str(event.get("amountRub") or "0.00"))
+        event["isSharpChange"] = abs(amount) >= threshold
 
 
 def build_financial_calendar_cells(
@@ -419,17 +578,21 @@ def get_financial_calendar_day(
         account_ids=resolved_account_ids,
         event_types=resolved_event_types,
     )
-    day_forecasts = calculate_financial_calendar_day_forecasts(
+    projection = calculate_financial_calendar_projection(
         user=user,
         date_from=iso,
         date_to=iso,
         account_ids=resolved_account_ids,
         events=events,
     )
+    mark_sharp_change_events(
+        events=events,
+        opening_balance=projection.opening_balance,
+    )
 
     return {
         "iso": iso.isoformat(),
-        "dayBalance": day_forecasts[0] if day_forecasts else None,
+        "dayBalance": projection.day_forecasts[0] if projection.day_forecasts else None,
         "events": events,
     }
 
@@ -516,11 +679,15 @@ def get_calendar_risk_level(
 
     if opening_balance > 0:
         low_balance_threshold = opening_balance * Decimal("0.10")
-        sharp_change_threshold = opening_balance * Decimal("0.25")
-        if forecast_balance <= low_balance_threshold or abs(total_delta) >= sharp_change_threshold:
+        if forecast_balance <= low_balance_threshold or abs(total_delta) >= get_sharp_change_threshold(opening_balance):
             return FINANCIAL_CALENDAR_RISK_CAUTION
 
     return FINANCIAL_CALENDAR_RISK_SAFE
+
+
+def get_sharp_change_threshold(opening_balance: Decimal) -> Decimal:
+    base = abs(opening_balance) * Decimal("0.25")
+    return max(base, Decimal("10000.00"))
 
 
 def get_signed_amount(transaction_type: str, amount: Decimal) -> Decimal:
