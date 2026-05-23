@@ -2875,6 +2875,194 @@ paths:
                       footerLinkLabel: Все напоминания
                   summary: Dashboard summary
           description: ''
+  /api/v1/finance/financial-calendar/:
+    get:
+      operationId: finance_financial_calendar_retrieve
+      description: 'Возвращает расширенную месячную сетку финансового календаря: ячейки
+        дней, фактические операции, плановые операции, дневные дельты, фактический
+        баланс для прошлых дней, прогнозный баланс и первый найденный кассовый разрыв.
+        Месяц в API передаётся в формате 1-12. Прогноз строится в валюте выбранных
+        счетов; автоматическая конвертация валют не выполняется.'
+      summary: Получить финансовый календарь на месяц
+      parameters:
+      - in: query
+        name: accountIds
+        schema:
+          type: array
+          items:
+            type: integer
+        description: ID счетов. Можно передавать повторяющимся параметром или через
+          запятую.
+      - in: query
+        name: dateFrom
+        schema:
+          type: string
+          format: date
+        description: Нижняя граница периода, YYYY-MM-DD. Опционально.
+      - in: query
+        name: dateTo
+        schema:
+          type: string
+          format: date
+        description: Верхняя граница периода, YYYY-MM-DD. Опционально.
+      - in: query
+        name: eventTypes
+        schema:
+          type: array
+          items:
+            type: string
+        description: 'Типы событий: income, expense, transfer, reminder.'
+      - in: query
+        name: month
+        schema:
+          type: integer
+        description: Месяц календаря от 1 до 12.
+      - in: query
+        name: timezone
+        schema:
+          type: string
+        description: Метка часового пояса, например UTC+7.
+      - in: query
+        name: year
+        schema:
+          type: integer
+        description: Год календаря, например 2026.
+      tags:
+      - finance-calendar
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialCalendarMonthResponse'
+              examples:
+                ФинансовыйКалендарьНаМесяц:
+                  value:
+                    year: 2026
+                    month: 5
+                    todayIso: '2026-05-22'
+                    openingBalanceRub: '227800.00'
+                    cells: []
+                    events: []
+                    dayForecasts: []
+                    cashGap: null
+                  summary: Финансовый календарь на месяц
+          description: ''
+        '400':
+          description: Некорректные параметры периода или фильтров.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/financial-calendar/days/{iso}/:
+    get:
+      operationId: finance_financial_calendar_days_retrieve
+      description: Возвращает баланс дня и события за конкретную дату.
+      summary: Получить детали дня финансового календаря
+      parameters:
+      - in: query
+        name: accountIds
+        schema:
+          type: array
+          items:
+            type: integer
+        description: ID счетов.
+      - in: query
+        name: eventTypes
+        schema:
+          type: array
+          items:
+            type: string
+        description: Типы событий.
+      - in: path
+        name: iso
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: timezone
+        schema:
+          type: string
+        description: Метка часового пояса.
+      tags:
+      - finance-calendar
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialCalendarDayResponse'
+          description: ''
+  /api/v1/finance/financial-calendar/events/:
+    get:
+      operationId: finance_financial_calendar_events_retrieve
+      description: 'Возвращает события календаря в указанном диапазоне: фактические
+        операции и плановые операции, участвующие в прогнозе.'
+      summary: Получить события финансового календаря
+      parameters:
+      - in: query
+        name: accountIds
+        schema:
+          type: array
+          items:
+            type: integer
+        description: ID счетов.
+      - in: query
+        name: dateFrom
+        schema:
+          type: string
+          format: date
+        description: Дата начала, YYYY-MM-DD.
+        required: true
+      - in: query
+        name: dateTo
+        schema:
+          type: string
+          format: date
+        description: Дата окончания, YYYY-MM-DD.
+        required: true
+      - in: query
+        name: eventTypes
+        schema:
+          type: array
+          items:
+            type: string
+        description: 'Типы событий: income, expense, transfer, reminder.'
+      - in: query
+        name: timezone
+        schema:
+          type: string
+        description: Метка часового пояса.
+      tags:
+      - finance-calendar
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialCalendarEventsResponse'
+          description: ''
+  /api/v1/finance/financial-calendar/meta/:
+    get:
+      operationId: finance_financial_calendar_meta_retrieve
+      description: Возвращает активные счета пользователя, типы событий, доступные
+        часовые пояса и баланс активных счетов для стартового состояния формы.
+      summary: Получить справочники финансового календаря
+      tags:
+      - finance-calendar
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialCalendarMetaResponse'
+          description: ''
   /api/v1/finance/goals/:
     get:
       operationId: finance_goals_list
@@ -9850,6 +10038,401 @@ components:
       description: |-
         * `none` - Нет
         * `monthly` - Ежемесячно
+    FinancialCalendarAccountOption:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID счёта.
+        title:
+          type: string
+          description: Название счёта.
+        subtitle:
+          type: string
+          description: Подпись счёта для фильтра.
+        color:
+          type: string
+          description: HEX-цвет счёта.
+      required:
+      - color
+      - id
+      - subtitle
+      - title
+    FinancialCalendarCashGapRange:
+      type: object
+      properties:
+        startIso:
+          type: string
+          format: date
+          description: Дата начала периода кассового разрыва.
+        endIso:
+          type: string
+          format: date
+          description: Дата окончания периода кассового разрыва.
+      required:
+      - endIso
+      - startIso
+    FinancialCalendarDayForecast:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: Дата прогноза в формате YYYY-MM-DD.
+        actualBalanceRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          nullable: true
+          description: Фактический баланс на конец дня. Для будущих дней null.
+        forecastBalanceRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Прогнозный баланс на конец дня с учётом фактических и плановых
+            событий.
+        totalDelta:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Суммарное изменение за день по фактическим и плановым событиям.
+        hasEvents:
+          type: boolean
+          description: Есть ли события в этот день.
+        riskLevel:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarRiskLevelEnum'
+          description: |-
+            Уровень риска по прогнозному остатку дня: safe, caution или risk.
+
+            * `safe` - Безопасно
+            * `caution` - Внимание
+            * `risk` - Риск кассового разрыва
+        isToday:
+          type: boolean
+          description: Признак сегодняшнего дня.
+        isPast:
+          type: boolean
+          description: Признак прошедшего дня.
+      required:
+      - actualBalanceRub
+      - date
+      - forecastBalanceRub
+      - hasEvents
+      - isPast
+      - isToday
+      - riskLevel
+      - totalDelta
+    FinancialCalendarDayResponse:
+      type: object
+      properties:
+        iso:
+          type: string
+          format: date
+          description: Дата дня в формате YYYY-MM-DD.
+        dayBalance:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarDayForecast'
+          nullable: true
+          description: Баланс и прогноз по выбранному дню.
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarEvent'
+          description: События выбранного дня.
+      required:
+      - dayBalance
+      - events
+      - iso
+    FinancialCalendarEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Идентификатор события календаря с префиксом источника.
+        sourceId:
+          type: integer
+          description: ID исходной операции или плановой операции.
+        sourceType:
+          type: string
+          description: 'Источник события: transaction или planned_transaction.'
+        date:
+          type: string
+          format: date
+          description: Дата события в формате YYYY-MM-DD.
+        type:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarEventTypeEnum'
+          description: |-
+            Тип события календаря.
+
+            * `income` - Доход
+            * `expense` - Расход
+            * `transfer` - Перевод
+            * `reminder` - Напоминание
+        title:
+          type: string
+          description: Заголовок события для ячейки и панели дня.
+        subtitle:
+          type: string
+          description: 'Подзаголовок: категория, описание или служебная подпись.'
+        amountRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          nullable: true
+          description: Сумма в рублях. Доход положительный, расход отрицательный.
+        accountId:
+          type: integer
+          description: ID счёта события.
+        accountName:
+          type: string
+          description: Название счёта события.
+        status:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarEventStatusEnum'
+          description: |-
+            Статус события: confirmed для факта, pending для плана.
+
+            * `confirmed` - Факт
+            * `pending` - План
+        isSharpChange:
+          type: boolean
+          description: Признак резкого изменения баланса для подсветки риска.
+      required:
+      - accountId
+      - accountName
+      - amountRub
+      - date
+      - id
+      - isSharpChange
+      - sourceId
+      - sourceType
+      - status
+      - subtitle
+      - title
+      - type
+    FinancialCalendarEventStatusEnum:
+      enum:
+      - confirmed
+      - pending
+      type: string
+      description: |-
+        * `confirmed` - Факт
+        * `pending` - План
+    FinancialCalendarEventTypeEnum:
+      enum:
+      - income
+      - expense
+      - transfer
+      - reminder
+      type: string
+      description: |-
+        * `income` - Доход
+        * `expense` - Расход
+        * `transfer` - Перевод
+        * `reminder` - Напоминание
+    FinancialCalendarEventTypeOption:
+      type: object
+      properties:
+        value:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarEventTypeEnum'
+          description: |-
+            Тип события.
+
+            * `income` - Доход
+            * `expense` - Расход
+            * `transfer` - Перевод
+            * `reminder` - Напоминание
+        label:
+          type: string
+          description: Подпись типа события.
+        icon:
+          type: string
+          description: Код иконки.
+        color:
+          type: string
+          description: HEX-цвет типа события.
+      required:
+      - color
+      - icon
+      - label
+      - value
+    FinancialCalendarEventsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarEvent'
+          description: Список событий календаря.
+      required:
+      - items
+    FinancialCalendarMetaResponse:
+      type: object
+      properties:
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarAccountOption'
+          description: Активные счета пользователя для фильтров.
+        eventTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarEventTypeOption'
+          description: Типы событий календаря.
+        timezones:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarTimezoneOption'
+          description: Доступные часовые пояса.
+        defaultTimezone:
+          type: string
+          description: Часовой пояс по умолчанию.
+        openingBalanceRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Текущий остаток активных счетов пользователя.
+      required:
+      - accounts
+      - defaultTimezone
+      - eventTypes
+      - openingBalanceRub
+      - timezones
+    FinancialCalendarMonthCell:
+      type: object
+      properties:
+        iso:
+          type: string
+          format: date
+          description: Дата ячейки в формате YYYY-MM-DD.
+        day:
+          type: integer
+          description: Число месяца.
+        inMonth:
+          type: boolean
+          description: Ячейка относится к выбранному месяцу.
+        isToday:
+          type: boolean
+          description: Признак сегодняшнего дня.
+        isSaturday:
+          type: boolean
+          description: Признак субботы.
+        isSunday:
+          type: boolean
+          description: Признак воскресенья.
+        forecastBalanceRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Прогнозный баланс на конец дня с учётом фактических и плановых
+            событий.
+        actualBalanceRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          nullable: true
+          description: Фактический баланс на конец дня или null для будущих дней.
+        riskLevel:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarRiskLevelEnum'
+          description: |-
+            Уровень риска ячейки.
+
+            * `safe` - Безопасно
+            * `caution` - Внимание
+            * `risk` - Риск кассового разрыва
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarEvent'
+          description: События дня.
+      required:
+      - actualBalanceRub
+      - day
+      - events
+      - forecastBalanceRub
+      - inMonth
+      - isSaturday
+      - isSunday
+      - isToday
+      - iso
+      - riskLevel
+    FinancialCalendarMonthResponse:
+      type: object
+      properties:
+        year:
+          type: integer
+          description: Год календаря.
+        month:
+          type: integer
+          description: Месяц календаря, 1-12.
+        todayIso:
+          type: string
+          format: date
+          description: Сегодняшняя дата по часовому поясу backend.
+        openingBalanceRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Расчётный остаток активных счетов на начало диапазона календаря.
+        cells:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarMonthCell'
+          description: Расширенная сетка месяца с соседними днями.
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarEvent'
+          description: Все события в диапазоне сетки.
+        dayForecasts:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarDayForecast'
+          description: Прогнозы баланса по дням.
+        cashGap:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCashGapRange'
+          nullable: true
+          description: Первый найденный диапазон кассового разрыва.
+      required:
+      - cashGap
+      - cells
+      - dayForecasts
+      - events
+      - month
+      - openingBalanceRub
+      - todayIso
+      - year
+    FinancialCalendarRiskLevelEnum:
+      enum:
+      - safe
+      - caution
+      - risk
+      type: string
+      description: |-
+        * `safe` - Безопасно
+        * `caution` - Внимание
+        * `risk` - Риск кассового разрыва
+    FinancialCalendarTimezoneOption:
+      type: object
+      properties:
+        value:
+          type: string
+          description: Метка часового пояса.
+        label:
+          type: string
+          description: Название часового пояса для интерфейса.
+        offsetHours:
+          type: integer
+          description: Смещение от UTC в часах.
+      required:
+      - label
+      - offsetHours
+      - value
     ForgotPassword:
       type: object
       properties:
@@ -15050,6 +15633,10 @@ tags:
 - name: finance-dashboard
   description: 'Главный дашборд: агрегированные показатели по счетам, доходам, расходам,
     последним операциям и категориям расходов.'
+- name: finance-calendar
+  description: 'Финансовый календарь: месячная сетка, события доходов и расходов,
+    плановые операции, дневные балансы, прогноз остатка, риски кассового разрыва и
+    справочники фильтров.'
 - name: health
   description: Служебные endpoints состояния backend-сервиса.
 - name: monitoring

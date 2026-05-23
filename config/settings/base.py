@@ -429,6 +429,21 @@ SPECTACULAR_SETTINGS = {
             ("none", "Нет"),
             ("monthly", "Ежемесячно"),
         ],
+        "FinancialCalendarEventTypeEnum": [
+            ("income", "Доход"),
+            ("expense", "Расход"),
+            ("transfer", "Перевод"),
+            ("reminder", "Напоминание"),
+        ],
+        "FinancialCalendarEventStatusEnum": [
+            ("confirmed", "Факт"),
+            ("pending", "План"),
+        ],
+        "FinancialCalendarRiskLevelEnum": [
+            ("safe", "Безопасно"),
+            ("caution", "Внимание"),
+            ("risk", "Риск кассового разрыва"),
+        ],
     },
     "SWAGGER_UI_SETTINGS": {
         "deepLinking": True,
@@ -587,6 +602,14 @@ SPECTACULAR_SETTINGS = {
             "description": (
                 "Главный дашборд: агрегированные показатели по счетам, доходам, "
                 "расходам, последним операциям и категориям расходов."
+            ),
+        },
+        {
+            "name": "finance-calendar",
+            "description": (
+                "Финансовый календарь: месячная сетка, события доходов и расходов, "
+                "плановые операции, дневные балансы, прогноз остатка, риски "
+                "кассового разрыва и справочники фильтров."
             ),
         },
         {

@@ -19,6 +19,12 @@ from apps.finance.budget_notification_views import (
 from apps.finance.category_views import CategoryViewSet
 from apps.finance.currency_views import CurrencyViewSet
 from apps.finance.dashboard_views import DashboardSummaryView
+from apps.finance.financial_calendar_views import (
+    FinancialCalendarDayView,
+    FinancialCalendarEventsView,
+    FinancialCalendarMetaView,
+    FinancialCalendarMonthView,
+)
 from apps.finance.goal_views import GoalViewSet
 from apps.finance.notification_views import NotificationViewSet
 from apps.finance.planned_transaction_views import PlannedTransactionViewSet
@@ -98,6 +104,27 @@ urlpatterns = [
         "dashboard/summary/",
         DashboardSummaryView.as_view(),
         name="dashboard-summary",
+    ),
+
+    path(
+        "financial-calendar/",
+        FinancialCalendarMonthView.as_view(),
+        name="financial-calendar-month",
+    ),
+    path(
+        "financial-calendar/events/",
+        FinancialCalendarEventsView.as_view(),
+        name="financial-calendar-events",
+    ),
+    path(
+        "financial-calendar/days/<str:iso>/",
+        FinancialCalendarDayView.as_view(),
+        name="financial-calendar-day",
+    ),
+    path(
+        "financial-calendar/meta/",
+        FinancialCalendarMetaView.as_view(),
+        name="financial-calendar-meta",
     ),
     path(
         "receipts/<int:receipt_id>/create-transactions/",
