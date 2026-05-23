@@ -124,3 +124,54 @@ class FinancialCalendarMetaResponseSerializer(serializers.Serializer):
     defaultTimezone = serializers.CharField(help_text="Активный часовой пояс из настроек приложения пользователя.")
     openingBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Текущий остаток активных счетов пользователя.")
     openingBalanceLabel = serializers.CharField(required=False, help_text="Текущий остаток активных счетов в пользовательском формате числа.")
+
+
+class FinancialCalendarExportColumnsSerializer(serializers.Serializer):
+    actual = serializers.BooleanField(default=True, help_text="Включить фактический баланс в выгрузку.")
+    balance = serializers.BooleanField(default=True, help_text="Включить прогнозный баланс на конец дня.")
+    events = serializers.BooleanField(default=True, help_text="Включить краткое описание событий дня.")
+    risks = serializers.BooleanField(default=True, help_text="Включить уровень риска по остатку на день.")
+
+
+class FinancialCalendarExportPreviewRowSerializer(serializers.Serializer):
+    date = serializers.CharField(help_text="Дата для отображения с учётом формата даты пользователя.")
+    iso = serializers.DateField(required=False, help_text="ISO-дата строки выгрузки.")
+    actualRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Фактический баланс. Для будущих дней возвращается 0.00.")
+    forecastRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Прогнозный баланс на конец дня.")
+    eventsSummary = serializers.CharField(help_text="Краткое описание событий дня.")
+    riskLevel = serializers.ChoiceField(choices=FINANCIAL_CALENDAR_RISK_LEVEL_CHOICES, required=False, help_text="Уровень риска по остатку на день.")
+    riskLabel = serializers.CharField(required=False, help_text="Подпись уровня риска для выгрузки.")
+
+
+class FinancialCalendarExportPreviewResponseSerializer(serializers.Serializer):
+    rows = FinancialCalendarExportPreviewRowSerializer(many=True, help_text="Строки предварительного просмотра выгрузки.")
+
+
+class FinancialCalendarExportRequestSerializer(serializers.Serializer):
+    year = serializers.IntegerField(required=True, min_value=2000, max_value=2100, help_text="Год календаря.")
+    month = serializers.IntegerField(required=True, min_value=1, max_value=12, help_text="Месяц календаря, 1-12.")
+    format = serializers.ChoiceField(
+        choices=[("csv", "CSV"), ("pdf", "PDF"), ("xlsx", "XLSX")],
+        required=False,
+        default="csv",
+        help_text="Формат файла выгрузки.",
+    )
+    columns = FinancialCalendarExportColumnsSerializer(required=False, help_text="Набор колонок, которые нужно включить в файл.")
+    accountIds = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        help_text="ID счетов для фильтрации.",
+    )
+    eventTypes = serializers.ListField(
+        child=serializers.ChoiceField(choices=FINANCIAL_CALENDAR_EVENT_TYPE_CHOICES),
+        required=False,
+        help_text="Типы событий для фильтрации.",
+    )
+    dateFrom = serializers.DateField(required=False, help_text="Нижняя граница периода выгрузки.")
+    dateTo = serializers.DateField(required=False, help_text="Верхняя граница периода выгрузки.")
+    timezone = serializers.CharField(required=False, help_text="IANA-часовой пояс. Если не передан, используется настройка пользователя.")
+
+
+class FinancialCalendarExportResponseSerializer(serializers.Serializer):
+    downloadUrl = serializers.CharField(help_text="Data URL с содержимым файла для скачивания на фронте.")
+    fileName = serializers.CharField(help_text="Имя файла выгрузки.")

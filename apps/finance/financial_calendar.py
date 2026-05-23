@@ -9,6 +9,13 @@ from typing import Iterable
 from django.db.models import Sum
 from django.utils import timezone
 
+from apps.finance.financial_calendar_exporters import (
+    FINANCIAL_CALENDAR_EXPORT_FORMATS,
+    build_financial_calendar_download_url,
+    build_financial_calendar_export_file,
+    normalize_financial_calendar_export_columns,
+    normalize_financial_calendar_export_format,
+)
 from apps.finance.models import (
     Account,
     PlannedStatus,
@@ -690,6 +697,147 @@ def get_financial_calendar_meta(user) -> dict:
         "openingBalanceRub": format_money(opening_balance),
         "openingBalanceLabel": get_calendar_money_label(opening_balance, formatting_context, user),
     }
+
+
+def build_financial_calendar_export_preview(
+    *,
+    user,
+    year: int,
+    month: int,
+    account_ids: list[int] | None = None,
+    event_types: Iterable[str] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    timezone_value: str | None = None,
+) -> dict:
+    export_date_from, export_date_to = resolve_financial_calendar_export_period(
+        year=year,
+        month=month,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    month_data = build_financial_calendar_month(
+        user=user,
+        year=year,
+        month=month,
+        account_ids=account_ids,
+        event_types=event_types,
+        date_from=export_date_from,
+        date_to=export_date_to,
+        timezone_value=timezone_value,
+    )
+    rows = build_financial_calendar_export_rows(
+        day_forecasts=month_data["dayForecasts"],
+        events=month_data["events"],
+    )
+    return {"rows": rows}
+
+
+def build_financial_calendar_export_response(
+    *,
+    user,
+    year: int,
+    month: int,
+    export_format: str | None = None,
+    columns: dict | None = None,
+    account_ids: list[int] | None = None,
+    event_types: Iterable[str] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    timezone_value: str | None = None,
+) -> dict:
+    normalized_format = normalize_financial_calendar_export_format(export_format)
+    if normalized_format not in FINANCIAL_CALENDAR_EXPORT_FORMATS:
+        raise ValueError("Формат экспорта должен быть csv, pdf или xlsx.")
+
+    normalized_columns = normalize_financial_calendar_export_columns(columns)
+    preview = build_financial_calendar_export_preview(
+        user=user,
+        year=year,
+        month=month,
+        account_ids=account_ids,
+        event_types=event_types,
+        date_from=date_from,
+        date_to=date_to,
+        timezone_value=timezone_value,
+    )
+    export_result = build_financial_calendar_export_file(
+        rows=preview["rows"],
+        export_format=normalized_format,
+        columns=normalized_columns,
+        year=year,
+        month=month,
+    )
+    return {
+        "downloadUrl": build_financial_calendar_download_url(export_result),
+        "fileName": export_result.filename,
+    }
+
+
+def build_financial_calendar_export_rows(*, day_forecasts: list[dict], events: list[dict]) -> list[dict]:
+    events_by_date: dict[str, list[dict]] = {}
+    for event in events:
+        events_by_date.setdefault(event["date"], []).append(event)
+
+    rows = []
+    for forecast in day_forecasts:
+        day_events = events_by_date.get(forecast["date"], [])
+        rows.append(
+            {
+                "date": forecast.get("dateLabel") or forecast["date"],
+                "iso": forecast["date"],
+                "actualRub": forecast["actualBalanceRub"] or "0.00",
+                "forecastRub": forecast["forecastBalanceRub"],
+                "eventsSummary": build_events_summary(day_events),
+                "riskLevel": forecast["riskLevel"],
+                "riskLabel": get_risk_label(forecast["riskLevel"]),
+            }
+        )
+    return rows
+
+
+def resolve_financial_calendar_export_period(
+    *,
+    year: int,
+    month: int,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> tuple[date, date]:
+    month_first_day = date(year, month, 1)
+    _, last_day_number = calendar.monthrange(year, month)
+    month_last_day = date(year, month, last_day_number)
+
+    resolved_date_from = date_from or month_first_day
+    resolved_date_to = date_to or month_last_day
+
+    if resolved_date_from > resolved_date_to:
+        raise ValueError("dateFrom не может быть позже dateTo.")
+
+    if (resolved_date_to - resolved_date_from).days > MAX_FINANCIAL_CALENDAR_RANGE_DAYS:
+        raise ValueError(
+            f"Период экспорта календаря не должен превышать {MAX_FINANCIAL_CALENDAR_RANGE_DAYS} дней."
+        )
+
+    return resolved_date_from, resolved_date_to
+
+
+def build_events_summary(events: list[dict]) -> str:
+    if not events:
+        return "—"
+
+    titles = [str(event.get("title") or "Событие") for event in events]
+    if len(titles) <= 3:
+        return ", ".join(titles)
+
+    return f"{', '.join(titles[:3])}, +{len(titles) - 3} ещё"
+
+
+def get_risk_label(risk_level: str) -> str:
+    if risk_level == FINANCIAL_CALENDAR_RISK_RISK:
+        return "Риск"
+    if risk_level == FINANCIAL_CALENDAR_RISK_CAUTION:
+        return "Внимание"
+    return "Безопасно"
 
 
 def find_cash_gap_range(day_forecasts: list[dict]) -> dict | None:

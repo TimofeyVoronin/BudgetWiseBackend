@@ -2760,215 +2760,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidateCustomCurrencyResponse'
           description: ''
-  /api/v1/finance/dashboard/accounts-summary/:
-    get:
-      operationId: finance_dashboard_accounts_summary_retrieve
-      description: Возвращает превью активных неархивных счетов пользователя для dashboard.
-        Параметр currency фильтрует счета по валюте. Параметр period принимается для
-        единого frontend-контракта, но на список счетов не влияет.
-      summary: Получить карточку счетов
-      parameters:
-      - in: query
-        name: currency
-        schema:
-          type: string
-        description: ISO-код видимой валюты пользователя. Если не передан, используется
-          валюта по умолчанию из настроек приложения.
-      - in: query
-        name: period
-        schema:
-          type: string
-        description: 'Период dashboard: week, month или year. По умолчанию month.'
-      tags:
-      - finance-dashboard
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountsCard'
-              examples:
-                КарточкаСчетов:
-                  value:
-                    title: Счета
-                    headerIcon: credit-card
-                    rows:
-                    - id: '1'
-                      name: Основная карта
-                      amountRub: 10000.0
-                      icon: card
-                    footerLinkLabel: Все счета
-                  summary: Карточка счетов
-          description: ''
-  /api/v1/finance/dashboard/balance-summary/:
-    get:
-      operationId: finance_dashboard_balance_summary_retrieve
-      description: Возвращает данные карточки текущего баланса для главной страницы.
-        Параметр period задаёт период для расчёта тренда, currency фильтрует счета
-        и операции по валюте счёта. Конвертация валют не выполняется.
-      summary: Получить карточку текущего баланса
-      parameters:
-      - in: query
-        name: currency
-        schema:
-          type: string
-        description: ISO-код видимой валюты пользователя. Если не передан, используется
-          валюта по умолчанию из настроек приложения.
-      - in: query
-        name: period
-        schema:
-          type: string
-        description: 'Период тренда: week, month или year. По умолчанию month.'
-      tags:
-      - finance-dashboard
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BalanceCard'
-              examples:
-                КарточкаБаланса:
-                  value:
-                    title: Текущий баланс
-                    headerIcon: wallet
-                    amountRub: 13000.0
-                    trendLabel: +12.5% к прошлому месяцу
-                  summary: Карточка баланса
-          description: ''
-  /api/v1/finance/dashboard/expense-dynamics/:
-    get:
-      operationId: finance_dashboard_expense_dynamics_retrieve
-      description: Возвращает модель столбчатого графика доходов и расходов. Месяц
-        задаётся параметром month в формате YYYY-MM. Каждая точка weeks является неделей
-        внутри выбранного месяца. Значения income и expenses нормализованы в диапазон
-        0-100 относительно максимального значения месяца.
-      summary: Получить динамику расходов и доходов по неделям месяца
-      parameters:
-      - in: query
-        name: currency
-        schema:
-          type: string
-        description: ISO-код видимой валюты пользователя. Если не передан, используется
-          валюта по умолчанию из настроек приложения.
-      - in: query
-        name: month
-        schema:
-          type: string
-        description: Месяц графика в формате YYYY-MM, например 2026-05.
-      tags:
-      - finance-dashboard
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExpenseDynamicsCard'
-              examples:
-                ДинамикаПоНеделям:
-                  value:
-                    title: Динамика расходов и доходов
-                    headerIcon: bar-chart-3
-                    monthLabel: Май
-                    legendIncome: Доходы
-                    legendExpenses: Расходы
-                    yAxisLabels:
-                    - '0'
-                    - '25'
-                    - '50'
-                    - '75'
-                    - '100'
-                    weeks:
-                    - label: 1 неделя
-                      income: 100
-                      expenses: 40
-                    - label: 2 неделя
-                      income: 0
-                      expenses: 25
-                  summary: Динамика по неделям
-          description: ''
-  /api/v1/finance/dashboard/goals-summary/:
-    get:
-      operationId: finance_dashboard_goals_summary_retrieve
-      description: Возвращает список активных целей для карточки на главной странице.
-        Если цель привязана к счёту, она попадает в ответ только для валюты этого
-        счёта. Цели без счёта показываются только для валюты по умолчанию из настроек
-        приложения. Конвертация валют не выполняется.
-      summary: Получить карточку целей
-      parameters:
-      - in: query
-        name: currency
-        schema:
-          type: string
-        description: ISO-код видимой валюты пользователя. Если не передан, используется
-          валюта по умолчанию из настроек приложения.
-      tags:
-      - finance-dashboard
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GoalsCard'
-              examples:
-                КарточкаЦелей:
-                  value:
-                    title: Цели
-                    headerIcon: target
-                    goals:
-                    - id: '1'
-                      name: Ремонт
-                      targetRub: 500000.0
-                      currentRub: 455000.0
-                      percent: 91.0
-                  summary: Карточка целей
-          description: ''
-  /api/v1/finance/dashboard/period-currency/:
-    get:
-      operationId: finance_dashboard_period_currency_retrieve
-      description: 'Возвращает модель верхней панели dashboard: период по умолчанию,
-        валюту по умолчанию из настроек приложения и списки доступных периодов и видимых
-        валют пользователя.'
-      summary: Получить настройки периода и валюты для dashboard
-      tags:
-      - finance-dashboard
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PeriodCurrencyBar'
-              examples:
-                ПериодИВалютаDashboard:
-                  value:
-                    defaultPeriod: month
-                    defaultCurrency: RUB
-                    periodOptions:
-                    - value: week
-                      label: Неделя
-                    - value: month
-                      label: Месяц
-                    - value: year
-                      label: Год
-                    currencies:
-                    - title: Руб.
-                      value: RUB
-                    - title: Долл.
-                      value: USD
-                    - title: Евро
-                      value: EUR
-                  summary: Период и валюта dashboard
-          description: ''
   /api/v1/finance/dashboard/summary/:
     get:
       operationId: finance_dashboard_summary_retrieve
@@ -3262,6 +3053,146 @@ paths:
               schema:
                 $ref: '#/components/schemas/FinancialCalendarEventsResponse'
           description: ''
+  /api/v1/finance/financial-calendar/export/:
+    post:
+      operationId: finance_financial_calendar_export_create
+      description: Формирует файл финансового календаря в формате CSV, PDF или XLSX
+        и возвращает имя файла вместе с data URL. Такой вариант не требует отдельного
+        файлового хранилища и подходит для MVP-интеграции с кнопкой скачивания на
+        фронте.
+      summary: Экспортировать финансовый календарь
+      tags:
+      - finance-calendar
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinancialCalendarExportRequestRequest'
+            examples:
+              ЗапросЭкспортаXLSX:
+                value:
+                  year: 2026
+                  month: 5
+                  format: xlsx
+                  columns:
+                    actual: true
+                    balance: true
+                    events: true
+                    risks: true
+                  accountIds:
+                  - 1
+                  - 2
+                  eventTypes:
+                  - income
+                  - expense
+                  - reminder
+                  timezone: Asia/Krasnoyarsk
+                summary: Запрос экспорта XLSX
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FinancialCalendarExportRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FinancialCalendarExportRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialCalendarExportResponse'
+              examples:
+                ОтветЭкспорта:
+                  value:
+                    downloadUrl: data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,...
+                    fileName: financial_calendar_2026_05_20260524_120000.xlsx
+                  summary: Ответ экспорта
+          description: ''
+        '400':
+          description: Некорректные параметры экспорта.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/financial-calendar/export/preview/:
+    get:
+      operationId: finance_financial_calendar_export_preview_retrieve
+      description: Возвращает строки предварительного просмотра для окна экспорта
+        финансового календаря. По умолчанию период ограничивается выбранным календарным
+        месяцем. Если переданы dateFrom и dateTo, используется указанный диапазон.
+      summary: Получить предварительный просмотр экспорта финансового календаря
+      parameters:
+      - in: query
+        name: accountIds
+        schema:
+          type: array
+          items:
+            type: integer
+        description: ID счетов. Можно передавать повторяющимся параметром или через
+          запятую.
+      - in: query
+        name: dateFrom
+        schema:
+          type: string
+          format: date
+        description: Нижняя граница периода, YYYY-MM-DD.
+      - in: query
+        name: dateTo
+        schema:
+          type: string
+          format: date
+        description: Верхняя граница периода, YYYY-MM-DD.
+      - in: query
+        name: eventTypes
+        schema:
+          type: array
+          items:
+            type: string
+        description: 'Типы событий: income, expense, transfer, reminder.'
+      - in: query
+        name: month
+        schema:
+          type: integer
+        description: Месяц календаря от 1 до 12.
+        required: true
+      - in: query
+        name: timezone
+        schema:
+          type: string
+        description: IANA-часовой пояс, например Asia/Krasnoyarsk.
+      - in: query
+        name: year
+        schema:
+          type: integer
+        description: Год календаря, например 2026.
+        required: true
+      tags:
+      - finance-calendar
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialCalendarExportPreviewResponse'
+              examples:
+                ПредварительныйПросмотрЭкспорта:
+                  value:
+                    rows:
+                    - date: 15.05.2026
+                      iso: '2026-05-15'
+                      actualRub: '349750.00'
+                      forecastRub: '291500.00'
+                      eventsSummary: Подработка, Перекрёсток, Топливо
+                      riskLevel: safe
+                      riskLabel: Безопасно
+                  summary: Предварительный просмотр экспорта
+          description: ''
+        '400':
+          description: Некорректные параметры периода или фильтров.
+        '401':
+          description: Пользователь не авторизован.
   /api/v1/finance/financial-calendar/meta/:
     get:
       operationId: finance_financial_calendar_meta_retrieve
@@ -8139,49 +8070,6 @@ components:
       - icon
       - title
       - value
-    AccountsCard:
-      type: object
-      properties:
-        title:
-          type: string
-          readOnly: true
-        headerIcon:
-          type: string
-          readOnly: true
-        rows:
-          type: array
-          items:
-            $ref: '#/components/schemas/AccountsCardRow'
-          readOnly: true
-        footerLinkLabel:
-          type: string
-          readOnly: true
-      required:
-      - footerLinkLabel
-      - headerIcon
-      - rows
-      - title
-    AccountsCardRow:
-      type: object
-      properties:
-        id:
-          type: string
-          readOnly: true
-        name:
-          type: string
-          readOnly: true
-        amountRub:
-          type: number
-          format: double
-          readOnly: true
-        icon:
-          type: string
-          readOnly: true
-      required:
-      - amountRub
-      - icon
-      - id
-      - name
     AddCurrencyFromCatalogRequest:
       type: object
       properties:
@@ -8460,27 +8348,6 @@ components:
       required:
       - code
       - message
-    BalanceCard:
-      type: object
-      properties:
-        title:
-          type: string
-          readOnly: true
-        headerIcon:
-          type: string
-          readOnly: true
-        amountRub:
-          type: number
-          format: double
-          readOnly: true
-        trendLabel:
-          type: string
-          readOnly: true
-      required:
-      - amountRub
-      - headerIcon
-      - title
-      - trendLabel
     Budget:
       type: object
       properties:
@@ -10449,18 +10316,6 @@ components:
       - is_active
       - role
       - username
-    DashboardCurrencyOption:
-      type: object
-      properties:
-        title:
-          type: string
-          readOnly: true
-        value:
-          type: string
-          readOnly: true
-      required:
-      - title
-      - value
     DashboardPeriod:
       type: object
       properties:
@@ -10479,18 +10334,6 @@ components:
       - date_from
       - date_to
       - type
-    DashboardPeriodOption:
-      type: object
-      properties:
-        value:
-          type: string
-          readOnly: true
-        label:
-          type: string
-          readOnly: true
-      required:
-      - label
-      - value
     DashboardReminderRow:
       type: object
       properties:
@@ -10803,62 +10646,6 @@ components:
       description: |-
         * `none` - Нет
         * `monthly` - Ежемесячно
-    ExpenseDynamicsCard:
-      type: object
-      properties:
-        title:
-          type: string
-          readOnly: true
-        headerIcon:
-          type: string
-          readOnly: true
-        monthLabel:
-          type: string
-          readOnly: true
-        legendIncome:
-          type: string
-          readOnly: true
-        legendExpenses:
-          type: string
-          readOnly: true
-        yAxisLabels:
-          type: array
-          items:
-            type: string
-          readOnly: true
-        weeks:
-          type: array
-          items:
-            $ref: '#/components/schemas/ExpenseDynamicsWeek'
-          readOnly: true
-      required:
-      - headerIcon
-      - legendExpenses
-      - legendIncome
-      - monthLabel
-      - title
-      - weeks
-      - yAxisLabels
-    ExpenseDynamicsWeek:
-      type: object
-      properties:
-        label:
-          type: string
-          readOnly: true
-        income:
-          type: integer
-          maximum: 100
-          minimum: 0
-          readOnly: true
-        expenses:
-          type: integer
-          maximum: 100
-          minimum: 0
-          readOnly: true
-      required:
-      - expenses
-      - income
-      - label
     FinancialCalendarAccountOption:
       type: object
       properties:
@@ -11113,6 +10900,140 @@ components:
           description: Список событий календаря.
       required:
       - items
+    FinancialCalendarExportColumnsRequest:
+      type: object
+      properties:
+        actual:
+          type: boolean
+          default: true
+          description: Включить фактический баланс в выгрузку.
+        balance:
+          type: boolean
+          default: true
+          description: Включить прогнозный баланс на конец дня.
+        events:
+          type: boolean
+          default: true
+          description: Включить краткое описание событий дня.
+        risks:
+          type: boolean
+          default: true
+          description: Включить уровень риска по остатку на день.
+    FinancialCalendarExportPreviewResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarExportPreviewRow'
+          description: Строки предварительного просмотра выгрузки.
+      required:
+      - rows
+    FinancialCalendarExportPreviewRow:
+      type: object
+      properties:
+        date:
+          type: string
+          description: Дата для отображения с учётом формата даты пользователя.
+        iso:
+          type: string
+          format: date
+          description: ISO-дата строки выгрузки.
+        actualRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Фактический баланс. Для будущих дней возвращается 0.00.
+        forecastRub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Прогнозный баланс на конец дня.
+        eventsSummary:
+          type: string
+          description: Краткое описание событий дня.
+        riskLevel:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarRiskLevelEnum'
+          description: |-
+            Уровень риска по остатку на день.
+
+            * `safe` - Безопасно
+            * `caution` - Внимание
+            * `risk` - Риск кассового разрыва
+        riskLabel:
+          type: string
+          description: Подпись уровня риска для выгрузки.
+      required:
+      - actualRub
+      - date
+      - eventsSummary
+      - forecastRub
+    FinancialCalendarExportRequestRequest:
+      type: object
+      properties:
+        year:
+          type: integer
+          maximum: 2100
+          minimum: 2000
+          description: Год календаря.
+        month:
+          type: integer
+          maximum: 12
+          minimum: 1
+          description: Месяц календаря, 1-12.
+        format:
+          allOf:
+          - $ref: '#/components/schemas/FormatEnum'
+          default: csv
+          description: |-
+            Формат файла выгрузки.
+
+            * `csv` - CSV
+            * `pdf` - PDF
+            * `xlsx` - XLSX
+        columns:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarExportColumnsRequest'
+          description: Набор колонок, которые нужно включить в файл.
+        accountIds:
+          type: array
+          items:
+            type: integer
+          description: ID счетов для фильтрации.
+        eventTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinancialCalendarEventTypeEnum'
+          description: Типы событий для фильтрации.
+        dateFrom:
+          type: string
+          format: date
+          description: Нижняя граница периода выгрузки.
+        dateTo:
+          type: string
+          format: date
+          description: Верхняя граница периода выгрузки.
+        timezone:
+          type: string
+          minLength: 1
+          description: IANA-часовой пояс. Если не передан, используется настройка
+            пользователя.
+      required:
+      - month
+      - year
+    FinancialCalendarExportResponse:
+      type: object
+      properties:
+        downloadUrl:
+          type: string
+          description: Data URL с содержимым файла для скачивания на фронте.
+        fileName:
+          type: string
+          description: Имя файла выгрузки.
+      required:
+      - downloadUrl
+      - fileName
     FinancialCalendarMetaResponse:
       type: object
       properties:
@@ -11315,6 +11236,16 @@ components:
           minLength: 1
       required:
       - email
+    FormatEnum:
+      enum:
+      - csv
+      - pdf
+      - xlsx
+      type: string
+      description: |-
+        * `csv` - CSV
+        * `pdf` - PDF
+        * `xlsx` - XLSX
     Goal:
       type: object
       properties:
@@ -11711,51 +11642,6 @@ components:
       - accountId
       - amountRub
       - date
-    GoalsCard:
-      type: object
-      properties:
-        title:
-          type: string
-          readOnly: true
-        headerIcon:
-          type: string
-          readOnly: true
-        goals:
-          type: array
-          items:
-            $ref: '#/components/schemas/GoalsCardItem'
-          readOnly: true
-      required:
-      - goals
-      - headerIcon
-      - title
-    GoalsCardItem:
-      type: object
-      properties:
-        id:
-          type: string
-          readOnly: true
-        name:
-          type: string
-          readOnly: true
-        targetRub:
-          type: number
-          format: double
-          readOnly: true
-        currentRub:
-          type: number
-          format: double
-          readOnly: true
-        percent:
-          type: number
-          format: double
-          readOnly: true
-      required:
-      - currentRub
-      - id
-      - name
-      - percent
-      - targetRub
     HealthCheckResponse:
       type: object
       properties:
@@ -13830,30 +13716,6 @@ components:
       - contributions
       - growth
       - total
-    PeriodCurrencyBar:
-      type: object
-      properties:
-        defaultPeriod:
-          type: string
-          readOnly: true
-        defaultCurrency:
-          type: string
-          readOnly: true
-        periodOptions:
-          type: array
-          items:
-            $ref: '#/components/schemas/DashboardPeriodOption'
-          readOnly: true
-        currencies:
-          type: array
-          items:
-            $ref: '#/components/schemas/DashboardCurrencyOption'
-          readOnly: true
-      required:
-      - currencies
-      - defaultCurrency
-      - defaultPeriod
-      - periodOptions
     PlannedCalendarDayBadge:
       type: object
       properties:
