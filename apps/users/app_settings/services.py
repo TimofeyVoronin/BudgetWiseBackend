@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db import transaction
 
-from apps.finance.currencies import (
+from apps.finance.currencies.services import (
     build_currency_select_options,
     get_user_currency_by_code,
     get_user_primary_currency_code,

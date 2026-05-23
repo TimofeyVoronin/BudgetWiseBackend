@@ -5,7 +5,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from apps.finance.currencies import ensure_user_currencies
+from apps.finance.currencies.services import ensure_user_currencies
 from apps.users.app_settings.formatting import (
     build_app_formatting_context,
     format_app_date,

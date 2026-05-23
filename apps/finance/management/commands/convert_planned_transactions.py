@@ -4,7 +4,7 @@ from datetime import date
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.finance.planned_transactions import run_due_planned_transactions
+from apps.finance.planned_transactions.services import run_due_planned_transactions
 
 
 class Command(BaseCommand):

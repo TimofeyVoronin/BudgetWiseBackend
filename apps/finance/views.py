@@ -1,6 +1,6 @@
-from apps.finance.category_views import CategoryViewSet
-from apps.finance.dashboard_views import DashboardSummaryView
-from apps.finance.transaction_views import (
+from apps.finance.categories.views import CategoryViewSet
+from apps.finance.dashboard.views import DashboardSummaryView
+from apps.finance.transactions.views import (
     MAX_TRANSACTION_EXPORT_ROWS,
     TransactionExportView,
     TransactionViewSet,

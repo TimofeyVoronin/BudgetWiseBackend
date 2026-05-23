@@ -1,14 +1,14 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from apps.finance.account_views import AccountViewSet
-from apps.finance.budget_views import BudgetViewSet
-from apps.finance.calculator_views import (
+from apps.finance.accounts.views import AccountViewSet
+from apps.finance.budgets.views import BudgetViewSet
+from apps.finance.calculators.views import (
     CalculatorCalculateView,
     CalculatorDefaultsView,
     CalculatorsHubView,
 )
-from apps.finance.budget_notification_views import (
+from apps.finance.budget_notifications.views import (
     BudgetNotificationCheckView,
     BudgetNotificationMetaView,
     BudgetNotificationPreviewView,
@@ -16,9 +16,9 @@ from apps.finance.budget_notification_views import (
     BudgetNotificationTestView,
     BudgetNotificationThresholdValidationView,
 )
-from apps.finance.category_views import CategoryViewSet
-from apps.finance.currency_views import CurrencyViewSet
-from apps.finance.dashboard_views import (
+from apps.finance.categories.views import CategoryViewSet
+from apps.finance.currencies.views import CurrencyViewSet
+from apps.finance.dashboard.views import (
     DashboardAccountsSummaryView,
     DashboardBalanceSummaryView,
     DashboardExpenseDynamicsView,
@@ -26,7 +26,7 @@ from apps.finance.dashboard_views import (
     DashboardPeriodCurrencyView,
     DashboardSummaryView,
 )
-from apps.finance.financial_calendar_views import (
+from apps.finance.financial_calendar.views import (
     FinancialCalendarDayView,
     FinancialCalendarExportPreviewView,
     FinancialCalendarExportView,
@@ -34,14 +34,14 @@ from apps.finance.financial_calendar_views import (
     FinancialCalendarMetaView,
     FinancialCalendarMonthView,
 )
-from apps.finance.goal_views import GoalViewSet
-from apps.finance.notification_views import NotificationViewSet
-from apps.finance.planned_transaction_views import PlannedTransactionViewSet
-from apps.finance.recurring_transaction_views import RecurringTransactionViewSet
-from apps.finance.receipt_transaction_views import ReceiptCreateTransactionsView
-from apps.finance.tag_views import TagViewSet
-from apps.finance.transaction_template_views import TransactionTemplateViewSet
-from apps.finance.transaction_views import (
+from apps.finance.goals.views import GoalViewSet
+from apps.finance.notifications.views import NotificationViewSet
+from apps.finance.planned_transactions.views import PlannedTransactionViewSet
+from apps.finance.recurring_transactions.views import RecurringTransactionViewSet
+from apps.finance.receipts.views import ReceiptCreateTransactionsView
+from apps.finance.tags.views import TagViewSet
+from apps.finance.transaction_templates.views import TransactionTemplateViewSet
+from apps.finance.transactions.views import (
     TransactionExportView,
     TransactionViewSet,
 )

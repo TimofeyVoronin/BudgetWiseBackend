@@ -1,4 +1,4 @@
-from apps.finance.category_serializers import (
+from apps.finance.categories.serializers import (
     CategoryArchiveSerializer,
     CategoryFavoriteSerializer,
     CategoryReorderItemSerializer,
@@ -8,7 +8,7 @@ from apps.finance.category_serializers import (
     CategorySuggestionSerializer,
     CategoryTreeSerializer,
 )
-from apps.finance.dashboard_serializers import (
+from apps.finance.dashboard.serializers import (
     DashboardPeriodSerializer,
     DashboardReminderRowSerializer,
     DashboardRemindersCardSerializer,
@@ -16,7 +16,7 @@ from apps.finance.dashboard_serializers import (
     DashboardTopExpenseCategorySerializer,
     DashboardTotalsSerializer,
 )
-from apps.finance.transaction_serializers import TransactionSerializer
+from apps.finance.transactions.serializers import TransactionSerializer
 
 
 __all__ = [

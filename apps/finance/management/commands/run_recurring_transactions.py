@@ -4,7 +4,7 @@ from datetime import date
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.finance.recurring_transactions import run_due_recurring_transactions
+from apps.finance.recurring_transactions.services import run_due_recurring_transactions
 
 
 class Command(BaseCommand):

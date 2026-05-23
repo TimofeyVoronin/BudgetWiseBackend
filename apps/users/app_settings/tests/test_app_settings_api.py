@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from apps.finance.currencies import ensure_user_currencies, get_user_currency_by_code
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
 from apps.users.models import UserAppSettings
 
 
