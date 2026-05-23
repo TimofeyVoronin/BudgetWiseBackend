@@ -12,7 +12,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.common.exceptions import ConflictError
+from apps.common.errors import ConflictError
 from apps.common.validation import (
     get_bool_query_param,
     get_int_query_param,

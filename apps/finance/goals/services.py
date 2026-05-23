@@ -7,7 +7,7 @@ from django.db import transaction as db_transaction
 from django.db.models import F
 from django.utils import timezone
 
-from apps.common.domain_errors import DomainConflictError
+from apps.common.errors import DomainConflictError
 from apps.finance.models import (
     Account,
     Category,

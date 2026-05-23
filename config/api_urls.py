@@ -1,6 +1,6 @@
 from django.urls import include, path
 
-from apps.common.api_root_views import APIRootView
+from apps.common.api.root import APIRootView
 from apps.users.profile.views import HomeGreetingView
 
 

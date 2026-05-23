@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
-from apps.common.domain_errors import (
+from apps.common.errors.domain import (
     DomainAPIException,
     DomainConflictError,
     DomainNotFoundError,

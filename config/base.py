@@ -100,7 +100,7 @@ INSTALLED_APPS = DJANGO_APPS + DRF_APPS + THIRD_PARTY_APPS + PROJECT_APPS
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
-    "apps.common.metrics.PrometheusMetricsMiddleware",
+    "apps.common.monitoring.metrics.PrometheusMetricsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -201,10 +201,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
-    "DEFAULT_PAGINATION_CLASS": "apps.common.pagination.StandardResultsSetPagination",
+    "DEFAULT_PAGINATION_CLASS": "apps.common.pagination.classes.StandardResultsSetPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    "EXCEPTION_HANDLER": "apps.common.exceptions.custom_exception_handler",
+    "EXCEPTION_HANDLER": "apps.common.errors.handlers.custom_exception_handler",
     "DATETIME_FORMAT": "%Y-%m-%dT%H:%M:%S%z",
     "DATE_FORMAT": "%Y-%m-%d",
     "DEFAULT_THROTTLE_RATES": {

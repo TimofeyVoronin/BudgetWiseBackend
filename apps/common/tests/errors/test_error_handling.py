@@ -8,8 +8,8 @@ from rest_framework.exceptions import (
 )
 from rest_framework.test import APIRequestFactory
 
-from apps.common.domain_errors import DomainConflictError
-from apps.common.exceptions import custom_exception_handler
+from apps.common.errors.domain import DomainConflictError
+from apps.common.errors import custom_exception_handler
 
 
 class ErrorHandlingTests(TestCase):

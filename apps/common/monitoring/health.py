@@ -5,7 +5,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.common.metrics import record_database_health_check, record_health_status
+from apps.common.monitoring.metrics import record_database_health_check, record_health_status
 
 
 CHECK_STATUS_OK = "ok"

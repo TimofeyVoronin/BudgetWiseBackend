@@ -8,14 +8,12 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
-from apps.common.metrics_views import metrics_view
 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
 
     path("", include("apps.common.urls")),
-    path("metrics/", metrics_view, name="metrics"),
     path("api/v1/", include("config.api_urls")),
 
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

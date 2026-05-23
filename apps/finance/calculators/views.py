@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.common.domain_errors import (
+from apps.common.errors import (
     DomainNotFoundError,
     DomainValidationError,
     normalize_error_detail,

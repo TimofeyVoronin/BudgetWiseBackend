@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from apps.common.health import build_health_status
+from apps.common.monitoring.health import build_health_status
 
 
 class HealthCheckResponseSerializer(serializers.Serializer):

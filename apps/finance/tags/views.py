@@ -17,7 +17,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.common.domain_errors import DomainConflictError
+from apps.common.errors import DomainConflictError
 
 from apps.finance.models import Account, Category, Tag, Transaction, TransactionType
 from apps.finance.tags.serializers import (

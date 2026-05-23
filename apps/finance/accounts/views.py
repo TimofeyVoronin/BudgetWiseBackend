@@ -14,7 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.common.domain_errors import DomainConflictError
+from apps.common.errors import DomainConflictError
 from apps.common.pagination import StandardResultsSetPagination
 from apps.common.validation import validate_choice_query_param
 from apps.finance.accounts.serializers import (
