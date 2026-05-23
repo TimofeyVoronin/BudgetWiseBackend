@@ -137,6 +137,85 @@ class UserProfileAuditLog(models.Model):
         return f"{self.action}: user={self.user_id}"
 
 
+class AppDateFormat(models.TextChoices):
+    DD_MM_YYYY = "DD.MM.YYYY", "ДД.ММ.ГГГГ"
+    YYYY_MM_DD = "YYYY-MM-DD", "ГГГГ-ММ-ДД"
+    MM_DD_YYYY = "MM/DD/YYYY", "ММ/ДД/ГГГГ"
+
+
+class AppNumberFormat(models.TextChoices):
+    RU_RU = "ru-RU", "Русский формат"
+    EN_US = "en-US", "Английский формат"
+
+
+class UserAppSettings(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="app_settings",
+        verbose_name="Пользователь",
+    )
+    timezone = models.CharField(
+        max_length=64,
+        default="Asia/Krasnoyarsk",
+        verbose_name="Часовой пояс",
+    )
+    date_format = models.CharField(
+        max_length=20,
+        choices=AppDateFormat.choices,
+        default=AppDateFormat.DD_MM_YYYY,
+        verbose_name="Формат даты",
+    )
+    number_format = models.CharField(
+        max_length=20,
+        choices=AppNumberFormat.choices,
+        default=AppNumberFormat.RU_RU,
+        verbose_name="Формат чисел",
+    )
+    default_currency = models.CharField(
+        max_length=3,
+        default="RUB",
+        verbose_name="Валюта по умолчанию",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания",
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Дата обновления",
+    )
+
+    class Meta:
+        verbose_name = "Настройки приложения пользователя"
+        verbose_name_plural = "Настройки приложения пользователей"
+        indexes = [
+            models.Index(fields=["user"], name="idx_appset_user"),
+            models.Index(fields=["default_currency"], name="idx_appset_currency"),
+        ]
+
+    def clean(self) -> None:
+        self.timezone = str(self.timezone or "").strip()
+        self.default_currency = str(self.default_currency or "").strip().upper()
+
+        if self.date_format not in AppDateFormat.values:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"date_format": "Недопустимый формат даты."})
+
+        if self.number_format not in AppNumberFormat.values:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"number_format": "Недопустимый формат чисел."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"App settings for user_id={self.user_id}"
+
+
 class PasswordResetToken(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

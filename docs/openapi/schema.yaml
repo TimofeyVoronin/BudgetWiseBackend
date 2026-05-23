@@ -35,6 +35,7 @@ paths:
                     endpoints:
                       auth: /api/v1/auth/
                       users: /api/v1/users/
+                      settings: /api/v1/settings/app/
                       finance: /api/v1/finance/
                       schema: /api/schema/
                       docs: /api/docs/
@@ -6988,6 +6989,162 @@ paths:
                     avatarUrl: null
                   summary: Успешный ответ
           description: ''
+  /api/v1/settings/app/:
+    get:
+      operationId: app_settings_retrieve
+      description: 'Возвращает пользовательские настройки приложения: часовой пояс,
+        формат даты, формат чисел и валюту по умолчанию. Если настройки ещё не создавались,
+        backend создаёт запись со значениями по умолчанию: Asia/Krasnoyarsk, DD.MM.YYYY,
+        ru-RU и основная валюта пользователя.'
+      summary: Получить настройки приложения текущего пользователя
+      tags:
+      - app-settings
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSettings'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    timezone: Asia/Krasnoyarsk
+                    dateFormat: DD.MM.YYYY
+                    numberFormat: ru-RU
+                    defaultCurrency: RUB
+                    createdAt: 2026-05-24T10:00:00+0700
+                    updatedAt: 2026-05-24T10:00:00+0700
+                  summary: Успешный ответ
+          description: ''
+    put:
+      operationId: app_settings_update
+      description: Полностью обновляет настройки приложения текущего пользователя.
+        Валюта по умолчанию должна быть добавлена в список валют пользователя. Машинные
+        даты и суммы в API остаются стабильными, а эти настройки используются для
+        display-полей и поведения интерфейса.
+      summary: Полностью сохранить настройки приложения
+      tags:
+      - app-settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppSettingsRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  timezone: Asia/Krasnoyarsk
+                  dateFormat: DD.MM.YYYY
+                  numberFormat: ru-RU
+                  defaultCurrency: RUB
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AppSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AppSettingsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSettings'
+          description: ''
+    patch:
+      operationId: app_settings_partial_update
+      description: Частично обновляет настройки приложения текущего пользователя.
+        Можно передать только изменившиеся поля.
+      summary: Частично сохранить настройки приложения
+      tags:
+      - app-settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAppSettingsRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  timezone: Europe/Moscow
+                  numberFormat: en-US
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAppSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAppSettingsRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSettings'
+          description: ''
+  /api/v1/settings/app/meta/:
+    get:
+      operationId: app_settings_meta_retrieve
+      description: Возвращает доступные часовые пояса, форматы даты, форматы чисел,
+        валюты пользователя и значения по умолчанию для кнопки сброса.
+      summary: Получить справочники для страницы настроек приложения
+      tags:
+      - app-settings
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSettingsMetaResponse'
+          description: ''
+  /api/v1/settings/app/reset/:
+    post:
+      operationId: app_settings_reset
+      description: 'Сбрасывает настройки текущего пользователя к значениям по умолчанию:
+        Asia/Krasnoyarsk, DD.MM.YYYY, ru-RU и основная валюта пользователя.'
+      summary: Сбросить настройки приложения к значениям по умолчанию
+      tags:
+      - app-settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppSettingsResetResponseRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AppSettingsResetResponseRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AppSettingsResetResponseRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppSettingsResetResponse'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    reset: true
+                    settings:
+                      timezone: Asia/Krasnoyarsk
+                      dateFormat: DD.MM.YYYY
+                      numberFormat: ru-RU
+                      defaultCurrency: RUB
+                  summary: Успешный ответ
+          description: ''
   /api/v1/users/:
     get:
       operationId: users_list
@@ -7750,6 +7907,211 @@ components:
           example: false
         error:
           $ref: '#/components/schemas/ApiErrorDetail'
+    AppSettings:
+      type: object
+      properties:
+        timezone:
+          type: string
+          description: Часовой пояс пользователя в формате IANA, например Asia/Krasnoyarsk.
+          maxLength: 64
+        dateFormat:
+          type: string
+          description: 'Формат отображения дат: DD.MM.YYYY, YYYY-MM-DD или MM/DD/YYYY.'
+        numberFormat:
+          type: string
+          description: 'Формат отображения чисел: ru-RU или en-US.'
+        defaultCurrency:
+          type: string
+          description: Код валюты по умолчанию. Валюта должна быть добавлена пользователю.
+          maxLength: 3
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Дата создания настроек.
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Дата последнего обновления настроек.
+      required:
+      - createdAt
+      - dateFormat
+      - defaultCurrency
+      - numberFormat
+      - timezone
+      - updatedAt
+    AppSettingsCurrencyOption:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Подпись валюты для select-поля.
+        value:
+          type: string
+          description: Код валюты.
+        symbol:
+          type: string
+          description: Символ валюты.
+        isPrimary:
+          type: boolean
+          description: Является ли валюта основной в управлении валютами.
+      required:
+      - title
+      - value
+    AppSettingsDateFormatOption:
+      type: object
+      properties:
+        value:
+          type: string
+          description: Значение формата даты.
+        label:
+          type: string
+          description: Подпись формата.
+        example:
+          type: string
+          description: Пример отображения даты.
+      required:
+      - example
+      - label
+      - value
+    AppSettingsDefaults:
+      type: object
+      properties:
+        timezone:
+          type: string
+          description: Часовой пояс по умолчанию.
+        dateFormat:
+          type: string
+          description: Формат даты по умолчанию.
+        numberFormat:
+          type: string
+          description: Формат чисел по умолчанию.
+        defaultCurrency:
+          type: string
+          description: Валюта по умолчанию.
+      required:
+      - dateFormat
+      - defaultCurrency
+      - numberFormat
+      - timezone
+    AppSettingsMetaResponse:
+      type: object
+      properties:
+        timezones:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppSettingsTimezoneOption'
+          description: Доступные часовые пояса.
+        dateFormats:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppSettingsDateFormatOption'
+          description: Доступные форматы даты.
+        numberFormats:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppSettingsNumberFormatOption'
+          description: Доступные форматы чисел.
+        currencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppSettingsCurrencyOption'
+          description: Валюты пользователя для выбора валюты по умолчанию.
+        defaults:
+          allOf:
+          - $ref: '#/components/schemas/AppSettingsDefaults'
+          description: Значения по умолчанию для сброса настроек.
+      required:
+      - currencies
+      - dateFormats
+      - defaults
+      - numberFormats
+      - timezones
+    AppSettingsNumberFormatOption:
+      type: object
+      properties:
+        value:
+          type: string
+          description: Значение формата чисел.
+        label:
+          type: string
+          description: Подпись формата.
+        example:
+          type: string
+          description: Пример отображения числа.
+      required:
+      - example
+      - label
+      - value
+    AppSettingsRequest:
+      type: object
+      properties:
+        timezone:
+          type: string
+          minLength: 1
+          description: Часовой пояс пользователя в формате IANA, например Asia/Krasnoyarsk.
+          maxLength: 64
+        dateFormat:
+          type: string
+          minLength: 1
+          description: 'Формат отображения дат: DD.MM.YYYY, YYYY-MM-DD или MM/DD/YYYY.'
+        numberFormat:
+          type: string
+          minLength: 1
+          description: 'Формат отображения чисел: ru-RU или en-US.'
+        defaultCurrency:
+          type: string
+          minLength: 1
+          description: Код валюты по умолчанию. Валюта должна быть добавлена пользователю.
+          maxLength: 3
+      required:
+      - dateFormat
+      - defaultCurrency
+      - numberFormat
+      - timezone
+    AppSettingsResetResponse:
+      type: object
+      properties:
+        settings:
+          allOf:
+          - $ref: '#/components/schemas/AppSettings'
+          description: Настройки после сброса к значениям по умолчанию.
+        reset:
+          type: boolean
+          description: Флаг успешного сброса.
+      required:
+      - reset
+      - settings
+    AppSettingsResetResponseRequest:
+      type: object
+      properties:
+        settings:
+          allOf:
+          - $ref: '#/components/schemas/AppSettingsRequest'
+          description: Настройки после сброса к значениям по умолчанию.
+        reset:
+          type: boolean
+          description: Флаг успешного сброса.
+      required:
+      - reset
+      - settings
+    AppSettingsTimezoneOption:
+      type: object
+      properties:
+        value:
+          type: string
+          description: IANA timezone, например Asia/Krasnoyarsk.
+        label:
+          type: string
+          description: Подпись для интерфейса.
+        offsetHours:
+          type: integer
+          description: Смещение от UTC в часах.
+      required:
+      - label
+      - offsetHours
+      - value
     Budget:
       type: object
       properties:
@@ -12206,6 +12568,27 @@ components:
         comment:
           type: string
           title: Комментарий
+    PatchedAppSettingsRequest:
+      type: object
+      properties:
+        timezone:
+          type: string
+          minLength: 1
+          description: Часовой пояс пользователя в формате IANA, например Asia/Krasnoyarsk.
+          maxLength: 64
+        dateFormat:
+          type: string
+          minLength: 1
+          description: 'Формат отображения дат: DD.MM.YYYY, YYYY-MM-DD или MM/DD/YYYY.'
+        numberFormat:
+          type: string
+          minLength: 1
+          description: 'Формат отображения чисел: ru-RU или en-US.'
+        defaultCurrency:
+          type: string
+          minLength: 1
+          description: Код валюты по умолчанию. Валюта должна быть добавлена пользователю.
+          maxLength: 3
     PatchedBudgetRequest:
       type: object
       properties:
@@ -15637,6 +16020,10 @@ tags:
   description: 'Финансовый календарь: месячная сетка, события доходов и расходов,
     плановые операции, дневные балансы, прогноз остатка, риски кассового разрыва и
     справочники фильтров.'
+- name: app-settings
+  description: 'Настройки приложения текущего пользователя: часовой пояс, формат даты,
+    формат чисел, валюта по умолчанию, справочники для формы и сброс к значениям по
+    умолчанию.'
 - name: health
   description: Служебные endpoints состояния backend-сервиса.
 - name: monitoring

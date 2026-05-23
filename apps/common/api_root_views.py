@@ -35,6 +35,7 @@ class APIRootResponseSerializer(serializers.Serializer):
                     "endpoints": {
                         "auth": "/api/v1/auth/",
                         "users": "/api/v1/users/",
+                        "settings": "/api/v1/settings/app/",
                         "finance": "/api/v1/finance/",
                         "schema": "/api/schema/",
                         "docs": "/api/docs/",
@@ -60,6 +61,7 @@ class APIRootView(GenericAPIView):
                 "endpoints": {
                     "auth": "/api/v1/auth/",
                     "users": "/api/v1/users/",
+                    "settings": "/api/v1/settings/app/",
                     "finance": "/api/v1/finance/",
                     "schema": "/api/schema/",
                     "docs": "/api/docs/",
