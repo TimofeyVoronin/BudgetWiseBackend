@@ -14,6 +14,7 @@ from apps.finance.models import (
     TransactionType,
 )
 from apps.finance.tests.base import FinanceAPITestCase
+from apps.users.app_settings_formatting import get_user_app_today
 
 
 TEMPLATES_BASE_URL = "/api/v1/finance/transaction-templates/"
@@ -268,7 +269,7 @@ class FinanceTransactionTemplatesAPITests(FinanceAPITestCase):
         self.assertEqual(draft_response.data["templateId"], template.id)
         self.assertEqual(draft_response.data["templateName"], template.name)
         self.assertEqual(draft_response.data["tagIds"], [tag.id])
-        self.assertEqual(str(draft_response.data["operationDate"]), str(self.today))
+        self.assertEqual(str(draft_response.data["operationDate"]), str(get_user_app_today(self.user)))
 
         duplicate_response = self.client.post(f"{TEMPLATES_BASE_URL}{template.id}/duplicate/")
         self.assertEqual(duplicate_response.status_code, status.HTTP_201_CREATED)

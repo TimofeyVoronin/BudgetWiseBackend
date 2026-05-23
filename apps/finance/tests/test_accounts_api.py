@@ -5,6 +5,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from apps.finance.models import Account, AccountType, TransactionType
+from apps.users.models import AppDateFormat, AppNumberFormat, UserAppSettings
 
 from .base import FinanceAPITestCase
 
@@ -183,6 +184,33 @@ class FinanceAccountsAPITests(FinanceAPITestCase):
         self.assertEqual(created_account.user, self.user)
         self.assertEqual(created_account.balance, Decimal("2500.00"))
         self.assertEqual(created_account.initial_balance, Decimal("2500.00"))
+
+    def test_create_account_uses_app_default_currency_when_currency_omitted(self):
+        self.authenticate()
+        UserAppSettings.objects.update_or_create(
+            user=self.user,
+            defaults={
+                "timezone": "Asia/Krasnoyarsk",
+                "date_format": AppDateFormat.DD_MM_YYYY,
+                "number_format": AppNumberFormat.RU_RU,
+                "default_currency": "USD",
+            },
+        )
+
+        response = self.client.post(
+            reverse("finance:account-list"),
+            data={
+                "name": "Долларовый счёт",
+                "type": AccountType.SAVINGS,
+                "initialBalanceRub": "2500.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["currency"], "USD")
+        created_account = Account.objects.get(pk=response.data["id"])
+        self.assertEqual(created_account.currency, "USD")
 
     def test_first_created_account_becomes_default(self):
         new_user = User.objects.create_user(

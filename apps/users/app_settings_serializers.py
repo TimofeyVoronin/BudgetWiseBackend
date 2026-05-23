@@ -147,6 +147,7 @@ class AppSettingsCurrencyOptionSerializer(serializers.Serializer):
     value = serializers.CharField(help_text="Код валюты.")
     symbol = serializers.CharField(required=False, help_text="Символ валюты.")
     isPrimary = serializers.BooleanField(required=False, help_text="Является ли валюта основной в управлении валютами.")
+    isDefault = serializers.BooleanField(required=False, help_text="Выбрана ли валюта валютой по умолчанию в настройках приложения.")
 
 
 class AppSettingsDefaultsSerializer(serializers.Serializer):

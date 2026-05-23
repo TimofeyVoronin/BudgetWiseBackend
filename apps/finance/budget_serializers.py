@@ -19,7 +19,7 @@ from apps.finance.budgets import (
 )
 from apps.finance.currencies import (
     build_currency_select_options,
-    get_user_primary_currency_code,
+    get_user_default_currency_code,
     validate_user_currency_available,
 )
 from apps.finance.models import (
@@ -265,7 +265,7 @@ class BudgetSerializer(serializers.ModelSerializer):
         period_end = attrs.get("period_end") or getattr(instance, "period_end", None)
 
         if request and instance is None and not attrs.get("currency"):
-            attrs["currency"] = get_user_primary_currency_code(request.user)
+            attrs["currency"] = get_user_default_currency_code(request.user)
 
         if category and kind and category.type != kind:
             raise serializers.ValidationError(
@@ -429,6 +429,7 @@ class BudgetOptionSerializer(serializers.Serializer):
     kind = serializers.CharField(required=False)
     symbol = serializers.CharField(required=False)
     isPrimary = serializers.BooleanField(required=False)
+    isDefault = serializers.BooleanField(required=False)
 
 
 class BudgetsListMetaSerializer(serializers.Serializer):
@@ -436,6 +437,7 @@ class BudgetsListMetaSerializer(serializers.Serializer):
     categoryGroups = BudgetOptionSerializer(many=True)
     periodTypes = BudgetOptionSerializer(many=True)
     currencies = BudgetOptionSerializer(many=True)
+    defaultCurrency = serializers.CharField(required=False)
     kinds = BudgetOptionSerializer(many=True)
     usageStatuses = BudgetOptionSerializer(many=True)
 
@@ -494,6 +496,7 @@ def get_budget_meta_payload(user) -> dict:
         "categoryGroups": BUDGET_CATEGORY_GROUP_OPTIONS,
         "periodTypes": BUDGET_PERIOD_TYPE_OPTIONS,
         "currencies": build_currency_select_options(user),
+        "defaultCurrency": get_user_default_currency_code(user),
         "kinds": BUDGET_KIND_OPTIONS,
         "usageStatuses": BUDGET_USAGE_STATUS_OPTIONS,
     }

@@ -91,10 +91,12 @@ class CurrencySelectOptionSerializer(serializers.Serializer):
     value = serializers.CharField(help_text="Код валюты.")
     symbol = serializers.CharField(required=False, help_text="Символ валюты.")
     isPrimary = serializers.BooleanField(required=False, help_text="Является ли валюта основной.")
+    isDefault = serializers.BooleanField(required=False, help_text="Выбрана ли валюта валютой по умолчанию в настройках приложения.")
 
 
 class CurrenciesSelectOptionsResponseSerializer(serializers.Serializer):
     primaryCode = serializers.CharField(help_text="Код основной валюты пользователя.")
+    defaultCurrency = serializers.CharField(required=False, help_text="Код валюты по умолчанию из настроек приложения.")
     options = CurrencySelectOptionSerializer(many=True, help_text="Видимые валюты для форм.")
 
 
@@ -247,10 +249,12 @@ class CheckCurrencyCodeResponseSerializer(serializers.Serializer):
 def build_select_options_payload(user) -> dict:
     from apps.finance.currencies import (
         build_currency_select_options,
+        get_user_default_currency_code,
         get_user_primary_currency_code,
     )
 
     return {
         "primaryCode": get_user_primary_currency_code(user),
+        "defaultCurrency": get_user_default_currency_code(user),
         "options": build_currency_select_options(user),
     }

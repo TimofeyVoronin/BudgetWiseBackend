@@ -10,7 +10,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.finance.currencies import (
     build_currency_select_options,
-    get_user_primary_currency_code,
+    get_user_default_currency_code,
     get_user_visible_currency_codes,
 )
 from apps.finance.models import (
@@ -350,7 +350,7 @@ def get_transaction_templates_meta_payload(user) -> dict:
     return {
         "kinds": TEMPLATE_KIND_OPTIONS,
         "statuses": TEMPLATE_STATUS_OPTIONS,
-        "defaultCurrency": get_user_primary_currency_code(user),
+        "defaultCurrency": get_user_default_currency_code(user),
         "currencies": build_currency_select_options(user),
         "categories": [
             {

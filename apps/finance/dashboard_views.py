@@ -14,7 +14,7 @@ from apps.common.validation import (
     get_int_query_param,
 )
 from apps.finance.currencies import (
-    get_user_primary_currency_code,
+    get_user_default_currency_code,
     validate_user_currency_available,
 )
 from apps.finance.dashboard import (
@@ -71,7 +71,7 @@ def get_dashboard_currency_query_param(query_params, user) -> str:
     currency = query_params.get("currency")
 
     if currency in (None, ""):
-        return get_user_primary_currency_code(user)
+        return get_user_default_currency_code(user)
 
     return validate_user_currency_available(
         user,
@@ -167,7 +167,7 @@ class DashboardSummaryView(APIView):
                 OpenApiTypes.STR,
                 description=(
                     "ISO-код добавленной валюты пользователя. Если параметр не передан, "
-                    "используется основная валюта. Конвертация валют не выполняется, "
+                    "используется валюта по умолчанию из настроек приложения. Конвертация валют не выполняется, "
                     "данные фильтруются по валюте счёта."
                 ),
             ),

@@ -16,7 +16,6 @@ from rest_framework.views import APIView
 
 from apps.common.validation import get_date_query_param, get_int_query_param
 from apps.finance.financial_calendar import (
-    DEFAULT_FINANCIAL_CALENDAR_TIMEZONE,
     FINANCIAL_CALENDAR_EVENT_TYPES,
     build_financial_calendar_month,
     get_financial_calendar_account_ids,
@@ -25,6 +24,7 @@ from apps.finance.financial_calendar import (
     get_financial_calendar_meta,
     resolve_month_grid,
 )
+from apps.users.app_settings_formatting import build_app_formatting_context
 from apps.finance.financial_calendar_serializers import (
     FinancialCalendarDayResponseSerializer,
     FinancialCalendarEventsResponseSerializer,
@@ -84,8 +84,11 @@ def get_multi_query_str_values(query_params, *names: str) -> list[str] | None:
     return values or None
 
 
-def get_financial_calendar_year_month(query_params) -> tuple[int, int]:
-    today = date.today()
+def get_financial_calendar_year_month(query_params, user) -> tuple[int, int]:
+    from django.utils import timezone
+
+    app_timezone = build_app_formatting_context(user).timezone
+    today = timezone.localdate(timezone=app_timezone)
     year = get_int_query_param(query_params, "year") or today.year
     month = get_int_query_param(query_params, "month") or today.month
 
@@ -102,7 +105,7 @@ def get_financial_calendar_common_params(request) -> dict:
     query_params = request.query_params
     account_ids = get_multi_query_int_values(query_params, "accountIds", "account_ids")
     event_types = get_multi_query_str_values(query_params, "eventTypes", "event_types")
-    timezone_value = query_params.get("timezone") or DEFAULT_FINANCIAL_CALENDAR_TIMEZONE
+    timezone_value = query_params.get("timezone") or None
 
     if event_types:
         invalid_values = set(event_types) - FINANCIAL_CALENDAR_EVENT_TYPES
@@ -148,7 +151,7 @@ class FinancialCalendarMonthView(APIView):
             OpenApiParameter("eventTypes", OpenApiTypes.STR, many=True, description="Типы событий: income, expense, transfer, reminder."),
             OpenApiParameter("dateFrom", OpenApiTypes.DATE, description="Нижняя граница периода, YYYY-MM-DD. Опционально."),
             OpenApiParameter("dateTo", OpenApiTypes.DATE, description="Верхняя граница периода, YYYY-MM-DD. Опционально."),
-            OpenApiParameter("timezone", OpenApiTypes.STR, description="Метка часового пояса, например UTC+7."),
+            OpenApiParameter("timezone", OpenApiTypes.STR, description="IANA-часовой пояс, например Asia/Krasnoyarsk. Если параметр не передан, используется настройка пользователя."),
         ],
         responses={
             200: FinancialCalendarMonthResponseSerializer,
@@ -162,7 +165,9 @@ class FinancialCalendarMonthView(APIView):
                     "year": 2026,
                     "month": 5,
                     "todayIso": "2026-05-22",
+                    "todayLabel": "22.05.2026",
                     "openingBalanceRub": "227800.00",
+                    "openingBalanceLabel": "227 800,00 ₽",
                     "cells": [],
                     "events": [],
                     "dayForecasts": [],
@@ -173,7 +178,7 @@ class FinancialCalendarMonthView(APIView):
         ],
     )
     def get(self, request):
-        year, month = get_financial_calendar_year_month(request.query_params)
+        year, month = get_financial_calendar_year_month(request.query_params, request.user)
         common_params = get_financial_calendar_common_params(request)
         date_from = get_date_query_param(request.query_params, "dateFrom")
         date_to = get_date_query_param(request.query_params, "dateTo")
@@ -208,7 +213,7 @@ class FinancialCalendarEventsView(APIView):
             OpenApiParameter("dateTo", OpenApiTypes.DATE, required=True, description="Дата окончания, YYYY-MM-DD."),
             OpenApiParameter("accountIds", OpenApiTypes.INT, many=True, description="ID счетов."),
             OpenApiParameter("eventTypes", OpenApiTypes.STR, many=True, description="Типы событий: income, expense, transfer, reminder."),
-            OpenApiParameter("timezone", OpenApiTypes.STR, description="Метка часового пояса."),
+            OpenApiParameter("timezone", OpenApiTypes.STR, description="IANA-часовой пояс, например Asia/Krasnoyarsk. Если параметр не передан, используется настройка пользователя."),
         ],
         responses={200: FinancialCalendarEventsResponseSerializer},
     )
@@ -232,6 +237,10 @@ class FinancialCalendarEventsView(APIView):
                 date_to=date_to,
                 account_ids=account_ids,
                 event_types=set(common_params["event_types"] or FINANCIAL_CALENDAR_EVENT_TYPES),
+                formatting_context=build_app_formatting_context(
+                    request.user,
+                    timezone_value=common_params["timezone_value"],
+                ),
             )
         except ValueError as exc:
             handle_financial_calendar_value_error(exc)
@@ -249,7 +258,7 @@ class FinancialCalendarDayView(APIView):
         parameters=[
             OpenApiParameter("accountIds", OpenApiTypes.INT, many=True, description="ID счетов."),
             OpenApiParameter("eventTypes", OpenApiTypes.STR, many=True, description="Типы событий."),
-            OpenApiParameter("timezone", OpenApiTypes.STR, description="Метка часового пояса."),
+            OpenApiParameter("timezone", OpenApiTypes.STR, description="IANA-часовой пояс, например Asia/Krasnoyarsk. Если параметр не передан, используется настройка пользователя."),
         ],
         responses={200: FinancialCalendarDayResponseSerializer},
     )
@@ -267,6 +276,7 @@ class FinancialCalendarDayView(APIView):
                 iso=parsed_date,
                 account_ids=common_params["account_ids"],
                 event_types=common_params["event_types"],
+                timezone_value=common_params["timezone_value"],
             )
         except ValueError as exc:
             handle_financial_calendar_value_error(exc)
@@ -282,7 +292,7 @@ class FinancialCalendarMetaView(APIView):
         summary="Получить справочники финансового календаря",
         description=(
             "Возвращает активные счета пользователя, типы событий, доступные "
-            "часовые пояса и баланс активных счетов для стартового состояния формы."
+            "часовые пояса из настроек приложения и баланс активных счетов для стартового состояния формы."
         ),
         responses={200: FinancialCalendarMetaResponseSerializer},
     )

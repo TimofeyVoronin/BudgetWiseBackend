@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.finance.currencies import (
     build_currency_select_options,
+    get_user_default_currency_code,
     get_user_primary_currency_code,
     validate_user_currency_available,
 )
@@ -299,7 +300,7 @@ class AccountSerializer(serializers.ModelSerializer):
         validated_data["user"] = request.user
 
         if not validated_data.get("currency"):
-            validated_data["currency"] = get_user_primary_currency_code(request.user)
+            validated_data["currency"] = get_user_default_currency_code(request.user)
 
         initial_balance = validated_data.get("initial_balance", Decimal("0.00"))
         validated_data["balance"] = initial_balance
@@ -394,6 +395,7 @@ class AccountCurrencyOptionSerializer(serializers.Serializer):
     value = serializers.CharField()
     symbol = serializers.CharField(required=False)
     isPrimary = serializers.BooleanField(required=False)
+    isDefault = serializers.BooleanField(required=False)
 
 
 class AccountMetaSerializer(serializers.Serializer):
@@ -401,6 +403,7 @@ class AccountMetaSerializer(serializers.Serializer):
     banks = AccountBankOptionSerializer(many=True)
     currencies = AccountCurrencyOptionSerializer(many=True)
     primaryCurrencyCode = serializers.CharField(required=False)
+    defaultCurrencyCode = serializers.CharField(required=False)
 
 
 def get_account_meta_payload(user) -> dict:
@@ -409,4 +412,5 @@ def get_account_meta_payload(user) -> dict:
         "banks": ACCOUNT_BANK_OPTIONS,
         "currencies": build_currency_select_options(user),
         "primaryCurrencyCode": get_user_primary_currency_code(user),
+        "defaultCurrencyCode": get_user_default_currency_code(user),
     }

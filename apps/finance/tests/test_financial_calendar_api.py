@@ -81,7 +81,14 @@ class FinancialCalendarAPITests(FinanceAPITestCase):
             item for item in response.data["dayForecasts"] if item["date"] == selected_date.isoformat()
         )
         self.assertEqual(day_forecast["hasEvents"], True)
+        self.assertEqual(day_forecast["dateLabel"], "15.05.2026")
         self.assertEqual(Decimal(day_forecast["totalDelta"]), Decimal("24150.00"))
+        self.assertEqual(day_forecast["totalDeltaLabel"], "24 150,00 ₽")
+
+        event_labels = {item["id"]: item["amountLabel"] for item in response.data["events"]}
+        self.assertEqual(event_labels[f"tx-{income.id}"], "25 000,00 ₽")
+        self.assertEqual(event_labels[f"planned-{planned.id}"], "-850,00 ₽")
+        self.assertIn("₽", response.data["openingBalanceLabel"])
 
     def test_calendar_month_filters_by_account_and_event_type(self):
         self.authenticate()
@@ -163,7 +170,8 @@ class FinancialCalendarAPITests(FinanceAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.data["accounts"]), 2)
-        self.assertEqual(response.data["defaultTimezone"], "UTC+7")
+        self.assertEqual(response.data["defaultTimezone"], "Asia/Krasnoyarsk")
+        self.assertIn("openingBalanceLabel", response.data)
         self.assertEqual(
             {item["value"] for item in response.data["eventTypes"]},
             {"income", "expense", "transfer", "reminder"},

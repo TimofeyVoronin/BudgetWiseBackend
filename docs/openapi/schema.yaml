@@ -400,8 +400,8 @@ paths:
       description: Создаёт счёт текущего пользователя. Текущий баланс при создании
         устанавливается равным начальному балансу. Если счёт отмечен как основной,
         остальные основные счета пользователя сбрасываются. Если currency не передан,
-        используется основная валюта пользователя; скрытые валюты нельзя выбирать
-        для нового счёта.
+        используется валюта по умолчанию из настроек приложения; скрытые валюты нельзя
+        выбирать для нового счёта.
       summary: Создать счёт
       tags:
       - finance-accounts
@@ -692,6 +692,7 @@ paths:
                     - title: USD · Доллар США
                       value: USD
                     primaryCurrencyCode: RUB
+                    defaultCurrencyCode: RUB
                   summary: Справочники счетов
           description: ''
   /api/v1/finance/accounts/summary/:
@@ -699,15 +700,15 @@ paths:
       operationId: finance_accounts_summary_retrieve
       description: Возвращает общий баланс активных неархивных счетов текущего пользователя,
         количество активных счетов и количество счетов в архиве. По умолчанию используется
-        основная валюта пользователя.
+        валюта по умолчанию из настроек приложения.
       summary: Получить сводку по счетам
       parameters:
       - in: query
         name: currency
         schema:
           type: string
-        description: ISO-код добавленной валюты пользователя. По умолчанию основная
-          валюта.
+        description: ISO-код добавленной валюты пользователя. По умолчанию используется
+          валюта из настроек приложения.
       tags:
       - finance-accounts
       security:
@@ -2776,8 +2777,8 @@ paths:
         schema:
           type: string
         description: ISO-код добавленной валюты пользователя. Если параметр не передан,
-          используется основная валюта. Конвертация валют не выполняется, данные фильтруются
-          по валюте счёта.
+          используется валюта по умолчанию из настроек приложения. Конвертация валют
+          не выполняется, данные фильтруются по валюте счёта.
       - in: query
         name: date_from
         schema:
@@ -2922,7 +2923,8 @@ paths:
         name: timezone
         schema:
           type: string
-        description: Метка часового пояса, например UTC+7.
+        description: IANA-часовой пояс, например Asia/Krasnoyarsk. Если параметр не
+          передан, используется настройка пользователя.
       - in: query
         name: year
         schema:
@@ -2944,7 +2946,9 @@ paths:
                     year: 2026
                     month: 5
                     todayIso: '2026-05-22'
+                    todayLabel: 22.05.2026
                     openingBalanceRub: '227800.00'
+                    openingBalanceLabel: 227 800,00 ₽
                     cells: []
                     events: []
                     dayForecasts: []
@@ -2984,7 +2988,8 @@ paths:
         name: timezone
         schema:
           type: string
-        description: Метка часового пояса.
+        description: IANA-часовой пояс, например Asia/Krasnoyarsk. Если параметр не
+          передан, используется настройка пользователя.
       tags:
       - finance-calendar
       security:
@@ -3035,7 +3040,8 @@ paths:
         name: timezone
         schema:
           type: string
-        description: Метка часового пояса.
+        description: IANA-часовой пояс, например Asia/Krasnoyarsk. Если параметр не
+          передан, используется настройка пользователя.
       tags:
       - finance-calendar
       security:
@@ -3051,7 +3057,8 @@ paths:
     get:
       operationId: finance_financial_calendar_meta_retrieve
       description: Возвращает активные счета пользователя, типы событий, доступные
-        часовые пояса и баланс активных счетов для стартового состояния формы.
+        часовые пояса из настроек приложения и баланс активных счетов для стартового
+        состояния формы.
       summary: Получить справочники финансового календаря
       tags:
       - finance-calendar
@@ -7728,6 +7735,8 @@ components:
           type: string
         isPrimary:
           type: boolean
+        isDefault:
+          type: boolean
       required:
       - title
       - value
@@ -7777,6 +7786,8 @@ components:
           items:
             $ref: '#/components/schemas/AccountCurrencyOption'
         primaryCurrencyCode:
+          type: string
+        defaultCurrencyCode:
           type: string
       required:
       - banks
@@ -7998,6 +8009,9 @@ components:
         isPrimary:
           type: boolean
           description: Является ли валюта основной в управлении валютами.
+        isDefault:
+          type: boolean
+          description: Выбрана ли валюта валютой по умолчанию в настройках приложения.
       required:
       - title
       - value
@@ -8938,6 +8952,8 @@ components:
           type: string
         isPrimary:
           type: boolean
+        isDefault:
+          type: boolean
       required:
       - title
       - value
@@ -9073,6 +9089,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BudgetOption'
+        defaultCurrency:
+          type: string
         kinds:
           type: array
           items:
@@ -9946,6 +9964,9 @@ components:
         primaryCode:
           type: string
           description: Код основной валюты пользователя.
+        defaultCurrency:
+          type: string
+          description: Код валюты по умолчанию из настроек приложения.
         options:
           type: array
           items:
@@ -10066,6 +10087,9 @@ components:
         isPrimary:
           type: boolean
           description: Является ли валюта основной.
+        isDefault:
+          type: boolean
+          description: Выбрана ли валюта валютой по умолчанию в настройках приложения.
       required:
       - title
       - value
@@ -10500,23 +10524,36 @@ components:
           type: string
           format: date
           description: Дата прогноза в формате YYYY-MM-DD.
+        dateLabel:
+          type: string
+          description: Дата прогноза в пользовательском формате из настроек приложения.
         actualBalanceRub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           nullable: true
           description: Фактический баланс на конец дня. Для будущих дней null.
+        actualBalanceLabel:
+          type: string
+          nullable: true
+          description: Фактический баланс в пользовательском формате числа.
         forecastBalanceRub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           description: Прогнозный баланс на конец дня с учётом фактических и плановых
             событий.
+        forecastBalanceLabel:
+          type: string
+          description: Прогнозный баланс в пользовательском формате числа.
         totalDelta:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           description: Суммарное изменение за день по фактическим и плановым событиям.
+        totalDeltaLabel:
+          type: string
+          description: Изменение за день в пользовательском формате числа.
         hasEvents:
           type: boolean
           description: Есть ли события в этот день.
@@ -10551,6 +10588,9 @@ components:
           type: string
           format: date
           description: Дата дня в формате YYYY-MM-DD.
+        dateLabel:
+          type: string
+          description: Дата дня в пользовательском формате из настроек приложения.
         dayBalance:
           allOf:
           - $ref: '#/components/schemas/FinancialCalendarDayForecast'
@@ -10581,6 +10621,9 @@ components:
           type: string
           format: date
           description: Дата события в формате YYYY-MM-DD.
+        dateLabel:
+          type: string
+          description: Дата события в пользовательском формате из настроек приложения.
         type:
           allOf:
           - $ref: '#/components/schemas/FinancialCalendarEventTypeEnum'
@@ -10603,6 +10646,10 @@ components:
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           nullable: true
           description: Сумма в рублях. Доход положительный, расход отрицательный.
+        amountLabel:
+          type: string
+          nullable: true
+          description: Сумма в пользовательском формате числа с символом валюты.
         accountId:
           type: integer
           description: ID счёта события.
@@ -10710,12 +10757,16 @@ components:
           description: Доступные часовые пояса.
         defaultTimezone:
           type: string
-          description: Часовой пояс по умолчанию.
+          description: Активный часовой пояс из настроек приложения пользователя.
         openingBalanceRub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           description: Текущий остаток активных счетов пользователя.
+        openingBalanceLabel:
+          type: string
+          description: Текущий остаток активных счетов в пользовательском формате
+            числа.
       required:
       - accounts
       - defaultTimezone
@@ -10729,6 +10780,9 @@ components:
           type: string
           format: date
           description: Дата ячейки в формате YYYY-MM-DD.
+        dateLabel:
+          type: string
+          description: Дата ячейки в пользовательском формате из настроек приложения.
         day:
           type: integer
           description: Число месяца.
@@ -10750,12 +10804,19 @@ components:
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           description: Прогнозный баланс на конец дня с учётом фактических и плановых
             событий.
+        forecastBalanceLabel:
+          type: string
+          description: Прогнозный баланс в пользовательском формате числа.
         actualBalanceRub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           nullable: true
           description: Фактический баланс на конец дня или null для будущих дней.
+        actualBalanceLabel:
+          type: string
+          nullable: true
+          description: Фактический баланс в пользовательском формате числа.
         riskLevel:
           allOf:
           - $ref: '#/components/schemas/FinancialCalendarRiskLevelEnum'
@@ -10793,12 +10854,18 @@ components:
         todayIso:
           type: string
           format: date
-          description: Сегодняшняя дата по часовому поясу backend.
+          description: Сегодняшняя дата по часовому поясу пользователя.
+        todayLabel:
+          type: string
+          description: Сегодняшняя дата в пользовательском формате из настроек приложения.
         openingBalanceRub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           description: Расчётный остаток активных счетов на начало диапазона календаря.
+        openingBalanceLabel:
+          type: string
+          description: Остаток на начало диапазона в пользовательском формате числа.
         cells:
           type: array
           items:
@@ -15270,6 +15337,8 @@ components:
         symbol:
           type: string
         isPrimary:
+          type: boolean
+        isDefault:
           type: boolean
       required:
       - title

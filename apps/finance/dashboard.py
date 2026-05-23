@@ -10,6 +10,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from apps.finance.models import Account, Transaction, TransactionType
+from apps.users.app_settings_formatting import get_user_app_today
 
 
 DASHBOARD_PERIOD_WEEK = "week"
@@ -88,6 +89,7 @@ def build_dashboard_summary(
         period_type=period_type,
         date_from=date_from,
         date_to=date_to,
+        today=get_user_app_today(user),
     )
     normalized_currency = currency.upper()
 
@@ -147,8 +149,9 @@ def resolve_dashboard_period(
     period_type: str,
     date_from: date | None = None,
     date_to: date | None = None,
+    today: date | None = None,
 ) -> tuple[date, date]:
-    today = timezone.localdate()
+    today = today or timezone.localdate()
 
     if period_type == DASHBOARD_PERIOD_WEEK:
         week_start = today - timedelta(days=today.weekday())

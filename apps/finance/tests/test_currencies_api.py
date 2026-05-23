@@ -207,9 +207,12 @@ class FinanceCurrenciesAPITests(FinanceAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["primaryCode"], "RUB")
+        self.assertEqual(response.data["defaultCurrency"], "RUB")
         values = {item["value"] for item in response.data["options"]}
         self.assertIn("RUB", values)
         self.assertNotIn("USD", values)
+        rub_option = next(item for item in response.data["options"] if item["value"] == "RUB")
+        self.assertTrue(rub_option["isDefault"])
 
     def test_catalog_search_from_catalog_and_list_filters(self):
         self.authenticate()
