@@ -5,12 +5,12 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.users.app_settings import (
+from apps.users.app_settings.services import (
     build_app_settings_meta,
     get_or_create_user_app_settings,
     reset_user_app_settings,
 )
-from apps.users.app_settings_serializers import (
+from apps.users.app_settings.serializers import (
     AppSettingsMetaResponseSerializer,
     AppSettingsResetResponseSerializer,
     AppSettingsSerializer,

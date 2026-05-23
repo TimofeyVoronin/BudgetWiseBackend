@@ -1,8 +1,8 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from apps.users.admin_views import UserViewSet
-from apps.users.profile_views import CurrentUserView
+from apps.users.admin_api.views import UserViewSet
+from apps.users.profile.views import CurrentUserView
 
 
 app_name = "users"

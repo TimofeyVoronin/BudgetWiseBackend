@@ -6,13 +6,13 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.users.profile_audit import (
+from apps.users.profile.audit import (
     get_profile_audit_snapshot,
     log_profile_avatar_audit,
     log_profile_update_audit,
 )
 from apps.users.models import UserProfileAuditAction
-from apps.users.profile_serializers import (
+from apps.users.profile.serializers import (
     CurrentUserSerializer,
     HomeGreetingSerializer,
     UserProfileAvatarDeleteResponseSerializer,
@@ -24,7 +24,7 @@ from apps.users.profile_serializers import (
 
 
 def get_home_greeting_phrase(user) -> str:
-    from apps.users.app_settings_formatting import get_user_app_timezone
+    from apps.users.app_settings.formatting import get_user_app_timezone
 
     current_time = timezone.localtime(
         timezone.now(),

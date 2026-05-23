@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from django.utils import timezone as django_timezone
 
 from apps.finance.currencies import DEFAULT_CURRENCY_CODE, get_user_currency_by_code, normalize_currency_code
-from apps.users.app_settings import DEFAULT_APP_TIMEZONE, get_or_create_user_app_settings
+from apps.users.app_settings.services import DEFAULT_APP_TIMEZONE, get_or_create_user_app_settings
 from apps.users.models import AppDateFormat, AppNumberFormat, UserAppSettings
 
 

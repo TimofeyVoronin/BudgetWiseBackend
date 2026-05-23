@@ -15,18 +15,18 @@ from rest_framework.exceptions import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.users.email_confirmation import (
+from apps.users.auth.email_confirmation import (
     EMAIL_CONFIRMATION_PURPOSE,
     load_email_confirmation_token,
     send_email_confirmation,
 )
-from apps.users.exceptions import (
+from apps.users.auth.exceptions import (
     PasswordResetTokenAlreadyUsed,
     PasswordResetTokenExpired,
     PasswordResetTokenInvalid,
 )
 from apps.users.models import PasswordResetToken
-from apps.users.password_reset import (
+from apps.users.auth.password_reset import (
     get_password_reset_token_record,
     send_password_reset_email,
 )

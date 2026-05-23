@@ -25,7 +25,7 @@ from apps.finance.financial_calendar import (
     get_financial_calendar_events,
     get_financial_calendar_meta,
 )
-from apps.users.app_settings_formatting import build_app_formatting_context
+from apps.users.app_settings.formatting import build_app_formatting_context
 from apps.finance.financial_calendar_serializers import (
     FinancialCalendarDayResponseSerializer,
     FinancialCalendarEventsResponseSerializer,

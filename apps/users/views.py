@@ -1,12 +1,12 @@
-from apps.users.admin_views import UserViewSet
-from apps.users.auth_views import (
+from apps.users.admin_api.views import UserViewSet
+from apps.users.auth.views import (
     ForgotPasswordView,
     LoginView,
     RegisterView,
     ResetPasswordView,
     VerifyEmailView,
 )
-from apps.users.profile_views import CurrentUserView
+from apps.users.profile.views import CurrentUserView
 
 
 __all__ = [

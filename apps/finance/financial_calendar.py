@@ -23,8 +23,8 @@ from apps.finance.models import (
     Transaction,
     TransactionType,
 )
-from apps.users.app_settings import TIMEZONE_OPTIONS, is_valid_timezone
-from apps.users.app_settings_formatting import (
+from apps.users.app_settings.services import TIMEZONE_OPTIONS, is_valid_timezone
+from apps.users.app_settings.formatting import (
     AppSettingsFormattingContext,
     LEGACY_TIMEZONE_OFFSETS,
     build_app_formatting_context,

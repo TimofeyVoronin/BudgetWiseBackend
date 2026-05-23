@@ -43,7 +43,7 @@ from apps.finance.dashboard_serializers import (
     PeriodCurrencyBarSerializer,
 )
 from apps.finance.tags import get_tag_ids_query_param
-from apps.users.app_settings_formatting import get_user_app_today
+from apps.users.app_settings.formatting import get_user_app_today
 
 
 def get_dashboard_recent_limit(query_params) -> int:

@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from apps.finance.currencies import ensure_user_currencies
-from apps.users.app_settings_formatting import (
+from apps.users.app_settings.formatting import (
     build_app_formatting_context,
     format_app_date,
     format_app_money,
@@ -72,7 +72,7 @@ class AppSettingsFormattingTests(TestCase):
 
         self.assertEqual(format_app_date(utc_datetime, context), "24.05.2026")
 
-    @patch("apps.users.app_settings_formatting.django_timezone.now")
+    @patch("apps.users.app_settings.formatting.django_timezone.now")
     def test_get_user_app_today_uses_saved_timezone(self, mocked_now):
         mocked_now.return_value = datetime(2026, 5, 23, 20, 30, tzinfo=datetime_timezone.utc)
         UserAppSettings.objects.create(

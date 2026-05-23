@@ -23,7 +23,7 @@ from apps.finance.models import (
 )
 from apps.finance.tags import get_accessible_tags
 from apps.finance.transaction_serializers import TransactionSerializer, TransactionTagSerializer
-from apps.users.app_settings_formatting import get_user_app_today
+from apps.users.app_settings.formatting import get_user_app_today
 from apps.finance.transaction_templates import (
     MAX_TEMPLATE_PAGE_SIZE,
     DEFAULT_TEMPLATE_PAGE_SIZE,

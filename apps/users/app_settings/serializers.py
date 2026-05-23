@@ -3,7 +3,7 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.users.app_settings import (
+from apps.users.app_settings.services import (
     build_app_settings_meta,
     get_allowed_timezone_values,
     is_valid_timezone,

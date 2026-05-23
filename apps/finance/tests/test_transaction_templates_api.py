@@ -14,7 +14,7 @@ from apps.finance.models import (
     TransactionType,
 )
 from apps.finance.tests.base import FinanceAPITestCase
-from apps.users.app_settings_formatting import get_user_app_today
+from apps.users.app_settings.formatting import get_user_app_today
 
 
 TEMPLATES_BASE_URL = "/api/v1/finance/transaction-templates/"

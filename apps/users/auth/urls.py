@@ -1,5 +1,5 @@
 from django.urls import path
-from apps.users.auth_views import (
+from apps.users.auth.views import (
     ForgotPasswordView,
     BudgetWiseTokenRefreshView,
     LoginView,

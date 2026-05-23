@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 
 from apps.common.validation import get_bool_query_param, validate_ordering
-from apps.users.admin_serializers import UserSerializer
+from apps.users.admin_api.serializers import UserSerializer
 
 
 User = get_user_model()

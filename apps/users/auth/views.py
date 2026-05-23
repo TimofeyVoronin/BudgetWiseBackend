@@ -6,14 +6,14 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from apps.users.auth_serializers import (
+from apps.users.auth.serializers import (
     ForgotPasswordSerializer,
     LoginSerializer,
     RegisterSerializer,
     ResetPasswordSerializer,
     VerifyEmailSerializer,
 )
-from apps.users.throttles import (
+from apps.users.auth.throttles import (
     ForgotPasswordEmailThrottle,
     ForgotPasswordIPThrottle,
     LoginRateThrottle,

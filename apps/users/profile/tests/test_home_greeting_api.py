@@ -29,7 +29,7 @@ class HomeGreetingAPITests(APITestCase):
         self.client.force_authenticate(user=self.user)
 
         with patch(
-            "apps.users.profile_views.timezone.now",
+            "apps.users.profile.views.timezone.now",
             return_value=datetime(2026, 5, 24, 6, 0, tzinfo=datetime_timezone.utc),
         ):
             response = self.client.get(reverse("home-greeting"))

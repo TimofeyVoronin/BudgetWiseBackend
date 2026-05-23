@@ -13,7 +13,7 @@ from openpyxl import load_workbook
 from rest_framework import status
 
 from apps.finance.models import Account, Budget, Category, Transaction, TransactionType
-from apps.users.app_settings_formatting import get_user_app_today
+from apps.users.app_settings.formatting import get_user_app_today
 
 from .base import FinanceAPITestCase
 

@@ -267,7 +267,7 @@ def get_user_default_currency_code(user) -> str:
     primary_code = get_user_primary_currency_code(user)
 
     try:
-        from apps.users.app_settings import get_or_create_user_app_settings
+        from apps.users.app_settings.services import get_or_create_user_app_settings
 
         settings = get_or_create_user_app_settings(user)
         default_code = normalize_currency_code(settings.default_currency)

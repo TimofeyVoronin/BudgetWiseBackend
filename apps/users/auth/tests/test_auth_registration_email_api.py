@@ -14,11 +14,11 @@ from django.conf import settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.users.email_confirmation import build_email_confirmation_token
+from apps.users.auth.email_confirmation import build_email_confirmation_token
 from apps.users.models import PasswordResetToken
-from apps.users.serializers import PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE
-from apps.users.password_reset import issue_password_reset_token
-from apps.users.serializers import PASSWORD_RESET_SUCCESS_MESSAGE
+from apps.users.auth.serializers import PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE
+from apps.users.auth.password_reset import issue_password_reset_token
+from apps.users.auth.serializers import PASSWORD_RESET_SUCCESS_MESSAGE
 
 
 User = get_user_model()
@@ -284,7 +284,7 @@ class RegistrationAndEmailVerificationAPITests(APITestCase):
 
     def test_verify_email_with_expired_token_returns_400(self):
         with patch(
-            "apps.users.auth_serializers.load_email_confirmation_token",
+            "apps.users.auth.serializers.load_email_confirmation_token",
             side_effect=SignatureExpired("expired"),
         ):
             response = self.client.post(

@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from apps.finance.currencies import get_user_default_currency_code, get_visible_user_currencies
 from apps.finance.models import Account, Goal, GoalStatus, Transaction, TransactionType
-from apps.users.app_settings_formatting import get_user_app_today
+from apps.users.app_settings.formatting import get_user_app_today
 
 
 DASHBOARD_PERIOD_WEEK = "week"
