@@ -6,6 +6,7 @@ from rest_framework import status
 
 from apps.finance.models import PlannedStatus, PlannedTransaction, TransactionType
 from apps.finance.tests.base import FinanceAPITestCase
+from apps.users.models import AppDateFormat, AppNumberFormat, UserAppSettings
 
 
 class FinancialCalendarAPITests(FinanceAPITestCase):
@@ -89,6 +90,85 @@ class FinancialCalendarAPITests(FinanceAPITestCase):
         self.assertEqual(event_labels[f"tx-{income.id}"], "25 000,00 ₽")
         self.assertEqual(event_labels[f"planned-{planned.id}"], "-850,00 ₽")
         self.assertIn("₽", response.data["openingBalanceLabel"])
+
+    def test_calendar_applies_saved_date_and_number_formats_without_breaking_machine_fields(self):
+        self.authenticate()
+        selected_date = date(2026, 5, 15)
+        transaction = self.create_transaction(
+            type=TransactionType.EXPENSE,
+            category=self.expense_category,
+            amount="1250.50",
+            description="Покупка",
+            operation_date=selected_date,
+        )
+
+        settings_response = self.client.patch(
+            reverse("app-settings"),
+            {
+                "timezone": "Europe/Moscow",
+                "dateFormat": "YYYY-MM-DD",
+                "numberFormat": "en-US",
+                "defaultCurrency": "RUB",
+            },
+            format="json",
+        )
+        self.assertEqual(settings_response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get(
+            reverse("finance:financial-calendar-month"),
+            data={"year": 2026, "month": 5},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        event = next(item for item in response.data["events"] if item["id"] == f"tx-{transaction.id}")
+        self.assertEqual(event["date"], "2026-05-15")
+        self.assertEqual(event["dateLabel"], "2026-05-15")
+        self.assertEqual(event["amountRub"], "-1250.50")
+        self.assertEqual(event["amountLabel"], "-1,250.50 ₽")
+
+        day_forecast = next(
+            item for item in response.data["dayForecasts"] if item["date"] == selected_date.isoformat()
+        )
+        self.assertEqual(day_forecast["dateLabel"], "2026-05-15")
+        self.assertEqual(day_forecast["totalDelta"], "-1250.50")
+        self.assertEqual(day_forecast["totalDeltaLabel"], "-1,250.50 ₽")
+        self.assertRegex(response.data["todayLabel"], r"^\d{4}-\d{2}-\d{2}$")
+
+    def test_calendar_uses_settings_from_database_when_endpoint_is_called_directly(self):
+        self.authenticate()
+        selected_date = date(2026, 5, 15)
+        transaction = self.create_transaction(
+            type=TransactionType.EXPENSE,
+            category=self.expense_category,
+            amount="1250.50",
+            description="Покупка",
+            operation_date=selected_date,
+        )
+        UserAppSettings.objects.update_or_create(
+            user=self.user,
+            defaults={
+                "timezone": "Europe/Moscow",
+                "date_format": AppDateFormat.MM_DD_YYYY,
+                "number_format": AppNumberFormat.EN_US,
+                "default_currency": "RUB",
+            },
+        )
+
+        response = self.client.get(
+            reverse("finance:financial-calendar-events"),
+            data={
+                "dateFrom": selected_date.isoformat(),
+                "dateTo": selected_date.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["items"]), 1)
+        event = response.data["items"][0]
+        self.assertEqual(event["id"], f"tx-{transaction.id}")
+        self.assertEqual(event["date"], "2026-05-15")
+        self.assertEqual(event["dateLabel"], "05/15/2026")
+        self.assertEqual(event["amountLabel"], "-1,250.50 ₽")
 
     def test_calendar_month_filters_by_account_and_event_type(self):
         self.authenticate()

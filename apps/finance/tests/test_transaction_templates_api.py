@@ -253,6 +253,28 @@ class FinanceTransactionTemplatesAPITests(FinanceAPITestCase):
         self.assertEqual(sort_response.data["pagination"]["totalItems"], 3)
         self.assertEqual(sort_response.data["pagination"]["totalPages"], 2)
 
+    def test_template_meta_uses_app_default_currency_after_settings_update(self):
+        self.authenticate()
+
+        settings_response = self.client.patch(
+            "/api/v1/settings/app/",
+            {
+                "timezone": "Asia/Krasnoyarsk",
+                "dateFormat": "DD.MM.YYYY",
+                "numberFormat": "ru-RU",
+                "defaultCurrency": "USD",
+            },
+            format="json",
+        )
+        self.assertEqual(settings_response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get(f"{TEMPLATES_BASE_URL}meta/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["defaultCurrency"], "USD")
+        usd_option = next(item for item in response.data["currencies"] if item["value"] == "USD")
+        self.assertTrue(usd_option["isDefault"])
+
     def test_template_custom_actions_archive_restore_duplicate_apply_draft_and_meta(self):
         self.authenticate()
         tag = self.create_tag(name="обед")

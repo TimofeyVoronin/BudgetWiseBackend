@@ -170,6 +170,40 @@ class AppSettingsAPITests(APITestCase):
         self.assertEqual(settings["numberFormat"], "ru-RU")
         self.assertEqual(settings["defaultCurrency"], "RUB")
 
+    def test_app_settings_page_flow_saves_and_reloads_updated_values(self):
+        self.authenticate()
+        ensure_user_currencies(self.user)
+
+        initial_response = self.client.get(self.url)
+        self.assertEqual(initial_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(initial_response.data["defaultCurrency"], "RUB")
+
+        update_response = self.client.patch(
+            self.url,
+            {
+                "timezone": "Europe/Moscow",
+                "dateFormat": "MM/DD/YYYY",
+                "numberFormat": "en-US",
+                "defaultCurrency": "USD",
+            },
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+
+        reload_response = self.client.get(self.url)
+        self.assertEqual(reload_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(reload_response.data["timezone"], "Europe/Moscow")
+        self.assertEqual(reload_response.data["dateFormat"], "MM/DD/YYYY")
+        self.assertEqual(reload_response.data["numberFormat"], "en-US")
+        self.assertEqual(reload_response.data["defaultCurrency"], "USD")
+
+        meta_response = self.client.get(self.meta_url)
+        self.assertEqual(meta_response.status_code, status.HTTP_200_OK)
+        usd_option = next(item for item in meta_response.data["currencies"] if item["value"] == "USD")
+        rub_option = next(item for item in meta_response.data["currencies"] if item["value"] == "RUB")
+        self.assertTrue(usd_option["isDefault"])
+        self.assertFalse(rub_option["isDefault"])
+
     def test_hidden_currency_cannot_be_selected_as_new_default_currency(self):
         self.authenticate()
         ensure_user_currencies(self.user)

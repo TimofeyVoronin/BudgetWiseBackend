@@ -214,6 +214,31 @@ class FinanceCurrenciesAPITests(FinanceAPITestCase):
         rub_option = next(item for item in response.data["options"] if item["value"] == "RUB")
         self.assertTrue(rub_option["isDefault"])
 
+    def test_select_options_use_app_settings_default_currency_after_save(self):
+        self.authenticate()
+
+        settings_response = self.client.patch(
+            "/api/v1/settings/app/",
+            {
+                "timezone": "Asia/Krasnoyarsk",
+                "dateFormat": "DD.MM.YYYY",
+                "numberFormat": "ru-RU",
+                "defaultCurrency": "USD",
+            },
+            format="json",
+        )
+        self.assertEqual(settings_response.status_code, status.HTTP_200_OK)
+
+        response = self.client.get(f"{CURRENCIES_URL}select-options/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["primaryCode"], "RUB")
+        self.assertEqual(response.data["defaultCurrency"], "USD")
+        usd_option = next(item for item in response.data["options"] if item["value"] == "USD")
+        rub_option = next(item for item in response.data["options"] if item["value"] == "RUB")
+        self.assertTrue(usd_option["isDefault"])
+        self.assertFalse(rub_option["isDefault"])
+
     def test_catalog_search_from_catalog_and_list_filters(self):
         self.authenticate()
 
