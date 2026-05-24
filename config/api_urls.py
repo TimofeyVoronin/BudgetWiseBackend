@@ -12,4 +12,5 @@ urlpatterns = [
     path("settings/app/", include("apps.users.app_settings.urls")),
     path("users/", include("apps.users.urls")),
     path("finance/", include("apps.finance.urls")),
+    path("pwa/", include("apps.pwa.urls")),
 ]
