@@ -9,6 +9,7 @@ from apps.finance.models import (
     ReceiptItem,
     Tag,
     TagGroup,
+    TransactionLineItem,
     TransactionTemplate,
     UserCurrency,
 )
@@ -250,5 +251,26 @@ class ReceiptItemAdmin(admin.ModelAdmin):
         "receipt__fiscal_drive_number",
         "receipt__fiscal_document_number",
         "receipt__user__email",
+    )
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(TransactionLineItem)
+class TransactionLineItemAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "transaction",
+        "line_number",
+        "name",
+        "quantity",
+        "unit_price",
+        "amount",
+    )
+    list_filter = ("transaction__type", "transaction__account__currency")
+    search_fields = (
+        "name",
+        "transaction__description",
+        "transaction__user__email",
+        "transaction__user__username",
     )
     readonly_fields = ("created_at", "updated_at")

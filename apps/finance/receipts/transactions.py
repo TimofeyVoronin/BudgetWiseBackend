@@ -17,6 +17,7 @@ from apps.finance.models import (
     ReceiptOperationType,
     ReceiptStatus,
     Transaction,
+    TransactionLineItem,
     TransactionType,
 )
 from apps.finance.accounts.accounting import get_transaction_balance_delta
@@ -501,6 +502,15 @@ def _create_transaction(
         receipt=receipt,
         receipt_item=receipt_item,
     )
+    if receipt_item is not None:
+        TransactionLineItem.objects.create(
+            transaction=transaction,
+            line_number=1,
+            name=receipt_item.name,
+            quantity=receipt_item.quantity or Decimal("1.000"),
+            unit_price=receipt_item.price or receipt_item.amount,
+            amount=receipt_item.amount,
+        )
     _apply_account_balance_delta(transaction)
     return transaction
 

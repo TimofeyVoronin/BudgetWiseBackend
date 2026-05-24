@@ -11,7 +11,7 @@ from django.utils import timezone
 from openpyxl import load_workbook
 from rest_framework import status
 
-from apps.finance.models import Account, Budget, Category, Transaction, TransactionType
+from apps.finance.models import Account, Budget, Category, Transaction, TransactionLineItem, TransactionType
 
 from apps.finance.testing import FinanceAPITestCase
 
@@ -1403,4 +1403,145 @@ class FinanceTransactionAPITests(FinanceAPITestCase):
             self.assertEqual(response.data["count"], 30)
             self.assertEqual(len(response.data["results"]), 20)
 
-            self.assertLessEqual(len(captured_queries), 3)
+            # Запрос списка теперь возвращает позиции операций line_items.
+            # Для этого нужен отдельный prefetch-запрос, иначе появится N+1.
+            # Нормальная схема: count, page query, tags prefetch, line_items prefetch.
+            self.assertLessEqual(len(captured_queries), 4)
+
+
+
+class FinanceTransactionLineItemsAPITests(FinanceAPITestCase):
+    def test_create_transaction_with_line_items_returns_and_persists_items(self):
+            self.authenticate()
+
+            response = self.client.post(
+                reverse("finance:transaction-list"),
+                data={
+                    "account": self.account.id,
+                    "category": self.expense_category.id,
+                    "type": TransactionType.EXPENSE,
+                    "amount": "110.00",
+                    "description": "Покупка с позициями",
+                    "operation_date": str(self.today),
+                    "line_items": [
+                        {
+                            "name": "1123",
+                            "qty": 1,
+                            "unit_price_rub": 110,
+                            "sum_rub": 110,
+                        }
+                    ],
+                },
+                format="json",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertIn("line_items", response.data)
+            self.assertEqual(len(response.data["line_items"]), 1)
+            self.assertEqual(response.data["line_items"][0]["name"], "1123")
+            self.assertEqual(Decimal(response.data["line_items"][0]["sum_rub"]), Decimal("110.00"))
+
+            transaction = Transaction.objects.get(pk=response.data["id"])
+            self.assertEqual(transaction.line_items.count(), 1)
+            line_item = transaction.line_items.get()
+            self.assertEqual(line_item.name, "1123")
+            self.assertEqual(line_item.quantity, Decimal("1.000"))
+            self.assertEqual(line_item.unit_price, Decimal("110.00"))
+            self.assertEqual(line_item.amount, Decimal("110.00"))
+
+    def test_transaction_detail_returns_line_items(self):
+            self.authenticate()
+            transaction = self.create_transaction(
+                amount="150.00",
+                description="Операция с детализацией",
+            )
+            TransactionLineItem.objects.create(
+                transaction=transaction,
+                line_number=1,
+                name="Молоко",
+                quantity=Decimal("1.000"),
+                unit_price=Decimal("90.00"),
+                amount=Decimal("90.00"),
+            )
+            TransactionLineItem.objects.create(
+                transaction=transaction,
+                line_number=2,
+                name="Хлеб",
+                quantity=Decimal("1.000"),
+                unit_price=Decimal("60.00"),
+                amount=Decimal("60.00"),
+            )
+
+            response = self.client.get(
+                reverse("finance:transaction-detail", kwargs={"pk": transaction.id})
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(response.data["line_items"]), 2)
+            self.assertEqual(response.data["line_items"][0]["name"], "Молоко")
+            self.assertEqual(response.data["line_items"][1]["name"], "Хлеб")
+
+    def test_patch_transaction_replaces_line_items_when_field_is_sent(self):
+            self.authenticate()
+            transaction = self.create_transaction(
+                amount="200.00",
+                description="До замены позиций",
+            )
+            TransactionLineItem.objects.create(
+                transaction=transaction,
+                line_number=1,
+                name="Старая позиция",
+                quantity=Decimal("1.000"),
+                unit_price=Decimal("200.00"),
+                amount=Decimal("200.00"),
+            )
+
+            response = self.client.patch(
+                reverse("finance:transaction-detail", kwargs={"pk": transaction.id}),
+                data={
+                    "amount": "110.00",
+                    "line_items": [
+                        {
+                            "name": "Новая позиция",
+                            "qty": "1.000",
+                            "unit_price_rub": "110.00",
+                            "sum_rub": "110.00",
+                        }
+                    ],
+                },
+                format="json",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(response.data["line_items"]), 1)
+            self.assertEqual(response.data["line_items"][0]["name"], "Новая позиция")
+            self.assertEqual(transaction.line_items.count(), 1)
+            self.assertEqual(transaction.line_items.get().name, "Новая позиция")
+
+    def test_create_transaction_rejects_line_items_with_wrong_total(self):
+            self.authenticate()
+
+            response = self.client.post(
+                reverse("finance:transaction-list"),
+                data={
+                    "account": self.account.id,
+                    "category": self.expense_category.id,
+                    "type": TransactionType.EXPENSE,
+                    "amount": "110.00",
+                    "description": "Некорректная сумма позиций",
+                    "operation_date": str(self.today),
+                    "line_items": [
+                        {
+                            "name": "Позиция",
+                            "qty": "1.000",
+                            "unit_price_rub": "90.00",
+                            "sum_rub": "90.00",
+                        }
+                    ],
+                },
+                format="json",
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertFalse(response.data["success"])
+            self.assertIn("line_items", response.data["error"]["field_errors"])

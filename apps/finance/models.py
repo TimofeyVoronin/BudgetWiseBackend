@@ -1304,6 +1304,95 @@ class Transaction(TimeStampedModel):
         return f"{self.type}: {self.amount} {self.account.currency}"
 
 
+class TransactionLineItem(TimeStampedModel):
+    transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.CASCADE,
+        related_name="line_items",
+        verbose_name="Операция",
+    )
+    line_number = models.PositiveIntegerField(
+        verbose_name="Номер строки",
+    )
+    name = models.CharField(
+        max_length=255,
+        verbose_name="Название позиции",
+    )
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        validators=[MinValueValidator(Decimal("0.001"))],
+        verbose_name="Количество",
+    )
+    unit_price = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Цена за единицу",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма позиции",
+    )
+
+    class Meta:
+        verbose_name = "Позиция операции"
+        verbose_name_plural = "Позиции операций"
+        ordering = ["transaction", "line_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["transaction", "line_number"],
+                name="unique_transaction_line_item",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gt=0),
+                name="transaction_line_item_quantity_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(unit_price__gte=0),
+                name="transaction_line_item_unit_price_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="transaction_line_item_amount_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["transaction"], name="idx_tx_line_item_tx"),
+            models.Index(fields=["name"], name="idx_tx_line_item_name"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.name:
+            self.name = self.name.strip()
+
+        if not self.name:
+            errors["name"] = "Название позиции операции не может быть пустым."
+
+        if self.quantity <= Decimal("0.000"):
+            errors["quantity"] = "Количество должно быть больше нуля."
+
+        if self.unit_price < Decimal("0.00"):
+            errors["unit_price"] = "Цена не может быть отрицательной."
+
+        if self.amount <= Decimal("0.00"):
+            errors["amount"] = "Сумма позиции должна быть больше нуля."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.line_number}. {self.name}: {self.amount}"
+
+
 class Receipt(TimeStampedModel):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

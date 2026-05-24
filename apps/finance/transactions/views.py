@@ -180,7 +180,7 @@ def get_transaction_queryset_for_request(request):
         Transaction.objects
         .filter(user=request.user)
         .select_related("account", "category")
-        .prefetch_related("tags__group")
+        .prefetch_related("tags__group", "line_items")
     )
 
     query_params = request.query_params
@@ -647,6 +647,20 @@ class TransactionExportView(APIView):
                     "description": "Покупка продуктов",
                     "operation_date": "2026-05-15",
                     "tagIds": [1, 2],
+                    "line_items": [
+                        {
+                            "name": "Молоко",
+                            "qty": "1.000",
+                            "unit_price_rub": "100.00",
+                            "sum_rub": "100.00",
+                        },
+                        {
+                            "name": "Хлеб",
+                            "qty": "1.000",
+                            "unit_price_rub": "50.00",
+                            "sum_rub": "50.00",
+                        },
+                    ],
                 },
                 request_only=True,
             )
