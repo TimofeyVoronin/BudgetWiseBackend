@@ -202,3 +202,56 @@ class SyncConflictResolveResponseSerializer(serializers.Serializer):
     strategy = serializers.CharField()
     version = serializers.DateTimeField(allow_null=True, required=False)
     data = serializers.DictField()
+
+
+class SyncOperationLogItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    clientId = serializers.CharField()
+    deviceId = serializers.CharField()
+    clientMutationId = serializers.CharField()
+    resource = serializers.CharField()
+    action = serializers.CharField()
+    status = serializers.CharField()
+    serverId = serializers.IntegerField(allow_null=True)
+    requestHash = serializers.CharField(allow_blank=True)
+    hasError = serializers.BooleanField()
+    errorCode = serializers.CharField(allow_blank=True, allow_null=True)
+    errorMessage = serializers.CharField(allow_blank=True, allow_null=True)
+    createdAt = serializers.DateTimeField()
+    updatedAt = serializers.DateTimeField()
+    responseData = serializers.DictField(required=False)
+    errorData = serializers.DictField(required=False)
+
+
+class SyncOperationsLogResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    page = serializers.IntegerField()
+    pageSize = serializers.IntegerField()
+    hasNext = serializers.BooleanField()
+    hasPrevious = serializers.BooleanField()
+    results = SyncOperationLogItemSerializer(many=True)
+
+
+class SyncStatusOperationStatsSerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    applied = serializers.IntegerField()
+    duplicate = serializers.IntegerField()
+    failed = serializers.IntegerField()
+    conflict = serializers.IntegerField()
+    skipped = serializers.IntegerField()
+
+
+class SyncStatusSerializer(serializers.Serializer):
+    schemaVersion = serializers.IntegerField()
+    serverTime = serializers.DateTimeField()
+    syncToken = serializers.DateTimeField()
+    lastOperationAt = serializers.DateTimeField(allow_null=True)
+    operations = SyncStatusOperationStatsSerializer()
+    pendingConflictsCount = serializers.IntegerField()
+    supportedResources = serializers.ListField(child=serializers.CharField())
+    writableResources = serializers.ListField(child=serializers.CharField())
+    readOnlyResources = serializers.ListField(child=serializers.CharField())
+    readOnlySnapshots = serializers.ListField(child=serializers.CharField())
+    supportedActions = serializers.ListField(child=serializers.CharField())
+    maxBatchSize = serializers.IntegerField()
+    lastOperations = SyncOperationLogItemSerializer(many=True)

@@ -630,3 +630,101 @@ class OfflineSyncAPITests(FinanceAPITestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("resource", response.data["error"]["field_errors"])
+
+    def test_operations_log_returns_saved_push_operations(self):
+        payload = {
+            "clientId": "web-pwa",
+            "deviceId": "browser-1",
+            "operations": [
+                {
+                    "clientMutationId": "mutation-log-1",
+                    "resource": "transactions",
+                    "action": "create",
+                    "clientId": "local-log-tx-1",
+                    "payload": {
+                        "account": self.account.pk,
+                        "category": self.expense_category.pk,
+                        "type": "expense",
+                        "amount": "42.00",
+                        "operation_date": self.today.isoformat(),
+                        "description": "Операция для журнала sync",
+                    },
+                }
+            ],
+        }
+        push_response = self.client.post("/api/v1/finance/sync/push/", payload, format="json")
+        self.assertEqual(push_response.status_code, 200)
+
+        response = self.client.get(
+            "/api/v1/finance/sync/operations/",
+            {
+                "status": "applied",
+                "resource": "transactions",
+                "clientMutationId": "mutation-log-1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["page"], 1)
+        self.assertEqual(response.data["pageSize"], 20)
+        self.assertFalse(response.data["hasNext"])
+        self.assertFalse(response.data["hasPrevious"])
+        item = response.data["results"][0]
+        self.assertEqual(item["clientId"], "web-pwa")
+        self.assertEqual(item["deviceId"], "browser-1")
+        self.assertEqual(item["clientMutationId"], "mutation-log-1")
+        self.assertEqual(item["resource"], "transactions")
+        self.assertEqual(item["action"], "create")
+        self.assertEqual(item["status"], "applied")
+        self.assertFalse(item["hasError"])
+        self.assertIn("responseData", item)
+
+    def test_operations_log_rejects_invalid_status_filter(self):
+        response = self.client.get(
+            "/api/v1/finance/sync/operations/",
+            {"status": "wrong"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("status", response.data["error"]["field_errors"])
+
+    def test_status_returns_operation_counters_and_last_operations(self):
+        OfflineSyncOperation.objects.create(
+            user=self.user,
+            client_id="web-pwa",
+            device_id="browser-1",
+            client_mutation_id="status-applied",
+            resource="transactions",
+            action="create",
+            status="applied",
+            object_id=123,
+            request_hash="hash-applied",
+            response_data={"status": "applied", "serverId": 123},
+        )
+        OfflineSyncOperation.objects.create(
+            user=self.user,
+            client_id="web-pwa",
+            device_id="browser-1",
+            client_mutation_id="status-conflict",
+            resource="transactions",
+            action="update",
+            status="conflict",
+            object_id=123,
+            request_hash="hash-conflict",
+            response_data={"status": "conflict", "serverId": 123},
+            error_data={"code": "sync_conflict", "message": "Конфликт версий"},
+        )
+
+        response = self.client.get("/api/v1/finance/sync/status/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["schemaVersion"], 1)
+        self.assertEqual(response.data["operations"]["total"], 2)
+        self.assertEqual(response.data["operations"]["applied"], 1)
+        self.assertEqual(response.data["operations"]["conflict"], 1)
+        self.assertEqual(response.data["pendingConflictsCount"], 1)
+        self.assertIsNotNone(response.data["lastOperationAt"])
+        self.assertIn("transactions", response.data["supportedResources"])
+        self.assertIn("create", response.data["supportedActions"])
+        self.assertGreaterEqual(len(response.data["lastOperations"]), 2)

@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any, Callable
 
 from django.db import IntegrityError, transaction as db_transaction
-from django.db.models import QuerySet
+from django.db.models import Count, Max, QuerySet
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
@@ -360,6 +360,155 @@ def build_sync_versioning_contract() -> dict[str, Any]:
         **build_versioning_payload(),
     }
 
+
+
+SYNC_OPERATION_LOG_DEFAULT_PAGE_SIZE = 20
+SYNC_OPERATION_LOG_MAX_PAGE_SIZE = 100
+
+
+def parse_positive_int(value, *, field_name: str, default: int) -> int:
+    if value in (None, ""):
+        return default
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError({field_name: ["Значение должно быть целым числом."]}) from exc
+
+    if parsed < 1:
+        raise ValidationError({field_name: ["Значение должно быть положительным."]})
+
+    return parsed
+
+
+def validate_sync_operation_filter(value: str | None, *, field_name: str, allowed_values: list[str] | tuple[str, ...]):
+    if value in (None, ""):
+        return None
+
+    if value not in allowed_values:
+        raise ValidationError({field_name: ["Неподдерживаемое значение фильтра."]})
+
+    return value
+
+
+def build_sync_operation_log_item(operation: OfflineSyncOperation) -> dict[str, Any]:
+    error_data = operation.error_data or {}
+    response_data = operation.response_data or {}
+
+    return {
+        "id": operation.pk,
+        "clientId": operation.client_id,
+        "deviceId": operation.device_id,
+        "clientMutationId": operation.client_mutation_id,
+        "resource": operation.resource,
+        "action": operation.action,
+        "status": operation.status,
+        "serverId": operation.object_id,
+        "requestHash": operation.request_hash or "",
+        "hasError": bool(error_data),
+        "errorCode": error_data.get("code") or "",
+        "errorMessage": error_data.get("message") or "",
+        "createdAt": operation.created_at,
+        "updatedAt": operation.updated_at,
+        "responseData": response_data,
+        "errorData": error_data,
+    }
+
+
+def build_sync_operations_log_payload(*, user, query_params) -> dict[str, Any]:
+    page = parse_positive_int(query_params.get("page"), field_name="page", default=1)
+    page_size = parse_positive_int(
+        query_params.get("pageSize") or query_params.get("page_size"),
+        field_name="pageSize",
+        default=SYNC_OPERATION_LOG_DEFAULT_PAGE_SIZE,
+    )
+    page_size = min(page_size, SYNC_OPERATION_LOG_MAX_PAGE_SIZE)
+
+    status_filter = validate_sync_operation_filter(
+        query_params.get("status"),
+        field_name="status",
+        allowed_values=OfflineSyncOperationStatus.values,
+    )
+    resource_filter = validate_sync_operation_filter(
+        query_params.get("resource"),
+        field_name="resource",
+        allowed_values=SUPPORTED_RESOURCES,
+    )
+    action_filter = validate_sync_operation_filter(
+        query_params.get("action"),
+        field_name="action",
+        allowed_values=SUPPORTED_ACTIONS,
+    )
+
+    queryset = OfflineSyncOperation.objects.filter(user=user).order_by("-created_at", "-id")
+
+    if status_filter:
+        queryset = queryset.filter(status=status_filter)
+    if resource_filter:
+        queryset = queryset.filter(resource=resource_filter)
+    if action_filter:
+        queryset = queryset.filter(action=action_filter)
+
+    client_id = query_params.get("clientId") or query_params.get("client_id")
+    if client_id:
+        queryset = queryset.filter(client_id=client_id)
+
+    device_id = query_params.get("deviceId") or query_params.get("device_id")
+    if device_id:
+        queryset = queryset.filter(device_id=device_id)
+
+    mutation_id = query_params.get("clientMutationId") or query_params.get("client_mutation_id")
+    if mutation_id:
+        queryset = queryset.filter(client_mutation_id=mutation_id)
+
+    total_count = queryset.count()
+    offset = (page - 1) * page_size
+    items = list(queryset[offset:offset + page_size + 1])
+    has_next = len(items) > page_size
+    page_items = items[:page_size]
+
+    return {
+        "count": total_count,
+        "page": page,
+        "pageSize": page_size,
+        "hasNext": has_next,
+        "hasPrevious": page > 1,
+        "results": [build_sync_operation_log_item(item) for item in page_items],
+    }
+
+
+def build_sync_status_payload(*, user) -> dict[str, Any]:
+    server_time = get_server_time()
+    queryset = OfflineSyncOperation.objects.filter(user=user)
+    counts_by_status = {
+        item["status"]: item["count"]
+        for item in queryset.values("status").annotate(count=Count("id"))
+    }
+    last_operation_at = queryset.aggregate(last_operation_at=Max("created_at"))["last_operation_at"]
+    last_operations = list(queryset.order_by("-created_at", "-id")[:5])
+
+    return {
+        "schemaVersion": SYNC_SCHEMA_VERSION,
+        "serverTime": server_time,
+        "syncToken": server_time,
+        "lastOperationAt": last_operation_at,
+        "operations": {
+            "total": queryset.count(),
+            "applied": counts_by_status.get(SYNC_STATUS_APPLIED, 0),
+            "duplicate": counts_by_status.get(SYNC_STATUS_DUPLICATE, 0),
+            "failed": counts_by_status.get(SYNC_STATUS_FAILED, 0),
+            "conflict": counts_by_status.get(SYNC_STATUS_CONFLICT, 0),
+            "skipped": counts_by_status.get(SYNC_STATUS_SKIPPED, 0),
+        },
+        "pendingConflictsCount": counts_by_status.get(SYNC_STATUS_CONFLICT, 0),
+        "supportedResources": SUPPORTED_RESOURCES,
+        "writableResources": get_writable_resources(),
+        "readOnlyResources": get_read_only_resources(),
+        "readOnlySnapshots": READ_ONLY_SNAPSHOTS,
+        "supportedActions": SUPPORTED_ACTIONS,
+        "maxBatchSize": SYNC_MAX_BATCH_SIZE,
+        "lastOperations": [build_sync_operation_log_item(item) for item in last_operations],
+    }
 
 def normalize_resource_names(resources: list[str] | None) -> list[str]:
     if not resources:

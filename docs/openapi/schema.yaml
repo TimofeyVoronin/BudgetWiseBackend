@@ -5651,6 +5651,96 @@ paths:
                     - delete
                     maxBatchSize: 100
           description: ''
+  /api/v1/finance/sync/operations/:
+    get:
+      operationId: finance_sync_operations_retrieve
+      description: Возвращает сохранённые операции push-синхронизации текущего пользователя.
+        Журнал используется для отладки, повторной идемпотентной обработки и отображения
+        истории синхронизации на фронте.
+      summary: Получить журнал оффлайн-операций
+      parameters:
+      - in: query
+        name: action
+        schema:
+          type: string
+        description: 'Фильтр по действию: create, update, delete.'
+      - in: query
+        name: clientId
+        schema:
+          type: string
+        description: Фильтр по идентификатору клиента.
+      - in: query
+        name: clientMutationId
+        schema:
+          type: string
+        description: Фильтр по id клиентской мутации.
+      - in: query
+        name: deviceId
+        schema:
+          type: string
+        description: Фильтр по идентификатору устройства.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы, начиная с 1.
+      - in: query
+        name: pageSize
+        schema:
+          type: integer
+        description: Размер страницы, максимум 100.
+      - in: query
+        name: resource
+        schema:
+          type: string
+        description: Фильтр по ресурсу sync, например transactions.
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: 'Фильтр по статусу: applied, duplicate, failed, conflict, skipped.'
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncOperationsLogResponse'
+              examples:
+                ЖурналОпераций:
+                  value:
+                    count: 1
+                    page: 1
+                    pageSize: 20
+                    hasNext: false
+                    hasPrevious: false
+                    results:
+                    - id: 1
+                      clientId: web-pwa
+                      deviceId: browser-1
+                      clientMutationId: mutation-1
+                      resource: transactions
+                      action: create
+                      status: applied
+                      serverId: 12
+                      requestHash: sha256
+                      hasError: false
+                      errorCode: ''
+                      errorMessage: ''
+                      createdAt: 2026-05-24T21:35:00+0300
+                      updatedAt: 2026-05-24T21:35:00+0300
+                  summary: Журнал операций
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/v1/finance/sync/pull/:
     get:
       operationId: finance_sync_pull_retrieve
@@ -5745,6 +5835,45 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+          description: ''
+  /api/v1/finance/sync/status/:
+    get:
+      operationId: finance_sync_status_retrieve
+      description: 'Возвращает короткую сводку журнала синхронизации текущего пользователя:
+        количество операций по статусам, число нерешённых конфликтов, последнюю операцию
+        и текущий syncToken сервера. Endpoint нужен фронту для панели состояния оффлайн-режима.'
+      summary: Получить состояние оффлайн-синхронизации
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatus'
+              examples:
+                СтатусСинхронизации:
+                  value:
+                    schemaVersion: 1
+                    serverTime: 2026-05-24T21:40:00+0300
+                    syncToken: 2026-05-24T21:40:00+0300
+                    lastOperationAt: 2026-05-24T21:35:00+0300
+                    operations:
+                      total: 4
+                      applied: 2
+                      duplicate: 1
+                      failed: 0
+                      conflict: 1
+                      skipped: 0
+                    pendingConflictsCount: 1
+                    supportedResources:
+                    - accounts
+                    - categories
+                    - transactions
+                    lastOperations: []
+                  summary: Статус синхронизации
           description: ''
   /api/v1/finance/sync/versioning/:
     get:
@@ -16018,6 +16147,87 @@ components:
       - serverTime
       - supportedActions
       - supportedResources
+    SyncOperationLogItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        clientId:
+          type: string
+        deviceId:
+          type: string
+        clientMutationId:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+        status:
+          type: string
+        serverId:
+          type: integer
+          nullable: true
+        requestHash:
+          type: string
+        hasError:
+          type: boolean
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        responseData:
+          type: object
+          additionalProperties: {}
+        errorData:
+          type: object
+          additionalProperties: {}
+      required:
+      - action
+      - clientId
+      - clientMutationId
+      - createdAt
+      - deviceId
+      - errorCode
+      - errorMessage
+      - hasError
+      - id
+      - requestHash
+      - resource
+      - serverId
+      - status
+      - updatedAt
+    SyncOperationsLogResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrevious:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncOperationLogItem'
+      required:
+      - count
+      - hasNext
+      - hasPrevious
+      - page
+      - pageSize
+      - results
     SyncPull:
       type: object
       properties:
@@ -16164,6 +16374,87 @@ components:
           items:
             type: object
             additionalProperties: {}
+    SyncStatus:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        serverTime:
+          type: string
+          format: date-time
+        syncToken:
+          type: string
+          format: date-time
+        lastOperationAt:
+          type: string
+          format: date-time
+          nullable: true
+        operations:
+          $ref: '#/components/schemas/SyncStatusOperationStats'
+        pendingConflictsCount:
+          type: integer
+        supportedResources:
+          type: array
+          items:
+            type: string
+        writableResources:
+          type: array
+          items:
+            type: string
+        readOnlyResources:
+          type: array
+          items:
+            type: string
+        readOnlySnapshots:
+          type: array
+          items:
+            type: string
+        supportedActions:
+          type: array
+          items:
+            type: string
+        maxBatchSize:
+          type: integer
+        lastOperations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncOperationLogItem'
+      required:
+      - lastOperationAt
+      - lastOperations
+      - maxBatchSize
+      - operations
+      - pendingConflictsCount
+      - readOnlyResources
+      - readOnlySnapshots
+      - schemaVersion
+      - serverTime
+      - supportedActions
+      - supportedResources
+      - syncToken
+      - writableResources
+    SyncStatusOperationStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        applied:
+          type: integer
+        duplicate:
+          type: integer
+        failed:
+          type: integer
+        conflict:
+          type: integer
+        skipped:
+          type: integer
+      required:
+      - applied
+      - conflict
+      - duplicate
+      - failed
+      - skipped
+      - total
     SyncVersioning:
       type: object
       properties:

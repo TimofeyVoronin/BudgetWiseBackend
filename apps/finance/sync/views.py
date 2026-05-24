@@ -22,7 +22,9 @@ from apps.finance.sync.serializers import (
     SyncConflictResolveResponseSerializer,
     SyncDomainsSerializer,
     SyncMetaSerializer,
+    SyncOperationsLogResponseSerializer,
     SyncPullSerializer,
+    SyncStatusSerializer,
     SyncPushRequestSerializer,
     SyncPushResponseSerializer,
     SyncVersioningSerializer,
@@ -34,6 +36,8 @@ from apps.finance.sync.services import (
     build_pull_payload,
     build_sync_domains_payload,
     build_sync_meta,
+    build_sync_operations_log_payload,
+    build_sync_status_payload,
     build_sync_versioning_contract,
     parse_resources_query,
     resolve_conflict,
@@ -227,6 +231,108 @@ class SyncVersioningView(APIView):
     )
     def get(self, request):
         return Response(build_sync_versioning_contract())
+
+
+class SyncStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_status_retrieve",
+        summary="Получить состояние оффлайн-синхронизации",
+        description=(
+            "Возвращает короткую сводку журнала синхронизации текущего пользователя: "
+            "количество операций по статусам, число нерешённых конфликтов, последнюю операцию "
+            "и текущий syncToken сервера. Endpoint нужен фронту для панели состояния оффлайн-режима."
+        ),
+        responses={200: SyncStatusSerializer},
+        examples=[
+            OpenApiExample(
+                "Статус синхронизации",
+                value={
+                    "schemaVersion": 1,
+                    "serverTime": "2026-05-24T21:40:00+0300",
+                    "syncToken": "2026-05-24T21:40:00+0300",
+                    "lastOperationAt": "2026-05-24T21:35:00+0300",
+                    "operations": {
+                        "total": 4,
+                        "applied": 2,
+                        "duplicate": 1,
+                        "failed": 0,
+                        "conflict": 1,
+                        "skipped": 0,
+                    },
+                    "pendingConflictsCount": 1,
+                    "supportedResources": ["accounts", "categories", "transactions"],
+                    "lastOperations": [],
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        return Response(build_sync_status_payload(user=request.user))
+
+
+class SyncOperationsLogView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_operations_retrieve",
+        summary="Получить журнал оффлайн-операций",
+        description=(
+            "Возвращает сохранённые операции push-синхронизации текущего пользователя. "
+            "Журнал используется для отладки, повторной идемпотентной обработки и отображения истории "
+            "синхронизации на фронте."
+        ),
+        parameters=[
+            OpenApiParameter("page", OpenApiTypes.INT, description="Номер страницы, начиная с 1."),
+            OpenApiParameter("pageSize", OpenApiTypes.INT, description="Размер страницы, максимум 100."),
+            OpenApiParameter("status", OpenApiTypes.STR, description="Фильтр по статусу: applied, duplicate, failed, conflict, skipped."),
+            OpenApiParameter("resource", OpenApiTypes.STR, description="Фильтр по ресурсу sync, например transactions."),
+            OpenApiParameter("action", OpenApiTypes.STR, description="Фильтр по действию: create, update, delete."),
+            OpenApiParameter("clientId", OpenApiTypes.STR, description="Фильтр по идентификатору клиента."),
+            OpenApiParameter("deviceId", OpenApiTypes.STR, description="Фильтр по идентификатору устройства."),
+            OpenApiParameter("clientMutationId", OpenApiTypes.STR, description="Фильтр по id клиентской мутации."),
+        ],
+        responses={200: SyncOperationsLogResponseSerializer, 400: OpenApiTypes.OBJECT},
+        examples=[
+            OpenApiExample(
+                "Журнал операций",
+                value={
+                    "count": 1,
+                    "page": 1,
+                    "pageSize": 20,
+                    "hasNext": False,
+                    "hasPrevious": False,
+                    "results": [
+                        {
+                            "id": 1,
+                            "clientId": "web-pwa",
+                            "deviceId": "browser-1",
+                            "clientMutationId": "mutation-1",
+                            "resource": "transactions",
+                            "action": "create",
+                            "status": "applied",
+                            "serverId": 12,
+                            "requestHash": "sha256",
+                            "hasError": False,
+                            "errorCode": "",
+                            "errorMessage": "",
+                            "createdAt": "2026-05-24T21:35:00+0300",
+                            "updatedAt": "2026-05-24T21:35:00+0300",
+                        }
+                    ],
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        payload = build_sync_operations_log_payload(
+            user=request.user,
+            query_params=request.query_params,
+        )
+        return Response(payload)
 
 
 class SyncBootstrapView(APIView):
