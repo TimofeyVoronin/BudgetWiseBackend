@@ -3,6 +3,8 @@ from django.urls import path
 from apps.finance.sync.views import (
     SyncBootstrapView,
     SyncConflictResolveView,
+    SyncConflictsListView,
+    SyncConflictsMetaView,
     SyncDomainsView,
     SyncMetaView,
     SyncOperationsLogView,
@@ -22,5 +24,7 @@ urlpatterns = [
     path("bootstrap/", SyncBootstrapView.as_view(), name="sync-bootstrap"),
     path("pull/", SyncPullView.as_view(), name="sync-pull"),
     path("push/", SyncPushView.as_view(), name="sync-push"),
+    path("conflicts/", SyncConflictsListView.as_view(), name="sync-conflicts"),
+    path("conflicts/meta/", SyncConflictsMetaView.as_view(), name="sync-conflicts-meta"),
     path("conflicts/resolve/", SyncConflictResolveView.as_view(), name="sync-conflict-resolve"),
 ]

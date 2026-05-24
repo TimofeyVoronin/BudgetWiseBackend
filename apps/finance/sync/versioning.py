@@ -90,14 +90,16 @@ def build_versioning_payload() -> dict[str, Any]:
             "clientMutationId": "Уникальный ID попытки изменения. Используется для идемпотентности.",
             "baseSyncToken": "Последний syncToken, известный клиенту перед push.",
             "baseVersion": "Версия конкретной записи, от которой клиент сделал update/delete.",
-            "clientUpdatedAt": "Время изменения на клиенте, не используется как источник истины для конфликтов.",
+            "clientUpdatedAt": "Время изменения на клиенте, используется только для стратегии last_write_wins.",
+            "conflictStrategy": "manual_confirmation | last_write_wins | server_wins | client_wins.",
         },
         "conflictDetection": {
             "rule": "Если текущий serverVersion объекта больше baseVersion из операции, сервер возвращает status=conflict.",
             "requiredForActions": ["update", "delete"],
             "createConflictRule": "create проверяется через clientMutationId и локальный clientId.",
             "manualResolutionEndpoint": "/api/v1/finance/sync/conflicts/resolve/",
-            "strategies": ["server_wins", "client_wins", "merge"],
+            "strategies": ["server_wins", "client_wins", "merge", "last_write_wins"],
+            "defaultPolicy": "manual_confirmation",
         },
         "tombstones": {
             "resource": "OfflineSyncTombstone",

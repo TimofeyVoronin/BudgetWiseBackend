@@ -99,10 +99,19 @@ READ_ONLY_SNAPSHOTS = get_read_only_snapshots()
 SYNC_CONFLICT_STRATEGY_SERVER_WINS = "server_wins"
 SYNC_CONFLICT_STRATEGY_CLIENT_WINS = "client_wins"
 SYNC_CONFLICT_STRATEGY_MERGE = "merge"
+SYNC_CONFLICT_STRATEGY_LAST_WRITE_WINS = "last_write_wins"
+SYNC_CONFLICT_POLICY_MANUAL_CONFIRMATION = "manual_confirmation"
 SYNC_CONFLICT_STRATEGIES = [
     SYNC_CONFLICT_STRATEGY_SERVER_WINS,
     SYNC_CONFLICT_STRATEGY_CLIENT_WINS,
     SYNC_CONFLICT_STRATEGY_MERGE,
+    SYNC_CONFLICT_STRATEGY_LAST_WRITE_WINS,
+]
+SYNC_CONFLICT_PUSH_POLICIES = [
+    SYNC_CONFLICT_POLICY_MANUAL_CONFIRMATION,
+    SYNC_CONFLICT_STRATEGY_LAST_WRITE_WINS,
+    SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+    SYNC_CONFLICT_STRATEGY_CLIENT_WINS,
 ]
 
 
@@ -361,6 +370,67 @@ def build_sync_versioning_contract() -> dict[str, Any]:
     }
 
 
+def build_conflict_strategy_registry() -> list[dict[str, Any]]:
+    return [
+        {
+            "value": SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+            "label": "Серверная версия",
+            "description": "Серверная запись считается источником истины, клиентское изменение отклоняется без изменения объекта.",
+            "requiresPayload": False,
+            "automatic": True,
+            "safeDefault": True,
+            "supportedInPush": True,
+            "supportedInResolve": True,
+        },
+        {
+            "value": SYNC_CONFLICT_STRATEGY_CLIENT_WINS,
+            "label": "Клиентская версия",
+            "description": "Клиентский payload принудительно применяется поверх серверной версии.",
+            "requiresPayload": True,
+            "automatic": True,
+            "safeDefault": False,
+            "supportedInPush": True,
+            "supportedInResolve": True,
+        },
+        {
+            "value": SYNC_CONFLICT_STRATEGY_MERGE,
+            "label": "Ручное объединение",
+            "description": "Фронт собирает итоговый payload после выбора полей пользователем и отправляет его на сервер.",
+            "requiresPayload": True,
+            "automatic": False,
+            "safeDefault": True,
+            "supportedInPush": False,
+            "supportedInResolve": True,
+        },
+        {
+            "value": SYNC_CONFLICT_STRATEGY_LAST_WRITE_WINS,
+            "label": "Последняя запись побеждает",
+            "description": "Сервер сравнивает clientUpdatedAt и serverVersion: более поздняя версия считается итоговой.",
+            "requiresPayload": False,
+            "automatic": True,
+            "safeDefault": False,
+            "supportedInPush": True,
+            "supportedInResolve": True,
+        },
+    ]
+
+
+def build_sync_conflicts_meta_payload() -> dict[str, Any]:
+    return {
+        "schemaVersion": SYNC_SCHEMA_VERSION,
+        "serverTime": get_server_time(),
+        "defaultPolicy": SYNC_CONFLICT_POLICY_MANUAL_CONFIRMATION,
+        "recommendedManualStrategy": SYNC_CONFLICT_STRATEGY_MERGE,
+        "strategies": build_conflict_strategy_registry(),
+        "manualResolutionEndpoint": "/api/v1/finance/sync/conflicts/resolve/",
+        "conflictsEndpoint": "/api/v1/finance/sync/conflicts/",
+        "notes": [
+            "manual_confirmation используется по умолчанию: сервер возвращает status=conflict и не меняет запись.",
+            "last_write_wins требует корректного clientUpdatedAt, иначе безопасно оставляет серверную версию.",
+            "merge применяется только через ручной payload от фронта.",
+        ],
+    }
+
 
 SYNC_OPERATION_LOG_DEFAULT_PAGE_SIZE = 20
 SYNC_OPERATION_LOG_MAX_PAGE_SIZE = 100
@@ -474,6 +544,72 @@ def build_sync_operations_log_payload(*, user, query_params) -> dict[str, Any]:
         "hasNext": has_next,
         "hasPrevious": page > 1,
         "results": [build_sync_operation_log_item(item) for item in page_items],
+    }
+
+
+def build_sync_conflict_log_item(operation: OfflineSyncOperation) -> dict[str, Any]:
+    response_data = operation.response_data or {}
+    return {
+        "id": operation.pk,
+        "clientId": operation.client_id,
+        "deviceId": operation.device_id,
+        "clientMutationId": operation.client_mutation_id,
+        "resource": operation.resource,
+        "action": operation.action,
+        "serverId": operation.object_id,
+        "status": operation.status,
+        "createdAt": operation.created_at,
+        "updatedAt": operation.updated_at,
+        "error": operation.error_data or response_data.get("error") or {},
+        "conflict": response_data.get("data") or {},
+    }
+
+
+def build_sync_conflicts_log_payload(*, user, query_params) -> dict[str, Any]:
+    page = parse_positive_int(query_params.get("page"), field_name="page", default=1)
+    page_size = parse_positive_int(
+        query_params.get("pageSize") or query_params.get("page_size"),
+        field_name="pageSize",
+        default=SYNC_OPERATION_LOG_DEFAULT_PAGE_SIZE,
+    )
+    page_size = min(page_size, SYNC_OPERATION_LOG_MAX_PAGE_SIZE)
+
+    resource_filter = validate_sync_operation_filter(
+        query_params.get("resource"),
+        field_name="resource",
+        allowed_values=SUPPORTED_RESOURCES,
+    )
+
+    queryset = (
+        OfflineSyncOperation.objects
+        .filter(user=user, status=SYNC_STATUS_CONFLICT)
+        .order_by("-created_at", "-id")
+    )
+
+    if resource_filter:
+        queryset = queryset.filter(resource=resource_filter)
+
+    client_id = query_params.get("clientId") or query_params.get("client_id")
+    if client_id:
+        queryset = queryset.filter(client_id=client_id)
+
+    device_id = query_params.get("deviceId") or query_params.get("device_id")
+    if device_id:
+        queryset = queryset.filter(device_id=device_id)
+
+    total_count = queryset.count()
+    offset = (page - 1) * page_size
+    items = list(queryset[offset:offset + page_size + 1])
+    has_next = len(items) > page_size
+    page_items = items[:page_size]
+
+    return {
+        "count": total_count,
+        "page": page,
+        "pageSize": page_size,
+        "hasNext": has_next,
+        "hasPrevious": page > 1,
+        "results": [build_sync_conflict_log_item(item) for item in page_items],
     }
 
 
@@ -810,6 +946,18 @@ def validate_operation_integrity(operation: dict) -> dict | None:
                 "code": "unsupported_resource",
                 "message": f"Ресурс {resource} не поддерживается.",
                 "fieldErrors": {"resource": ["Неподдерживаемый ресурс синхронизации."]},
+            },
+        )
+
+    conflict_strategy = operation.get("conflictStrategy")
+    if conflict_strategy and conflict_strategy not in SYNC_CONFLICT_PUSH_POLICIES:
+        return build_result(
+            operation,
+            status=SYNC_STATUS_FAILED,
+            error={
+                "code": "unsupported_conflict_strategy",
+                "message": f"Стратегия конфликта {conflict_strategy} не поддерживается для push.",
+                "fieldErrors": {"conflictStrategy": ["Неподдерживаемая стратегия конфликта."]},
             },
         )
 
@@ -1301,6 +1449,27 @@ def detect_conflict(*, config: SyncResourceConfig, instance, operation: dict, re
     updated_at = getattr(instance, "updated_at", None)
 
     if base_version and updated_at and updated_at > base_version:
+        conflict_strategy = operation.get("conflictStrategy") or SYNC_CONFLICT_POLICY_MANUAL_CONFIRMATION
+
+        if conflict_strategy == SYNC_CONFLICT_STRATEGY_CLIENT_WINS:
+            return None
+
+        if conflict_strategy == SYNC_CONFLICT_STRATEGY_SERVER_WINS:
+            return build_server_wins_result(config=config, instance=instance, operation=operation, request=request)
+
+        if conflict_strategy == SYNC_CONFLICT_STRATEGY_LAST_WRITE_WINS:
+            client_updated_at = operation.get("clientUpdatedAt")
+            if is_client_version_newer(client_updated_at=client_updated_at, server_updated_at=updated_at):
+                return None
+            return build_server_wins_result(
+                config=config,
+                instance=instance,
+                operation=operation,
+                request=request,
+                requested_strategy=SYNC_CONFLICT_STRATEGY_LAST_WRITE_WINS,
+                final_strategy=SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+            )
+
         return build_result(
             operation,
             status=SYNC_STATUS_CONFLICT,
@@ -1322,6 +1491,35 @@ def detect_conflict(*, config: SyncResourceConfig, instance, operation: dict, re
     return None
 
 
+def is_client_version_newer(*, client_updated_at, server_updated_at) -> bool:
+    if not client_updated_at or not server_updated_at:
+        return False
+    return client_updated_at > server_updated_at
+
+
+def build_server_wins_result(
+    *,
+    config: SyncResourceConfig,
+    instance,
+    operation: dict,
+    request,
+    requested_strategy: str = SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+    final_strategy: str = SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+) -> dict:
+    return build_result(
+        operation,
+        status=SYNC_STATUS_APPLIED,
+        server_id=instance.pk,
+        version=getattr(instance, "updated_at", get_server_time()),
+        data=serialize_single_resource(config, instance, request=request),
+        conflict_resolution={
+            "requestedStrategy": requested_strategy,
+            "finalStrategy": final_strategy,
+            "reason": "server_version_is_newer_or_equal",
+        },
+    )
+
+
 def build_conflict_data(*, config: SyncResourceConfig, instance, operation: dict, request) -> dict:
     payload = operation.get("payload") or {}
     server_data = serialize_single_resource(config, instance, request=request)
@@ -1333,6 +1531,8 @@ def build_conflict_data(*, config: SyncResourceConfig, instance, operation: dict
         "serverVersion": getattr(instance, "updated_at", None),
         "conflictFields": build_conflict_fields(client_data=payload, server_data=server_data),
         "availableStrategies": SYNC_CONFLICT_STRATEGIES,
+        "recommendedStrategy": SYNC_CONFLICT_STRATEGY_MERGE,
+        "conflictPolicy": SYNC_CONFLICT_POLICY_MANUAL_CONFIRMATION,
     }
 
 
@@ -1383,7 +1583,7 @@ def resolve_server_field_name(field_name: str, server_data: dict) -> str | None:
     return None
 
 
-def resolve_conflict(*, user, request, resource: str, server_id: int, strategy: str, payload: dict | None = None) -> dict:
+def resolve_conflict(*, user, request, resource: str, server_id: int, strategy: str, payload: dict | None = None, client_updated_at=None) -> dict:
     if resource not in RESOURCE_CONFIGS:
         raise serializers.ValidationError({"resource": [f"Ресурс {resource} не поддерживается."]})
 
@@ -1404,19 +1604,93 @@ def resolve_conflict(*, user, request, resource: str, server_id: int, strategy: 
 
     payload = payload or {}
 
-    if strategy == SYNC_CONFLICT_STRATEGY_SERVER_WINS:
+    if strategy == SYNC_CONFLICT_STRATEGY_LAST_WRITE_WINS:
+        server_updated_at = getattr(instance, "updated_at", None)
+        if is_client_version_newer(client_updated_at=client_updated_at, server_updated_at=server_updated_at):
+            if not payload:
+                raise serializers.ValidationError({"payload": ["Для last_write_wins с более новой клиентской версией нужно передать payload."]})
+            result = apply_conflict_payload(
+                config=config,
+                instance=instance,
+                request=request,
+                resource=resource,
+                strategy=strategy,
+                final_strategy=SYNC_CONFLICT_STRATEGY_CLIENT_WINS,
+                payload=payload,
+            )
+            mark_conflict_operations_resolved(user=user, resource=resource, server_id=server_id, result=result)
+            return result
+
         data = serialize_single_resource(config, instance, request=request)
-        return build_conflict_resolve_result(
+        result = build_conflict_resolve_result(
             resource=resource,
             server_id=instance.pk,
             strategy=strategy,
             version=getattr(instance, "updated_at", get_server_time()),
             data=data,
+            final_strategy=SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+            conflict_resolution={
+                "requestedStrategy": strategy,
+                "finalStrategy": SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+                "reason": "server_version_is_newer_or_equal",
+            },
         )
+        mark_conflict_operations_resolved(user=user, resource=resource, server_id=server_id, result=result)
+        return result
+
+    if strategy == SYNC_CONFLICT_STRATEGY_SERVER_WINS:
+        data = serialize_single_resource(config, instance, request=request)
+        result = build_conflict_resolve_result(
+            resource=resource,
+            server_id=instance.pk,
+            strategy=strategy,
+            version=getattr(instance, "updated_at", get_server_time()),
+            data=data,
+            final_strategy=SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+            conflict_resolution={
+                "requestedStrategy": strategy,
+                "finalStrategy": SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+                "reason": "server_version_kept",
+            },
+        )
+        mark_conflict_operations_resolved(user=user, resource=resource, server_id=server_id, result=result)
+        return result
 
     if not payload:
         raise serializers.ValidationError({"payload": ["Для client_wins и merge нужно передать payload с итоговыми значениями."]})
 
+    result = apply_conflict_payload(
+        config=config,
+        instance=instance,
+        request=request,
+        resource=resource,
+        strategy=strategy,
+        final_strategy=strategy,
+        payload=payload,
+    )
+    mark_conflict_operations_resolved(user=user, resource=resource, server_id=server_id, result=result)
+    return result
+
+
+def mark_conflict_operations_resolved(*, user, resource: str, server_id: int, result: dict) -> None:
+    safe_result = make_json_safe(result)
+    (
+        OfflineSyncOperation.objects
+        .filter(user=user, resource=resource, object_id=server_id, status=SYNC_STATUS_CONFLICT)
+        .update(status=SYNC_STATUS_APPLIED, response_data=safe_result, error_data={})
+    )
+
+
+def apply_conflict_payload(
+    *,
+    config: SyncResourceConfig,
+    instance,
+    request,
+    resource: str,
+    strategy: str,
+    final_strategy: str,
+    payload: dict,
+) -> dict:
     with db_transaction.atomic():
         if resource == "currencies":
             update_synced_currency(instance=instance, payload=payload)
@@ -1443,11 +1717,26 @@ def resolve_conflict(*, user, request, resource: str, server_id: int, strategy: 
         strategy=strategy,
         version=getattr(updated_instance, "updated_at", get_server_time()),
         data=data,
+        final_strategy=final_strategy,
+        conflict_resolution={
+            "requestedStrategy": strategy,
+            "finalStrategy": final_strategy,
+            "reason": "payload_applied",
+        },
     )
 
 
-def build_conflict_resolve_result(*, resource: str, server_id: int, strategy: str, version, data: dict) -> dict:
-    return {
+def build_conflict_resolve_result(
+    *,
+    resource: str,
+    server_id: int,
+    strategy: str,
+    version,
+    data: dict,
+    final_strategy: str | None = None,
+    conflict_resolution: dict | None = None,
+) -> dict:
+    result = {
         "status": "resolved",
         "resource": resource,
         "serverId": server_id,
@@ -1455,6 +1744,11 @@ def build_conflict_resolve_result(*, resource: str, server_id: int, strategy: st
         "version": version,
         "data": data,
     }
+    if final_strategy:
+        result["finalStrategy"] = final_strategy
+    if conflict_resolution:
+        result["conflictResolution"] = conflict_resolution
+    return result
 
 def persist_operation_result(*, user, client_id: str, device_id: str, operation: dict, request_hash: str, result: dict) -> None:
     safe_result = make_json_safe(result)
@@ -1497,7 +1791,7 @@ def make_json_safe(value):
     return value
 
 
-def build_result(operation: dict, *, status: str, server_id=None, version=None, data=None, error=None) -> dict:
+def build_result(operation: dict, *, status: str, server_id=None, version=None, data=None, error=None, conflict_resolution=None) -> dict:
     result = {
         "clientMutationId": operation.get("clientMutationId"),
         "resource": operation.get("resource"),
@@ -1514,6 +1808,9 @@ def build_result(operation: dict, *, status: str, server_id=None, version=None, 
 
     if error is not None:
         result["error"] = error
+
+    if conflict_resolution is not None:
+        result["conflictResolution"] = conflict_resolution
 
     return result
 

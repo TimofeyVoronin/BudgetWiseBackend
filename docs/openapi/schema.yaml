@@ -5496,13 +5496,101 @@ paths:
               schema:
                 $ref: '#/components/schemas/SyncBootstrap'
           description: ''
+  /api/v1/finance/sync/conflicts/:
+    get:
+      operationId: finance_sync_conflicts_retrieve
+      description: Возвращает операции push-синхронизации со статусом conflict. Каждая
+        запись содержит clientData, serverData, conflictFields и доступные стратегии,
+        которые фронт может показать пользователю для ручного разрешения.
+      summary: Получить список нерешённых конфликтов синхронизации
+      parameters:
+      - in: query
+        name: clientId
+        schema:
+          type: string
+        description: Фильтр по идентификатору клиента.
+      - in: query
+        name: deviceId
+        schema:
+          type: string
+        description: Фильтр по идентификатору устройства.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы, начиная с 1.
+      - in: query
+        name: pageSize
+        schema:
+          type: integer
+        description: Размер страницы, максимум 100.
+      - in: query
+        name: resource
+        schema:
+          type: string
+        description: Фильтр по ресурсу sync, например transactions.
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncConflictListResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/sync/conflicts/meta/:
+    get:
+      operationId: finance_sync_conflicts_meta_retrieve
+      description: 'Возвращает справочник стратегий разрешения конфликтов offline-first
+        синхронизации. Endpoint используется фронтом для модального окна конфликта
+        и документации поведения: server_wins, client_wins, merge, last_write_wins
+        и manual_confirmation как политика по умолчанию.'
+      summary: Получить стратегии разрешения конфликтов
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncConflictMeta'
+              examples:
+                СтратегииКонфликтов:
+                  value:
+                    schemaVersion: 1
+                    serverTime: 2026-05-24T21:40:00+0300
+                    defaultPolicy: manual_confirmation
+                    recommendedManualStrategy: merge
+                    strategies:
+                    - value: server_wins
+                      label: Серверная версия
+                      requiresPayload: false
+                      automatic: true
+                    - value: last_write_wins
+                      label: Последняя запись побеждает
+                      requiresPayload: false
+                      automatic: true
+                  summary: Стратегии конфликтов
+          description: ''
   /api/v1/finance/sync/conflicts/resolve/:
     post:
       operationId: finance_sync_conflict_resolve_create
       description: Применяет выбранную стратегию разрешения конфликта для серверной
         записи. server_wins оставляет серверную версию без изменений, client_wins
         применяет клиентский payload, merge применяет вручную собранный payload после
-        выбора полей на фронте.
+        выбора полей на фронте, last_write_wins выбирает более позднюю версию по clientUpdatedAt
+        и serverVersion.
       summary: Разрешить конфликт оффлайн-синхронизации
       tags:
       - finance-sync
@@ -10738,6 +10826,18 @@ components:
           type: string
       required:
       - isDuplicate
+    ConflictStrategyEnum:
+      enum:
+      - manual_confirmation
+      - last_write_wins
+      - server_wins
+      - client_wins
+      type: string
+      description: |-
+        * `manual_confirmation` - manual_confirmation
+        * `last_write_wins` - last_write_wins
+        * `server_wins` - server_wins
+        * `client_wins` - client_wins
     ConvertPlannedResponse:
       type: object
       properties:
@@ -13563,6 +13663,9 @@ components:
         * `system` - Система
         * `security` - Безопасность
         * `marketing` - Маркетинг и акции
+    NullEnum:
+      enum:
+      - null
     PaginatedAccountHistoryRowList:
       type: object
       required:
@@ -15925,11 +16028,13 @@ components:
       - server_wins
       - client_wins
       - merge
+      - last_write_wins
       type: string
       description: |-
         * `server_wins` - server_wins
         * `client_wins` - client_wins
         * `merge` - merge
+        * `last_write_wins` - last_write_wins
     SyncBootstrap:
       type: object
       properties:
@@ -15955,6 +16060,106 @@ components:
       - resources
       - serverTime
       - syncToken
+    SyncConflictListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        clientId:
+          type: string
+        deviceId:
+          type: string
+        clientMutationId:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+        serverId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        error:
+          type: object
+          additionalProperties: {}
+        conflict:
+          type: object
+          additionalProperties: {}
+      required:
+      - action
+      - clientId
+      - clientMutationId
+      - createdAt
+      - deviceId
+      - id
+      - resource
+      - serverId
+      - status
+      - updatedAt
+    SyncConflictListResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrevious:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncConflictListItem'
+      required:
+      - count
+      - hasNext
+      - hasPrevious
+      - page
+      - pageSize
+      - results
+    SyncConflictMeta:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        serverTime:
+          type: string
+          format: date-time
+        defaultPolicy:
+          type: string
+        recommendedManualStrategy:
+          type: string
+        strategies:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncConflictStrategy'
+        manualResolutionEndpoint:
+          type: string
+        conflictsEndpoint:
+          type: string
+        notes:
+          type: array
+          items:
+            type: string
+      required:
+      - conflictsEndpoint
+      - defaultPolicy
+      - manualResolutionEndpoint
+      - notes
+      - recommendedManualStrategy
+      - schemaVersion
+      - serverTime
+      - strategies
     SyncConflictResolveRequestRequest:
       type: object
       properties:
@@ -15967,6 +16172,10 @@ components:
           minimum: 1
         strategy:
           $ref: '#/components/schemas/StrategyEnum'
+        clientUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
         payload:
           type: object
           additionalProperties: {}
@@ -15992,12 +16201,45 @@ components:
         data:
           type: object
           additionalProperties: {}
+        finalStrategy:
+          type: string
+        conflictResolution:
+          type: object
+          additionalProperties: {}
       required:
       - data
       - resource
       - serverId
       - status
       - strategy
+    SyncConflictStrategy:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+        requiresPayload:
+          type: boolean
+        automatic:
+          type: boolean
+        safeDefault:
+          type: boolean
+        supportedInPush:
+          type: boolean
+        supportedInResolve:
+          type: boolean
+      required:
+      - automatic
+      - description
+      - label
+      - requiresPayload
+      - safeDefault
+      - supportedInPush
+      - supportedInResolve
+      - value
     SyncDomainArea:
       type: object
       properties:
@@ -16279,6 +16521,11 @@ components:
           type: string
           format: date-time
           nullable: true
+        conflictStrategy:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/ConflictStrategyEnum'
+          - $ref: '#/components/schemas/NullEnum'
         payload:
           type: object
           additionalProperties: {}
@@ -16354,6 +16601,9 @@ components:
           type: object
           additionalProperties: {}
         error:
+          type: object
+          additionalProperties: {}
+        conflictResolution:
           type: object
           additionalProperties: {}
       required:

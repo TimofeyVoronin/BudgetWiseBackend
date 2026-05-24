@@ -18,6 +18,8 @@ from rest_framework.views import APIView
 
 from apps.finance.sync.serializers import (
     SyncBootstrapSerializer,
+    SyncConflictListResponseSerializer,
+    SyncConflictMetaSerializer,
     SyncConflictResolveRequestSerializer,
     SyncConflictResolveResponseSerializer,
     SyncDomainsSerializer,
@@ -34,6 +36,8 @@ from apps.finance.sync.services import (
     apply_push_operations,
     build_bootstrap_payload,
     build_pull_payload,
+    build_sync_conflicts_log_payload,
+    build_sync_conflicts_meta_payload,
     build_sync_domains_payload,
     build_sync_meta,
     build_sync_operations_log_payload,
@@ -460,6 +464,78 @@ class SyncPushView(APIView):
         )
         return Response(payload, status=status.HTTP_200_OK)
 
+class SyncConflictsMetaView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_conflicts_meta_retrieve",
+        summary="Получить стратегии разрешения конфликтов",
+        description=(
+            "Возвращает справочник стратегий разрешения конфликтов offline-first синхронизации. "
+            "Endpoint используется фронтом для модального окна конфликта и документации поведения: "
+            "server_wins, client_wins, merge, last_write_wins и manual_confirmation как политика по умолчанию."
+        ),
+        responses={200: SyncConflictMetaSerializer},
+        examples=[
+            OpenApiExample(
+                "Стратегии конфликтов",
+                value={
+                    "schemaVersion": 1,
+                    "serverTime": "2026-05-24T21:40:00+0300",
+                    "defaultPolicy": "manual_confirmation",
+                    "recommendedManualStrategy": "merge",
+                    "strategies": [
+                        {
+                            "value": "server_wins",
+                            "label": "Серверная версия",
+                            "requiresPayload": False,
+                            "automatic": True,
+                        },
+                        {
+                            "value": "last_write_wins",
+                            "label": "Последняя запись побеждает",
+                            "requiresPayload": False,
+                            "automatic": True,
+                        },
+                    ],
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        return Response(build_sync_conflicts_meta_payload())
+
+
+class SyncConflictsListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_conflicts_retrieve",
+        summary="Получить список нерешённых конфликтов синхронизации",
+        description=(
+            "Возвращает операции push-синхронизации со статусом conflict. "
+            "Каждая запись содержит clientData, serverData, conflictFields и доступные стратегии, "
+            "которые фронт может показать пользователю для ручного разрешения."
+        ),
+        parameters=[
+            OpenApiParameter("page", OpenApiTypes.INT, description="Номер страницы, начиная с 1."),
+            OpenApiParameter("pageSize", OpenApiTypes.INT, description="Размер страницы, максимум 100."),
+            OpenApiParameter("resource", OpenApiTypes.STR, description="Фильтр по ресурсу sync, например transactions."),
+            OpenApiParameter("clientId", OpenApiTypes.STR, description="Фильтр по идентификатору клиента."),
+            OpenApiParameter("deviceId", OpenApiTypes.STR, description="Фильтр по идентификатору устройства."),
+        ],
+        responses={200: SyncConflictListResponseSerializer, 400: OpenApiTypes.OBJECT},
+    )
+    def get(self, request):
+        payload = build_sync_conflicts_log_payload(
+            user=request.user,
+            query_params=request.query_params,
+        )
+        return Response(payload)
+
+
 class SyncConflictResolveView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -470,7 +546,8 @@ class SyncConflictResolveView(APIView):
         description=(
             "Применяет выбранную стратегию разрешения конфликта для серверной записи. "
             "server_wins оставляет серверную версию без изменений, client_wins применяет "
-            "клиентский payload, merge применяет вручную собранный payload после выбора полей на фронте."
+            "клиентский payload, merge применяет вручную собранный payload после выбора полей на фронте, "
+            "last_write_wins выбирает более позднюю версию по clientUpdatedAt и serverVersion."
         ),
         request=SyncConflictResolveRequestSerializer,
         responses={200: SyncConflictResolveResponseSerializer, 400: OpenApiTypes.OBJECT},
@@ -514,6 +591,7 @@ class SyncConflictResolveView(APIView):
             server_id=data["serverId"],
             strategy=data["strategy"],
             payload=data.get("payload") or {},
+            client_updated_at=data.get("clientUpdatedAt"),
         )
         return Response(payload, status=status.HTTP_200_OK)
 

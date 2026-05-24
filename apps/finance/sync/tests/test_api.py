@@ -1,3 +1,4 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.utils import timezone
@@ -728,3 +729,167 @@ class OfflineSyncAPITests(FinanceAPITestCase):
         self.assertIn("transactions", response.data["supportedResources"])
         self.assertIn("create", response.data["supportedActions"])
         self.assertGreaterEqual(len(response.data["lastOperations"]), 2)
+
+
+    def test_conflicts_meta_returns_documented_strategies(self):
+        response = self.client.get("/api/v1/finance/sync/conflicts/meta/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["defaultPolicy"], "manual_confirmation")
+        strategy_values = [item["value"] for item in response.data["strategies"]]
+        self.assertIn("server_wins", strategy_values)
+        self.assertIn("client_wins", strategy_values)
+        self.assertIn("merge", strategy_values)
+        self.assertIn("last_write_wins", strategy_values)
+        last_write_wins = next(item for item in response.data["strategies"] if item["value"] == "last_write_wins")
+        self.assertTrue(last_write_wins["automatic"])
+        self.assertTrue(last_write_wins["supportedInPush"])
+
+    def test_conflicts_list_returns_saved_conflict_operations(self):
+        OfflineSyncOperation.objects.create(
+            user=self.user,
+            client_id="web-pwa",
+            device_id="browser-1",
+            client_mutation_id="conflict-list-1",
+            resource="transactions",
+            action="update",
+            status="conflict",
+            object_id=777,
+            request_hash="hash-conflict-list",
+            response_data={
+                "status": "conflict",
+                "serverId": 777,
+                "data": {
+                    "clientData": {"description": "Клиент"},
+                    "serverData": {"description": "Сервер"},
+                    "conflictFields": [
+                        {
+                            "field": "description",
+                            "serverField": "description",
+                            "clientValue": "Клиент",
+                            "serverValue": "Сервер",
+                        }
+                    ],
+                    "availableStrategies": ["server_wins", "client_wins", "merge", "last_write_wins"],
+                    "recommendedStrategy": "merge",
+                },
+            },
+            error_data={"code": "sync_conflict", "message": "Конфликт версий"},
+        )
+
+        response = self.client.get(
+            "/api/v1/finance/sync/conflicts/",
+            {"resource": "transactions"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        item = response.data["results"][0]
+        self.assertEqual(item["clientMutationId"], "conflict-list-1")
+        self.assertEqual(item["resource"], "transactions")
+        self.assertEqual(item["serverId"], 777)
+        self.assertEqual(item["error"]["code"], "sync_conflict")
+        self.assertEqual(item["conflict"]["recommendedStrategy"], "merge")
+
+    def test_push_last_write_wins_applies_client_when_client_is_newer(self):
+        transaction = self.create_transaction(amount="100.00", description="Серверная версия")
+        base_version = transaction.updated_at
+        server_version = base_version + timedelta(minutes=5)
+        Transaction.objects.filter(pk=transaction.pk).update(
+            description="Изменено на сервере",
+            updated_at=server_version,
+        )
+        client_version = server_version + timedelta(minutes=1)
+
+        response = self.client.post(
+            "/api/v1/finance/sync/push/",
+            {
+                "clientId": "web-pwa",
+                "deviceId": "browser-1",
+                "operations": [
+                    {
+                        "clientMutationId": "mutation-lww-client",
+                        "resource": "transactions",
+                        "action": "update",
+                        "serverId": transaction.pk,
+                        "baseVersion": base_version.isoformat(),
+                        "clientUpdatedAt": client_version.isoformat(),
+                        "conflictStrategy": "last_write_wins",
+                        "payload": {"description": "Клиентская версия"},
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.data["results"][0]
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["data"]["description"], "Клиентская версия")
+        transaction.refresh_from_db()
+        self.assertEqual(transaction.description, "Клиентская версия")
+
+    def test_push_last_write_wins_keeps_server_when_server_is_newer(self):
+        transaction = self.create_transaction(amount="100.00", description="Серверная версия")
+        base_version = transaction.updated_at
+        server_version = base_version + timedelta(minutes=5)
+        Transaction.objects.filter(pk=transaction.pk).update(
+            description="Изменено на сервере",
+            updated_at=server_version,
+        )
+        client_version = server_version - timedelta(minutes=1)
+
+        response = self.client.post(
+            "/api/v1/finance/sync/push/",
+            {
+                "clientId": "web-pwa",
+                "deviceId": "browser-1",
+                "operations": [
+                    {
+                        "clientMutationId": "mutation-lww-server",
+                        "resource": "transactions",
+                        "action": "update",
+                        "serverId": transaction.pk,
+                        "baseVersion": base_version.isoformat(),
+                        "clientUpdatedAt": client_version.isoformat(),
+                        "conflictStrategy": "last_write_wins",
+                        "payload": {"description": "Клиентская версия"},
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.data["results"][0]
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["data"]["description"], "Изменено на сервере")
+        self.assertEqual(result["conflictResolution"]["requestedStrategy"], "last_write_wins")
+        self.assertEqual(result["conflictResolution"]["finalStrategy"], "server_wins")
+        transaction.refresh_from_db()
+        self.assertEqual(transaction.description, "Изменено на сервере")
+
+    def test_resolve_conflict_last_write_wins_applies_client_when_client_is_newer(self):
+        transaction = self.create_transaction(amount="100.00", description="Серверная версия")
+        server_version = transaction.updated_at
+        client_version = server_version + timedelta(minutes=1)
+
+        response = self.client.post(
+            "/api/v1/finance/sync/conflicts/resolve/",
+            {
+                "resource": "transactions",
+                "serverId": transaction.pk,
+                "strategy": "last_write_wins",
+                "clientUpdatedAt": client_version.isoformat(),
+                "payload": {"description": "Клиентская версия"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "resolved")
+        self.assertEqual(response.data["strategy"], "last_write_wins")
+        self.assertEqual(response.data["finalStrategy"], "client_wins")
+        self.assertEqual(response.data["data"]["description"], "Клиентская версия")
+        transaction.refresh_from_db()
+        self.assertEqual(transaction.description, "Клиентская версия")
