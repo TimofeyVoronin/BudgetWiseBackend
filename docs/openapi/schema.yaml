@@ -15663,6 +15663,11 @@ components:
       - lastUsedAt
       - revokedAt
       - updatedAt
+    PwaPushSubscriptionCreateProviderEnum:
+      enum:
+      - web_push
+      type: string
+      description: '* `web_push` - web_push'
     PwaPushSubscriptionCreateRequest:
       type: object
       properties:
@@ -15670,6 +15675,10 @@ components:
           type: string
           minLength: 1
           maxLength: 120
+        provider:
+          allOf:
+          - $ref: '#/components/schemas/PwaPushSubscriptionCreateProviderEnum'
+          default: web_push
         endpoint:
           type: string
           format: uri
@@ -15678,9 +15687,11 @@ components:
         p256dh:
           type: string
           minLength: 1
+          maxLength: 4096
         auth:
           type: string
           minLength: 1
+          maxLength: 4096
         browser:
           type: string
           maxLength: 80

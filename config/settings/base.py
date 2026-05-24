@@ -75,6 +75,14 @@ PWA_VAPID_PUBLIC_KEY = env(
     "PWA_VAPID_PUBLIC_KEY",
     default="",
 )
+PWA_VAPID_PRIVATE_KEY = env(
+    "PWA_VAPID_PRIVATE_KEY",
+    default="",
+)
+PWA_VAPID_SUBJECT = env(
+    "PWA_VAPID_SUBJECT",
+    default="mailto:noreply@budgetwise.local",
+)
 PWA_MAX_PUSH_SUBSCRIPTIONS_PER_USER = env.int(
     "PWA_MAX_PUSH_SUBSCRIPTIONS_PER_USER",
     default=10,

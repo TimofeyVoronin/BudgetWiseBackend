@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
-from django.conf import settings
-from drf_spectacular.utils import OpenApiExample, extend_schema_field
+from drf_spectacular.utils import OpenApiExample
 from rest_framework import serializers
 
 from apps.pwa.models import PwaPushProvider, PwaPushSubscription
@@ -21,10 +20,23 @@ class PwaMetaSerializer(serializers.Serializer):
 
 
 class PwaPushSubscriptionCreateSerializer(serializers.Serializer):
-    deviceId = serializers.CharField(max_length=120)
+    deviceId = serializers.CharField(max_length=120, trim_whitespace=True)
+    provider = serializers.ChoiceField(
+        choices=PwaPushProvider.values,
+        required=False,
+        default=PwaPushProvider.WEB_PUSH,
+    )
     endpoint = serializers.URLField(max_length=2048)
-    p256dh = serializers.CharField(allow_blank=False, trim_whitespace=True)
-    auth = serializers.CharField(allow_blank=False, trim_whitespace=True)
+    p256dh = serializers.CharField(
+        max_length=4096,
+        allow_blank=False,
+        trim_whitespace=True,
+    )
+    auth = serializers.CharField(
+        max_length=4096,
+        allow_blank=False,
+        trim_whitespace=True,
+    )
     browser = serializers.CharField(max_length=80, required=False, allow_blank=True)
     platform = serializers.CharField(max_length=80, required=False, allow_blank=True)
     userAgent = serializers.CharField(max_length=1000, required=False, allow_blank=True)
@@ -34,8 +46,10 @@ class PwaPushSubscriptionCreateSerializer(serializers.Serializer):
         normalized_value = value.strip()
         parsed_endpoint = urlparse(normalized_value)
 
-        if parsed_endpoint.scheme not in {"https", "http"} or not parsed_endpoint.netloc:
-            raise serializers.ValidationError("Укажите корректный push endpoint.")
+        if parsed_endpoint.scheme != "https" or not parsed_endpoint.netloc:
+            raise serializers.ValidationError(
+                "Укажите корректный HTTPS push endpoint."
+            )
 
         return normalized_value
 
@@ -46,6 +60,12 @@ class PwaPushSubscriptionCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Укажите ID устройства.")
 
         return normalized_value
+
+    def validate_p256dh(self, value: str) -> str:
+        return _validate_push_secret(value, field_name="p256dh")
+
+    def validate_auth(self, value: str) -> str:
+        return _validate_push_secret(value, field_name="auth")
 
 
 class PwaPushSubscriptionSerializer(serializers.ModelSerializer):
@@ -124,3 +144,17 @@ PWA_META_EXAMPLE = OpenApiExample(
     },
     response_only=True,
 )
+
+
+def _validate_push_secret(value: str, *, field_name: str) -> str:
+    normalized_value = value.strip()
+
+    if not normalized_value:
+        raise serializers.ValidationError(f"Укажите значение {field_name}.")
+
+    if any(char.isspace() for char in normalized_value):
+        raise serializers.ValidationError(
+            f"Значение {field_name} не должно содержать пробельные символы."
+        )
+
+    return normalized_value

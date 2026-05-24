@@ -67,3 +67,25 @@ class PwaNotificationSettingsAPITests(PwaAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("quietHoursTo", response.data["error"]["field_errors"])
+
+    def test_notification_settings_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+
+        response = self.client.get("/api/v1/pwa/notification-settings/")
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_notification_settings_are_isolated_per_user(self):
+        PwaNotificationSettings.objects.create(
+            user=self.other_user,
+            push_enabled=False,
+            sync_failed=False,
+        )
+
+        response = self.client.get("/api/v1/pwa/notification-settings/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["pushEnabled"])
+        self.assertTrue(response.data["syncFailed"])
+        self.assertEqual(PwaNotificationSettings.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(PwaNotificationSettings.objects.filter(user=self.other_user).count(), 1)

@@ -116,8 +116,8 @@ class PwaPushSubscription(models.Model):
             errors["device_id"] = "Укажите ID устройства."
 
         parsed_endpoint = urlparse(self.endpoint)
-        if parsed_endpoint.scheme not in {"https", "http"} or not parsed_endpoint.netloc:
-            errors["endpoint"] = "Укажите корректный push endpoint."
+        if parsed_endpoint.scheme != "https" or not parsed_endpoint.netloc:
+            errors["endpoint"] = "Укажите корректный HTTPS push endpoint."
 
         if not self.p256dh:
             errors["p256dh"] = "Укажите ключ p256dh."

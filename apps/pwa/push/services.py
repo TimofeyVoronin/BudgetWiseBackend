@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.pwa.models import PwaPushProvider, PwaPushSubscription
 
@@ -22,9 +22,13 @@ def get_max_subscriptions_per_user() -> int:
 
 
 def register_push_subscription(*, user, data: dict) -> PwaPushSubscription:
+    if not bool(getattr(settings, "PWA_PUSH_SUBSCRIPTIONS_ENABLED", True)):
+        raise ValidationError({"general": ["Регистрация push-подписок отключена."]})
+
     endpoint = data["endpoint"].strip()
     device_id = data["deviceId"].strip()
     is_active = bool(data.get("isActive", True))
+    provider = data.get("provider") or PwaPushProvider.WEB_PUSH
 
     with transaction.atomic():
         existing = (
@@ -34,30 +38,15 @@ def register_push_subscription(*, user, data: dict) -> PwaPushSubscription:
         )
 
         if existing is None:
-            active_count = PwaPushSubscription.objects.filter(
-                user=user,
-                is_active=True,
-            ).count()
-            max_count = get_max_subscriptions_per_user()
-
-            if is_active and active_count >= max_count:
-                raise ValidationError(
-                    {
-                        "general": [
-                            (
-                                "Достигнут лимит активных push-подписок "
-                                f"для пользователя: {max_count}."
-                            )
-                        ]
-                    }
-                )
-
+            _validate_active_subscription_limit(user=user, is_active=is_active)
             subscription = PwaPushSubscription(user=user, endpoint=endpoint)
         else:
+            if is_active and not existing.is_active:
+                _validate_active_subscription_limit(user=user, is_active=True)
             subscription = existing
 
         subscription.device_id = device_id
-        subscription.provider = PwaPushProvider.WEB_PUSH
+        subscription.provider = provider
         subscription.p256dh = data["p256dh"].strip()
         subscription.auth = data["auth"].strip()
         subscription.browser = data.get("browser", "").strip()
@@ -68,6 +57,29 @@ def register_push_subscription(*, user, data: dict) -> PwaPushSubscription:
         subscription.save()
 
     return subscription
+
+
+def _validate_active_subscription_limit(*, user, is_active: bool) -> None:
+    if not is_active:
+        return
+
+    active_count = PwaPushSubscription.objects.filter(
+        user=user,
+        is_active=True,
+    ).count()
+    max_count = get_max_subscriptions_per_user()
+
+    if active_count >= max_count:
+        raise ValidationError(
+            {
+                "general": [
+                    (
+                        "Достигнут лимит активных push-подписок "
+                        f"для пользователя: {max_count}."
+                    )
+                ]
+            }
+        )
 
 
 def list_push_subscriptions(*, user):
@@ -82,11 +94,7 @@ def get_user_push_subscription(*, user, subscription_id: int) -> PwaPushSubscrip
     try:
         return PwaPushSubscription.objects.get(user=user, pk=subscription_id)
     except PwaPushSubscription.DoesNotExist as exc:
-        raise ValidationError(
-            {
-                "id": ["Push-подписка не найдена."]
-            }
-        ) from exc
+        raise NotFound("Push-подписка не найдена.") from exc
 
 
 def revoke_push_subscription(*, user, subscription_id: int) -> PwaPushSubscription:
@@ -102,6 +110,14 @@ def revoke_push_subscription(*, user, subscription_id: int) -> PwaPushSubscripti
 
 
 def build_push_test_result(*, subscription: PwaPushSubscription) -> dict:
+    if not subscription.is_active:
+        return {
+            "sent": False,
+            "provider": subscription.provider,
+            "code": "push_subscription_inactive",
+            "message": "Push-подписка отключена.",
+        }
+
     send_enabled = bool(getattr(settings, "PWA_PUSH_SEND_ENABLED", False))
 
     if not send_enabled:
