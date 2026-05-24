@@ -4,6 +4,8 @@ from apps.finance.models import (
     BudgetNotificationEvent,
     BudgetNotificationSettings,
     Currency,
+    OfflineSyncOperation,
+    OfflineSyncTombstone,
     Receipt,
     ReceiptAuditLog,
     ReceiptItem,
@@ -273,4 +275,44 @@ class TransactionLineItemAdmin(admin.ModelAdmin):
         "transaction__user__email",
         "transaction__user__username",
     )
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(OfflineSyncOperation)
+class OfflineSyncOperationAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "client_id",
+        "device_id",
+        "client_mutation_id",
+        "resource",
+        "action",
+        "status",
+        "object_id",
+        "created_at",
+    )
+    list_filter = ("resource", "action", "status", "created_at")
+    search_fields = (
+        "user__email",
+        "user__username",
+        "client_id",
+        "device_id",
+        "client_mutation_id",
+        "resource",
+    )
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "request_hash",
+        "response_data",
+        "error_data",
+    )
+
+
+@admin.register(OfflineSyncTombstone)
+class OfflineSyncTombstoneAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "resource", "object_id", "deleted_at", "created_at")
+    list_filter = ("resource", "deleted_at")
+    search_fields = ("user__email", "user__username", "resource", "object_id")
     readonly_fields = ("created_at", "updated_at")
