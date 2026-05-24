@@ -18,19 +18,31 @@ from rest_framework.views import APIView
 
 from apps.finance.sync.serializers import (
     SyncBootstrapSerializer,
-    SyncMetaSerializer,
+    SyncConflictListResponseSerializer,
+    SyncConflictMetaSerializer,
     SyncConflictResolveRequestSerializer,
     SyncConflictResolveResponseSerializer,
+    SyncDomainsSerializer,
+    SyncMetaSerializer,
+    SyncOperationsLogResponseSerializer,
     SyncPullSerializer,
+    SyncStatusSerializer,
     SyncPushRequestSerializer,
     SyncPushResponseSerializer,
+    SyncVersioningSerializer,
 )
 from apps.finance.sync.services import (
     SYNC_MAX_BATCH_SIZE,
     apply_push_operations,
     build_bootstrap_payload,
     build_pull_payload,
+    build_sync_conflicts_log_payload,
+    build_sync_conflicts_meta_payload,
+    build_sync_domains_payload,
     build_sync_meta,
+    build_sync_operations_log_payload,
+    build_sync_status_payload,
+    build_sync_versioning_contract,
     parse_resources_query,
     resolve_conflict,
 )
@@ -138,6 +150,193 @@ class SyncMetaView(APIView):
     )
     def get(self, request):
         return Response(build_sync_meta())
+
+
+
+class SyncDomainsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_domains_retrieve",
+        summary="Получить offline-first доменные области",
+        description=(
+            "Возвращает список доменных областей, которые поддерживают offline-first работу, "
+            "их ресурсы, зависимости, режим синхронизации и явно исключённые области. "
+            "Endpoint нужен фронту как единый контракт для IndexedDB, кэширования и UI-состояний синхронизации."
+        ),
+        responses={200: SyncDomainsSerializer},
+        examples=[
+            OpenApiExample(
+                "Доменные области",
+                value={
+                    "schemaVersion": 1,
+                    "serverTime": "2026-05-24T13:30:00+0300",
+                    "supportedResources": ["accounts", "categories", "transactions"],
+                    "writableResources": ["accounts", "categories", "transactions"],
+                    "readOnlyResources": ["receipts", "notifications"],
+                    "readOnlySnapshots": ["dashboard", "financialCalendar"],
+                    "excludedResources": ["goals", "reports"],
+                    "domainAreas": [
+                        {
+                            "key": "core-finance",
+                            "title": "Базовые финансовые данные",
+                            "resources": ["accounts", "categories", "transactions", "tags"],
+                            "snapshots": [],
+                            "actions": ["create", "update", "delete"],
+                            "syncMode": "read_write",
+                            "priority": 10,
+                            "dependencies": [],
+                            "conflictPolicy": "versioned_conflict_detection",
+                            "notes": ["transaction line_items синхронизируются внутри ресурса transactions."],
+                        }
+                    ],
+                    "outOfScope": [],
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        return Response(build_sync_domains_payload())
+
+
+class SyncVersioningView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_versioning_retrieve",
+        summary="Получить формат версионирования offline-first данных",
+        description=(
+            "Возвращает правила версионирования записей для IndexedDB и sync API: "
+            "serverVersion на основе updated_at, syncToken, ETag/revision-формат, "
+            "поля клиентской записи и правила определения конфликтов. "
+            "Векторные часы в MVP не используются."
+        ),
+        responses={200: SyncVersioningSerializer},
+        examples=[
+            OpenApiExample(
+                "Формат версий",
+                value={
+                    "schemaVersion": 1,
+                    "serverTime": "2026-05-24T13:30:00+0300",
+                    "strategy": "timestamp_based",
+                    "serverVersionField": "updated_at",
+                    "syncTokenFormat": "iso8601_datetime",
+                    "entityVersionFormat": "{resource}:{serverId}:{serverVersion}",
+                    "etagFormat": "W/\"sha256:{hash}\"",
+                    "vectorClocks": {
+                        "supported": False,
+                        "reason": "В MVP используется timestamp-based versioning.",
+                    },
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        return Response(build_sync_versioning_contract())
+
+
+class SyncStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_status_retrieve",
+        summary="Получить состояние оффлайн-синхронизации",
+        description=(
+            "Возвращает короткую сводку журнала синхронизации текущего пользователя: "
+            "количество операций по статусам, число нерешённых конфликтов, последнюю операцию "
+            "и текущий syncToken сервера. Endpoint нужен фронту для панели состояния оффлайн-режима."
+        ),
+        responses={200: SyncStatusSerializer},
+        examples=[
+            OpenApiExample(
+                "Статус синхронизации",
+                value={
+                    "schemaVersion": 1,
+                    "serverTime": "2026-05-24T21:40:00+0300",
+                    "syncToken": "2026-05-24T21:40:00+0300",
+                    "lastOperationAt": "2026-05-24T21:35:00+0300",
+                    "operations": {
+                        "total": 4,
+                        "applied": 2,
+                        "duplicate": 1,
+                        "failed": 0,
+                        "conflict": 1,
+                        "skipped": 0,
+                    },
+                    "pendingConflictsCount": 1,
+                    "supportedResources": ["accounts", "categories", "transactions"],
+                    "lastOperations": [],
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        return Response(build_sync_status_payload(user=request.user))
+
+
+class SyncOperationsLogView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_operations_retrieve",
+        summary="Получить журнал оффлайн-операций",
+        description=(
+            "Возвращает сохранённые операции push-синхронизации текущего пользователя. "
+            "Журнал используется для отладки, повторной идемпотентной обработки и отображения истории "
+            "синхронизации на фронте."
+        ),
+        parameters=[
+            OpenApiParameter("page", OpenApiTypes.INT, description="Номер страницы, начиная с 1."),
+            OpenApiParameter("pageSize", OpenApiTypes.INT, description="Размер страницы, максимум 100."),
+            OpenApiParameter("status", OpenApiTypes.STR, description="Фильтр по статусу: applied, duplicate, failed, conflict, skipped."),
+            OpenApiParameter("resource", OpenApiTypes.STR, description="Фильтр по ресурсу sync, например transactions."),
+            OpenApiParameter("action", OpenApiTypes.STR, description="Фильтр по действию: create, update, delete."),
+            OpenApiParameter("clientId", OpenApiTypes.STR, description="Фильтр по идентификатору клиента."),
+            OpenApiParameter("deviceId", OpenApiTypes.STR, description="Фильтр по идентификатору устройства."),
+            OpenApiParameter("clientMutationId", OpenApiTypes.STR, description="Фильтр по id клиентской мутации."),
+        ],
+        responses={200: SyncOperationsLogResponseSerializer, 400: OpenApiTypes.OBJECT},
+        examples=[
+            OpenApiExample(
+                "Журнал операций",
+                value={
+                    "count": 1,
+                    "page": 1,
+                    "pageSize": 20,
+                    "hasNext": False,
+                    "hasPrevious": False,
+                    "results": [
+                        {
+                            "id": 1,
+                            "clientId": "web-pwa",
+                            "deviceId": "browser-1",
+                            "clientMutationId": "mutation-1",
+                            "resource": "transactions",
+                            "action": "create",
+                            "status": "applied",
+                            "serverId": 12,
+                            "requestHash": "sha256",
+                            "hasError": False,
+                            "errorCode": "",
+                            "errorMessage": "",
+                            "createdAt": "2026-05-24T21:35:00+0300",
+                            "updatedAt": "2026-05-24T21:35:00+0300",
+                        }
+                    ],
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        payload = build_sync_operations_log_payload(
+            user=request.user,
+            query_params=request.query_params,
+        )
+        return Response(payload)
 
 
 class SyncBootstrapView(APIView):
@@ -265,6 +464,78 @@ class SyncPushView(APIView):
         )
         return Response(payload, status=status.HTTP_200_OK)
 
+class SyncConflictsMetaView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_conflicts_meta_retrieve",
+        summary="Получить стратегии разрешения конфликтов",
+        description=(
+            "Возвращает справочник стратегий разрешения конфликтов offline-first синхронизации. "
+            "Endpoint используется фронтом для модального окна конфликта и документации поведения: "
+            "server_wins, client_wins, merge, last_write_wins и manual_confirmation как политика по умолчанию."
+        ),
+        responses={200: SyncConflictMetaSerializer},
+        examples=[
+            OpenApiExample(
+                "Стратегии конфликтов",
+                value={
+                    "schemaVersion": 1,
+                    "serverTime": "2026-05-24T21:40:00+0300",
+                    "defaultPolicy": "manual_confirmation",
+                    "recommendedManualStrategy": "merge",
+                    "strategies": [
+                        {
+                            "value": "server_wins",
+                            "label": "Серверная версия",
+                            "requiresPayload": False,
+                            "automatic": True,
+                        },
+                        {
+                            "value": "last_write_wins",
+                            "label": "Последняя запись побеждает",
+                            "requiresPayload": False,
+                            "automatic": True,
+                        },
+                    ],
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        return Response(build_sync_conflicts_meta_payload())
+
+
+class SyncConflictsListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_conflicts_retrieve",
+        summary="Получить список нерешённых конфликтов синхронизации",
+        description=(
+            "Возвращает операции push-синхронизации со статусом conflict. "
+            "Каждая запись содержит clientData, serverData, conflictFields и доступные стратегии, "
+            "которые фронт может показать пользователю для ручного разрешения."
+        ),
+        parameters=[
+            OpenApiParameter("page", OpenApiTypes.INT, description="Номер страницы, начиная с 1."),
+            OpenApiParameter("pageSize", OpenApiTypes.INT, description="Размер страницы, максимум 100."),
+            OpenApiParameter("resource", OpenApiTypes.STR, description="Фильтр по ресурсу sync, например transactions."),
+            OpenApiParameter("clientId", OpenApiTypes.STR, description="Фильтр по идентификатору клиента."),
+            OpenApiParameter("deviceId", OpenApiTypes.STR, description="Фильтр по идентификатору устройства."),
+        ],
+        responses={200: SyncConflictListResponseSerializer, 400: OpenApiTypes.OBJECT},
+    )
+    def get(self, request):
+        payload = build_sync_conflicts_log_payload(
+            user=request.user,
+            query_params=request.query_params,
+        )
+        return Response(payload)
+
+
 class SyncConflictResolveView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -275,7 +546,8 @@ class SyncConflictResolveView(APIView):
         description=(
             "Применяет выбранную стратегию разрешения конфликта для серверной записи. "
             "server_wins оставляет серверную версию без изменений, client_wins применяет "
-            "клиентский payload, merge применяет вручную собранный payload после выбора полей на фронте."
+            "клиентский payload, merge применяет вручную собранный payload после выбора полей на фронте, "
+            "last_write_wins выбирает более позднюю версию по clientUpdatedAt и serverVersion."
         ),
         request=SyncConflictResolveRequestSerializer,
         responses={200: SyncConflictResolveResponseSerializer, 400: OpenApiTypes.OBJECT},
@@ -319,6 +591,7 @@ class SyncConflictResolveView(APIView):
             server_id=data["serverId"],
             strategy=data["strategy"],
             payload=data.get("payload") or {},
+            client_updated_at=data.get("clientUpdatedAt"),
         )
         return Response(payload, status=status.HTTP_200_OK)
 

@@ -5496,13 +5496,101 @@ paths:
               schema:
                 $ref: '#/components/schemas/SyncBootstrap'
           description: ''
+  /api/v1/finance/sync/conflicts/:
+    get:
+      operationId: finance_sync_conflicts_retrieve
+      description: Возвращает операции push-синхронизации со статусом conflict. Каждая
+        запись содержит clientData, serverData, conflictFields и доступные стратегии,
+        которые фронт может показать пользователю для ручного разрешения.
+      summary: Получить список нерешённых конфликтов синхронизации
+      parameters:
+      - in: query
+        name: clientId
+        schema:
+          type: string
+        description: Фильтр по идентификатору клиента.
+      - in: query
+        name: deviceId
+        schema:
+          type: string
+        description: Фильтр по идентификатору устройства.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы, начиная с 1.
+      - in: query
+        name: pageSize
+        schema:
+          type: integer
+        description: Размер страницы, максимум 100.
+      - in: query
+        name: resource
+        schema:
+          type: string
+        description: Фильтр по ресурсу sync, например transactions.
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncConflictListResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/sync/conflicts/meta/:
+    get:
+      operationId: finance_sync_conflicts_meta_retrieve
+      description: 'Возвращает справочник стратегий разрешения конфликтов offline-first
+        синхронизации. Endpoint используется фронтом для модального окна конфликта
+        и документации поведения: server_wins, client_wins, merge, last_write_wins
+        и manual_confirmation как политика по умолчанию.'
+      summary: Получить стратегии разрешения конфликтов
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncConflictMeta'
+              examples:
+                СтратегииКонфликтов:
+                  value:
+                    schemaVersion: 1
+                    serverTime: 2026-05-24T21:40:00+0300
+                    defaultPolicy: manual_confirmation
+                    recommendedManualStrategy: merge
+                    strategies:
+                    - value: server_wins
+                      label: Серверная версия
+                      requiresPayload: false
+                      automatic: true
+                    - value: last_write_wins
+                      label: Последняя запись побеждает
+                      requiresPayload: false
+                      automatic: true
+                  summary: Стратегии конфликтов
+          description: ''
   /api/v1/finance/sync/conflicts/resolve/:
     post:
       operationId: finance_sync_conflict_resolve_create
       description: Применяет выбранную стратегию разрешения конфликта для серверной
         записи. server_wins оставляет серверную версию без изменений, client_wins
         применяет клиентский payload, merge применяет вручную собранный payload после
-        выбора полей на фронте.
+        выбора полей на фронте, last_write_wins выбирает более позднюю версию по clientUpdatedAt
+        и serverVersion.
       summary: Разрешить конфликт оффлайн-синхронизации
       tags:
       - finance-sync
@@ -5555,6 +5643,68 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+  /api/v1/finance/sync/domains/:
+    get:
+      operationId: finance_sync_domains_retrieve
+      description: Возвращает список доменных областей, которые поддерживают offline-first
+        работу, их ресурсы, зависимости, режим синхронизации и явно исключённые области.
+        Endpoint нужен фронту как единый контракт для IndexedDB, кэширования и UI-состояний
+        синхронизации.
+      summary: Получить offline-first доменные области
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncDomains'
+              examples:
+                ДоменныеОбласти:
+                  value:
+                    schemaVersion: 1
+                    serverTime: 2026-05-24T13:30:00+0300
+                    supportedResources:
+                    - accounts
+                    - categories
+                    - transactions
+                    writableResources:
+                    - accounts
+                    - categories
+                    - transactions
+                    readOnlyResources:
+                    - receipts
+                    - notifications
+                    readOnlySnapshots:
+                    - dashboard
+                    - financialCalendar
+                    excludedResources:
+                    - goals
+                    - reports
+                    domainAreas:
+                    - key: core-finance
+                      title: Базовые финансовые данные
+                      resources:
+                      - accounts
+                      - categories
+                      - transactions
+                      - tags
+                      snapshots: []
+                      actions:
+                      - create
+                      - update
+                      - delete
+                      syncMode: read_write
+                      priority: 10
+                      dependencies: []
+                      conflictPolicy: versioned_conflict_detection
+                      notes:
+                      - transaction line_items синхронизируются внутри ресурса transactions.
+                    outOfScope: []
+                  summary: Доменные области
+          description: ''
   /api/v1/finance/sync/meta/:
     get:
       operationId: finance_sync_meta_retrieve
@@ -5588,6 +5738,96 @@ paths:
                     - update
                     - delete
                     maxBatchSize: 100
+          description: ''
+  /api/v1/finance/sync/operations/:
+    get:
+      operationId: finance_sync_operations_retrieve
+      description: Возвращает сохранённые операции push-синхронизации текущего пользователя.
+        Журнал используется для отладки, повторной идемпотентной обработки и отображения
+        истории синхронизации на фронте.
+      summary: Получить журнал оффлайн-операций
+      parameters:
+      - in: query
+        name: action
+        schema:
+          type: string
+        description: 'Фильтр по действию: create, update, delete.'
+      - in: query
+        name: clientId
+        schema:
+          type: string
+        description: Фильтр по идентификатору клиента.
+      - in: query
+        name: clientMutationId
+        schema:
+          type: string
+        description: Фильтр по id клиентской мутации.
+      - in: query
+        name: deviceId
+        schema:
+          type: string
+        description: Фильтр по идентификатору устройства.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы, начиная с 1.
+      - in: query
+        name: pageSize
+        schema:
+          type: integer
+        description: Размер страницы, максимум 100.
+      - in: query
+        name: resource
+        schema:
+          type: string
+        description: Фильтр по ресурсу sync, например transactions.
+      - in: query
+        name: status
+        schema:
+          type: string
+        description: 'Фильтр по статусу: applied, duplicate, failed, conflict, skipped.'
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncOperationsLogResponse'
+              examples:
+                ЖурналОпераций:
+                  value:
+                    count: 1
+                    page: 1
+                    pageSize: 20
+                    hasNext: false
+                    hasPrevious: false
+                    results:
+                    - id: 1
+                      clientId: web-pwa
+                      deviceId: browser-1
+                      clientMutationId: mutation-1
+                      resource: transactions
+                      action: create
+                      status: applied
+                      serverId: 12
+                      requestHash: sha256
+                      hasError: false
+                      errorCode: ''
+                      errorMessage: ''
+                      createdAt: 2026-05-24T21:35:00+0300
+                      updatedAt: 2026-05-24T21:35:00+0300
+                  summary: Журнал операций
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
           description: ''
   /api/v1/finance/sync/pull/:
     get:
@@ -5683,6 +5923,78 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+          description: ''
+  /api/v1/finance/sync/status/:
+    get:
+      operationId: finance_sync_status_retrieve
+      description: 'Возвращает короткую сводку журнала синхронизации текущего пользователя:
+        количество операций по статусам, число нерешённых конфликтов, последнюю операцию
+        и текущий syncToken сервера. Endpoint нужен фронту для панели состояния оффлайн-режима.'
+      summary: Получить состояние оффлайн-синхронизации
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatus'
+              examples:
+                СтатусСинхронизации:
+                  value:
+                    schemaVersion: 1
+                    serverTime: 2026-05-24T21:40:00+0300
+                    syncToken: 2026-05-24T21:40:00+0300
+                    lastOperationAt: 2026-05-24T21:35:00+0300
+                    operations:
+                      total: 4
+                      applied: 2
+                      duplicate: 1
+                      failed: 0
+                      conflict: 1
+                      skipped: 0
+                    pendingConflictsCount: 1
+                    supportedResources:
+                    - accounts
+                    - categories
+                    - transactions
+                    lastOperations: []
+                  summary: Статус синхронизации
+          description: ''
+  /api/v1/finance/sync/versioning/:
+    get:
+      operationId: finance_sync_versioning_retrieve
+      description: 'Возвращает правила версионирования записей для IndexedDB и sync
+        API: serverVersion на основе updated_at, syncToken, ETag/revision-формат,
+        поля клиентской записи и правила определения конфликтов. Векторные часы в
+        MVP не используются.'
+      summary: Получить формат версионирования offline-first данных
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncVersioning'
+              examples:
+                ФорматВерсий:
+                  value:
+                    schemaVersion: 1
+                    serverTime: 2026-05-24T13:30:00+0300
+                    strategy: timestamp_based
+                    serverVersionField: updated_at
+                    syncTokenFormat: iso8601_datetime
+                    entityVersionFormat: '{resource}:{serverId}:{serverVersion}'
+                    etagFormat: W/"sha256:{hash}"
+                    vectorClocks:
+                      supported: false
+                      reason: В MVP используется timestamp-based versioning.
+                  summary: Формат версий
           description: ''
   /api/v1/finance/tags/:
     get:
@@ -10514,6 +10826,18 @@ components:
           type: string
       required:
       - isDuplicate
+    ConflictStrategyEnum:
+      enum:
+      - manual_confirmation
+      - last_write_wins
+      - server_wins
+      - client_wins
+      type: string
+      description: |-
+        * `manual_confirmation` - manual_confirmation
+        * `last_write_wins` - last_write_wins
+        * `server_wins` - server_wins
+        * `client_wins` - client_wins
     ConvertPlannedResponse:
       type: object
       properties:
@@ -13339,6 +13663,9 @@ components:
         * `system` - Система
         * `security` - Безопасность
         * `marketing` - Маркетинг и акции
+    NullEnum:
+      enum:
+      - null
     PaginatedAccountHistoryRowList:
       type: object
       required:
@@ -15701,11 +16028,13 @@ components:
       - server_wins
       - client_wins
       - merge
+      - last_write_wins
       type: string
       description: |-
         * `server_wins` - server_wins
         * `client_wins` - client_wins
         * `merge` - merge
+        * `last_write_wins` - last_write_wins
     SyncBootstrap:
       type: object
       properties:
@@ -15731,6 +16060,106 @@ components:
       - resources
       - serverTime
       - syncToken
+    SyncConflictListItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        clientId:
+          type: string
+        deviceId:
+          type: string
+        clientMutationId:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+        serverId:
+          type: integer
+          nullable: true
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        error:
+          type: object
+          additionalProperties: {}
+        conflict:
+          type: object
+          additionalProperties: {}
+      required:
+      - action
+      - clientId
+      - clientMutationId
+      - createdAt
+      - deviceId
+      - id
+      - resource
+      - serverId
+      - status
+      - updatedAt
+    SyncConflictListResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrevious:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncConflictListItem'
+      required:
+      - count
+      - hasNext
+      - hasPrevious
+      - page
+      - pageSize
+      - results
+    SyncConflictMeta:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        serverTime:
+          type: string
+          format: date-time
+        defaultPolicy:
+          type: string
+        recommendedManualStrategy:
+          type: string
+        strategies:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncConflictStrategy'
+        manualResolutionEndpoint:
+          type: string
+        conflictsEndpoint:
+          type: string
+        notes:
+          type: array
+          items:
+            type: string
+      required:
+      - conflictsEndpoint
+      - defaultPolicy
+      - manualResolutionEndpoint
+      - notes
+      - recommendedManualStrategy
+      - schemaVersion
+      - serverTime
+      - strategies
     SyncConflictResolveRequestRequest:
       type: object
       properties:
@@ -15743,6 +16172,10 @@ components:
           minimum: 1
         strategy:
           $ref: '#/components/schemas/StrategyEnum'
+        clientUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
         payload:
           type: object
           additionalProperties: {}
@@ -15768,12 +16201,138 @@ components:
         data:
           type: object
           additionalProperties: {}
+        finalStrategy:
+          type: string
+        conflictResolution:
+          type: object
+          additionalProperties: {}
       required:
       - data
       - resource
       - serverId
       - status
       - strategy
+    SyncConflictStrategy:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+        requiresPayload:
+          type: boolean
+        automatic:
+          type: boolean
+        safeDefault:
+          type: boolean
+        supportedInPush:
+          type: boolean
+        supportedInResolve:
+          type: boolean
+      required:
+      - automatic
+      - description
+      - label
+      - requiresPayload
+      - safeDefault
+      - supportedInPush
+      - supportedInResolve
+      - value
+    SyncDomainArea:
+      type: object
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        resources:
+          type: array
+          items:
+            type: string
+        snapshots:
+          type: array
+          items:
+            type: string
+        actions:
+          type: array
+          items:
+            type: string
+        syncMode:
+          type: string
+        priority:
+          type: integer
+        dependencies:
+          type: array
+          items:
+            type: string
+        conflictPolicy:
+          type: string
+        notes:
+          type: array
+          items:
+            type: string
+      required:
+      - actions
+      - conflictPolicy
+      - dependencies
+      - description
+      - key
+      - notes
+      - priority
+      - resources
+      - snapshots
+      - syncMode
+      - title
+    SyncDomains:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        serverTime:
+          type: string
+          format: date-time
+        supportedResources:
+          type: array
+          items:
+            type: string
+        writableResources:
+          type: array
+          items:
+            type: string
+        readOnlyResources:
+          type: array
+          items:
+            type: string
+        readOnlySnapshots:
+          type: array
+          items:
+            type: string
+        excludedResources:
+          type: array
+          items:
+            type: string
+        domainAreas:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncDomainArea'
+        outOfScope:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncDomainArea'
+      required:
+      - domainAreas
+      - excludedResources
+      - outOfScope
+      - readOnlyResources
+      - readOnlySnapshots
+      - schemaVersion
+      - serverTime
+      - supportedResources
+      - writableResources
     SyncMeta:
       type: object
       properties:
@@ -15786,10 +16345,30 @@ components:
           type: array
           items:
             type: string
+        writableResources:
+          type: array
+          items:
+            type: string
+        readOnlyResources:
+          type: array
+          items:
+            type: string
         readOnlySnapshots:
           type: array
           items:
             type: string
+        excludedResources:
+          type: array
+          items:
+            type: string
+        domainAreas:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncDomainArea'
+        outOfScope:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncDomainArea'
         supportedActions:
           type: array
           items:
@@ -15798,6 +16377,9 @@ components:
           type: array
           items:
             type: string
+        versioning:
+          type: object
+          additionalProperties: {}
         maxBatchSize:
           type: integer
       required:
@@ -15807,6 +16389,87 @@ components:
       - serverTime
       - supportedActions
       - supportedResources
+    SyncOperationLogItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        clientId:
+          type: string
+        deviceId:
+          type: string
+        clientMutationId:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+        status:
+          type: string
+        serverId:
+          type: integer
+          nullable: true
+        requestHash:
+          type: string
+        hasError:
+          type: boolean
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        responseData:
+          type: object
+          additionalProperties: {}
+        errorData:
+          type: object
+          additionalProperties: {}
+      required:
+      - action
+      - clientId
+      - clientMutationId
+      - createdAt
+      - deviceId
+      - errorCode
+      - errorMessage
+      - hasError
+      - id
+      - requestHash
+      - resource
+      - serverId
+      - status
+      - updatedAt
+    SyncOperationsLogResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        hasNext:
+          type: boolean
+        hasPrevious:
+          type: boolean
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncOperationLogItem'
+      required:
+      - count
+      - hasNext
+      - hasPrevious
+      - page
+      - pageSize
+      - results
     SyncPull:
       type: object
       properties:
@@ -15858,6 +16521,11 @@ components:
           type: string
           format: date-time
           nullable: true
+        conflictStrategy:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/ConflictStrategyEnum'
+          - $ref: '#/components/schemas/NullEnum'
         payload:
           type: object
           additionalProperties: {}
@@ -15926,10 +16594,16 @@ components:
           type: string
           format: date-time
           nullable: true
+        serverVersion:
+          type: string
+          nullable: true
         data:
           type: object
           additionalProperties: {}
         error:
+          type: object
+          additionalProperties: {}
+        conflictResolution:
           type: object
           additionalProperties: {}
       required:
@@ -15950,6 +16624,145 @@ components:
           items:
             type: object
             additionalProperties: {}
+    SyncStatus:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        serverTime:
+          type: string
+          format: date-time
+        syncToken:
+          type: string
+          format: date-time
+        lastOperationAt:
+          type: string
+          format: date-time
+          nullable: true
+        operations:
+          $ref: '#/components/schemas/SyncStatusOperationStats'
+        pendingConflictsCount:
+          type: integer
+        supportedResources:
+          type: array
+          items:
+            type: string
+        writableResources:
+          type: array
+          items:
+            type: string
+        readOnlyResources:
+          type: array
+          items:
+            type: string
+        readOnlySnapshots:
+          type: array
+          items:
+            type: string
+        supportedActions:
+          type: array
+          items:
+            type: string
+        maxBatchSize:
+          type: integer
+        lastOperations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncOperationLogItem'
+      required:
+      - lastOperationAt
+      - lastOperations
+      - maxBatchSize
+      - operations
+      - pendingConflictsCount
+      - readOnlyResources
+      - readOnlySnapshots
+      - schemaVersion
+      - serverTime
+      - supportedActions
+      - supportedResources
+      - syncToken
+      - writableResources
+    SyncStatusOperationStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        applied:
+          type: integer
+        duplicate:
+          type: integer
+        failed:
+          type: integer
+        conflict:
+          type: integer
+        skipped:
+          type: integer
+      required:
+      - applied
+      - conflict
+      - duplicate
+      - failed
+      - skipped
+      - total
+    SyncVersioning:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        serverTime:
+          type: string
+          format: date-time
+        strategy:
+          type: string
+        serverVersionField:
+          type: string
+        syncTokenFormat:
+          type: string
+        entityVersionFormat:
+          type: string
+        etagFormat:
+          type: string
+        clientRecordFields:
+          type: object
+          additionalProperties:
+            type: string
+        operationFields:
+          type: object
+          additionalProperties:
+            type: string
+        conflictDetection:
+          type: object
+          additionalProperties: {}
+        tombstones:
+          type: object
+          additionalProperties: {}
+        vectorClocks:
+          type: object
+          additionalProperties: {}
+        writableResources:
+          type: array
+          items:
+            type: string
+        readOnlySnapshots:
+          type: array
+          items:
+            type: string
+      required:
+      - clientRecordFields
+      - conflictDetection
+      - entityVersionFormat
+      - etagFormat
+      - operationFields
+      - readOnlySnapshots
+      - schemaVersion
+      - serverTime
+      - serverVersionField
+      - strategy
+      - syncTokenFormat
+      - tombstones
+      - vectorClocks
+      - writableResources
     Tag:
       type: object
       properties:
@@ -17621,9 +18434,9 @@ tags:
   description: 'Главный дашборд: агрегированные показатели по счетам, доходам, расходам,
     последним операциям и категориям расходов.'
 - name: finance-sync
-  description: 'Оффлайн-синхронизация: meta-параметры, начальный снимок данных, получение
-    изменений после последней синхронизации и batch-отправка оффлайн-операций с идемпотентностью
-    по clientMutationId.'
+  description: 'Оффлайн-синхронизация: доменные области offline-first, meta-параметры,
+    начальный снимок данных, получение изменений после последней синхронизации и batch-отправка
+    оффлайн-операций с идемпотентностью по clientMutationId.'
 - name: finance-calendar
   description: 'Финансовый календарь: месячная сетка, события доходов и расходов,
     плановые операции, дневные балансы, прогноз остатка, риски кассового разрыва и

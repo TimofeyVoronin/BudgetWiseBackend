@@ -11,14 +11,65 @@ class SyncResourceChangesSerializer(serializers.Serializer):
     deleted = serializers.ListField(child=serializers.DictField(), default=list)
 
 
+class SyncDomainAreaSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    title = serializers.CharField()
+    description = serializers.CharField()
+    resources = serializers.ListField(child=serializers.CharField())
+    snapshots = serializers.ListField(child=serializers.CharField())
+    actions = serializers.ListField(child=serializers.CharField())
+    syncMode = serializers.CharField()
+    priority = serializers.IntegerField()
+    dependencies = serializers.ListField(child=serializers.CharField())
+    conflictPolicy = serializers.CharField()
+    notes = serializers.ListField(child=serializers.CharField())
+
+
+
+
+class SyncVersioningSerializer(serializers.Serializer):
+    schemaVersion = serializers.IntegerField()
+    serverTime = serializers.DateTimeField()
+    strategy = serializers.CharField()
+    serverVersionField = serializers.CharField()
+    syncTokenFormat = serializers.CharField()
+    entityVersionFormat = serializers.CharField()
+    etagFormat = serializers.CharField()
+    clientRecordFields = serializers.DictField(child=serializers.CharField())
+    operationFields = serializers.DictField(child=serializers.CharField())
+    conflictDetection = serializers.DictField()
+    tombstones = serializers.DictField()
+    vectorClocks = serializers.DictField()
+    writableResources = serializers.ListField(child=serializers.CharField())
+    readOnlySnapshots = serializers.ListField(child=serializers.CharField())
+
+
 class SyncMetaSerializer(serializers.Serializer):
     schemaVersion = serializers.IntegerField()
     serverTime = serializers.DateTimeField()
     supportedResources = serializers.ListField(child=serializers.CharField())
+    writableResources = serializers.ListField(child=serializers.CharField(), required=False)
+    readOnlyResources = serializers.ListField(child=serializers.CharField(), required=False)
     readOnlySnapshots = serializers.ListField(child=serializers.CharField())
+    excludedResources = serializers.ListField(child=serializers.CharField(), required=False)
+    domainAreas = SyncDomainAreaSerializer(many=True, required=False)
+    outOfScope = SyncDomainAreaSerializer(many=True, required=False)
     supportedActions = serializers.ListField(child=serializers.CharField())
     conflictStrategies = serializers.ListField(child=serializers.CharField(), required=False)
+    versioning = serializers.DictField(required=False)
     maxBatchSize = serializers.IntegerField()
+
+
+class SyncDomainsSerializer(serializers.Serializer):
+    schemaVersion = serializers.IntegerField()
+    serverTime = serializers.DateTimeField()
+    supportedResources = serializers.ListField(child=serializers.CharField())
+    writableResources = serializers.ListField(child=serializers.CharField())
+    readOnlyResources = serializers.ListField(child=serializers.CharField())
+    readOnlySnapshots = serializers.ListField(child=serializers.CharField())
+    excludedResources = serializers.ListField(child=serializers.CharField())
+    domainAreas = SyncDomainAreaSerializer(many=True)
+    outOfScope = SyncDomainAreaSerializer(many=True)
 
 
 class SyncBootstrapSerializer(serializers.Serializer):
@@ -43,6 +94,11 @@ class SyncPushOperationSerializer(serializers.Serializer):
     serverId = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     clientUpdatedAt = serializers.DateTimeField(required=False, allow_null=True)
     baseVersion = serializers.DateTimeField(required=False, allow_null=True)
+    conflictStrategy = serializers.ChoiceField(
+        choices=["manual_confirmation", "last_write_wins", "server_wins", "client_wins"],
+        required=False,
+        allow_null=True,
+    )
     payload = serializers.DictField(required=False, default=dict)
 
 
@@ -103,8 +159,10 @@ class SyncPushResultSerializer(serializers.Serializer):
     clientId = serializers.CharField(allow_blank=True, allow_null=True, required=False)
     serverId = serializers.IntegerField(allow_null=True, required=False)
     version = serializers.DateTimeField(allow_null=True, required=False)
+    serverVersion = serializers.CharField(allow_blank=True, allow_null=True, required=False)
     data = serializers.DictField(required=False)
     error = serializers.DictField(required=False)
+    conflictResolution = serializers.DictField(required=False)
 
 
 class SyncPushResponseSerializer(serializers.Serializer):
@@ -127,12 +185,15 @@ class SyncConflictDataSerializer(serializers.Serializer):
     serverVersion = serializers.DateTimeField(allow_null=True, required=False)
     conflictFields = SyncConflictFieldSerializer(many=True)
     availableStrategies = serializers.ListField(child=serializers.CharField())
+    recommendedStrategy = serializers.CharField(required=False)
+    conflictPolicy = serializers.CharField(required=False)
 
 
 class SyncConflictResolveRequestSerializer(serializers.Serializer):
     resource = serializers.CharField(max_length=60, trim_whitespace=True)
     serverId = serializers.IntegerField(min_value=1)
-    strategy = serializers.ChoiceField(choices=["server_wins", "client_wins", "merge"])
+    strategy = serializers.ChoiceField(choices=["server_wins", "client_wins", "merge", "last_write_wins"])
+    clientUpdatedAt = serializers.DateTimeField(required=False, allow_null=True)
     payload = serializers.DictField(required=False, default=dict)
 
     def validate(self, attrs):
@@ -150,3 +211,104 @@ class SyncConflictResolveResponseSerializer(serializers.Serializer):
     strategy = serializers.CharField()
     version = serializers.DateTimeField(allow_null=True, required=False)
     data = serializers.DictField()
+    finalStrategy = serializers.CharField(required=False, allow_blank=True)
+    conflictResolution = serializers.DictField(required=False)
+
+
+class SyncConflictStrategySerializer(serializers.Serializer):
+    value = serializers.CharField()
+    label = serializers.CharField()
+    description = serializers.CharField()
+    requiresPayload = serializers.BooleanField()
+    automatic = serializers.BooleanField()
+    safeDefault = serializers.BooleanField()
+    supportedInPush = serializers.BooleanField()
+    supportedInResolve = serializers.BooleanField()
+
+
+class SyncConflictMetaSerializer(serializers.Serializer):
+    schemaVersion = serializers.IntegerField()
+    serverTime = serializers.DateTimeField()
+    defaultPolicy = serializers.CharField()
+    recommendedManualStrategy = serializers.CharField()
+    strategies = SyncConflictStrategySerializer(many=True)
+    manualResolutionEndpoint = serializers.CharField()
+    conflictsEndpoint = serializers.CharField()
+    notes = serializers.ListField(child=serializers.CharField())
+
+
+class SyncConflictListItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    clientId = serializers.CharField()
+    deviceId = serializers.CharField()
+    clientMutationId = serializers.CharField()
+    resource = serializers.CharField()
+    action = serializers.CharField()
+    serverId = serializers.IntegerField(allow_null=True)
+    status = serializers.CharField()
+    createdAt = serializers.DateTimeField()
+    updatedAt = serializers.DateTimeField()
+    error = serializers.DictField(required=False)
+    conflict = serializers.DictField(required=False)
+
+
+class SyncConflictListResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    page = serializers.IntegerField()
+    pageSize = serializers.IntegerField()
+    hasNext = serializers.BooleanField()
+    hasPrevious = serializers.BooleanField()
+    results = SyncConflictListItemSerializer(many=True)
+
+
+class SyncOperationLogItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    clientId = serializers.CharField()
+    deviceId = serializers.CharField()
+    clientMutationId = serializers.CharField()
+    resource = serializers.CharField()
+    action = serializers.CharField()
+    status = serializers.CharField()
+    serverId = serializers.IntegerField(allow_null=True)
+    requestHash = serializers.CharField(allow_blank=True)
+    hasError = serializers.BooleanField()
+    errorCode = serializers.CharField(allow_blank=True, allow_null=True)
+    errorMessage = serializers.CharField(allow_blank=True, allow_null=True)
+    createdAt = serializers.DateTimeField()
+    updatedAt = serializers.DateTimeField()
+    responseData = serializers.DictField(required=False)
+    errorData = serializers.DictField(required=False)
+
+
+class SyncOperationsLogResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    page = serializers.IntegerField()
+    pageSize = serializers.IntegerField()
+    hasNext = serializers.BooleanField()
+    hasPrevious = serializers.BooleanField()
+    results = SyncOperationLogItemSerializer(many=True)
+
+
+class SyncStatusOperationStatsSerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    applied = serializers.IntegerField()
+    duplicate = serializers.IntegerField()
+    failed = serializers.IntegerField()
+    conflict = serializers.IntegerField()
+    skipped = serializers.IntegerField()
+
+
+class SyncStatusSerializer(serializers.Serializer):
+    schemaVersion = serializers.IntegerField()
+    serverTime = serializers.DateTimeField()
+    syncToken = serializers.DateTimeField()
+    lastOperationAt = serializers.DateTimeField(allow_null=True)
+    operations = SyncStatusOperationStatsSerializer()
+    pendingConflictsCount = serializers.IntegerField()
+    supportedResources = serializers.ListField(child=serializers.CharField())
+    writableResources = serializers.ListField(child=serializers.CharField())
+    readOnlyResources = serializers.ListField(child=serializers.CharField())
+    readOnlySnapshots = serializers.ListField(child=serializers.CharField())
+    supportedActions = serializers.ListField(child=serializers.CharField())
+    maxBatchSize = serializers.IntegerField()
+    lastOperations = SyncOperationLogItemSerializer(many=True)
