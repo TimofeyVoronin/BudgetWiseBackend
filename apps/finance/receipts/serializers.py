@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from apps.finance.models import Account, Category, Receipt, ReceiptItem, Transaction
@@ -14,16 +16,49 @@ from apps.finance.transactions.serializers import TransactionSerializer
 class ReceiptTransactionItemInputSerializer(serializers.Serializer):
     receiptItemId = serializers.IntegerField(
         min_value=1,
-        help_text="ID позиции чека, по которой нужно создать операцию.",
+        required=False,
+        allow_null=True,
+        help_text=(
+            "ID уже сохранённой позиции чека. Если не передан, backend создаст "
+            "позицию вручную по name, quantity, price и amount."
+        ),
     )
     categoryId = serializers.IntegerField(
         min_value=1,
         required=False,
         allow_null=True,
         help_text=(
-            "ID категории для позиции. Если не передан, backend попробует использовать "
-            "предложенную категорию позиции чека."
+            "ID категории для позиции. Если не передан для существующей позиции, backend попробует использовать "
+            "предложенную категорию позиции чека. Для ручной позиции категория обязательна."
         ),
+    )
+    name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+        max_length=255,
+        help_text="Название ручной позиции чека, если receiptItemId не передан.",
+    )
+    quantity = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        min_value=Decimal("0.001"),
+        required=False,
+        help_text="Количество ручной позиции. По умолчанию 1.000.",
+    )
+    price = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        required=False,
+        help_text="Цена ручной позиции. Если не передана, используется amount.",
+    )
+    amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        required=False,
+        help_text="Сумма ручной позиции. Если не передана, считается как quantity × price.",
     )
 
     def to_internal_value(self, data):
@@ -33,6 +68,37 @@ class ReceiptTransactionItemInputSerializer(serializers.Serializer):
         if "category_id" in mutable_data and "categoryId" not in mutable_data:
             mutable_data["categoryId"] = mutable_data["category_id"]
         return super().to_internal_value(mutable_data)
+
+    def validate(self, attrs):
+        receipt_item_id = attrs.get("receiptItemId")
+        if receipt_item_id:
+            return attrs
+
+        name = attrs.get("name", "").strip()
+        amount = attrs.get("amount")
+        quantity = attrs.get("quantity")
+        price = attrs.get("price")
+
+        if not name:
+            raise serializers.ValidationError(
+                {"name": "Для ручной позиции нужно указать название."}
+            )
+
+        if amount is None:
+            if quantity is None or price is None:
+                raise serializers.ValidationError(
+                    {"amount": "Для ручной позиции нужно передать amount или пару quantity + price."}
+                )
+            attrs["amount"] = (quantity * price).quantize(Decimal("0.01"))
+
+        if quantity is None:
+            attrs["quantity"] = Decimal("1.000")
+
+        if price is None:
+            quantity = attrs["quantity"]
+            attrs["price"] = (attrs["amount"] / quantity).quantize(Decimal("0.01"))
+
+        return attrs
 
 
 class CreateReceiptTransactionsSerializer(serializers.Serializer):
@@ -111,8 +177,12 @@ class CreateReceiptTransactionsSerializer(serializers.Serializer):
     def get_item_inputs(self) -> list[ReceiptItemTransactionInput]:
         return [
             ReceiptItemTransactionInput(
-                receipt_item_id=item["receiptItemId"],
+                receipt_item_id=item.get("receiptItemId"),
                 category_id=item.get("categoryId"),
+                name=item.get("name", ""),
+                quantity=item.get("quantity"),
+                price=item.get("price"),
+                amount=item.get("amount"),
             )
             for item in self.validated_data.get("items", [])
         ]

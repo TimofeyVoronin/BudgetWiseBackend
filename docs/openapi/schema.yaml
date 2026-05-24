@@ -4861,8 +4861,10 @@ paths:
       operationId: finance_receipts_create_transactions_create
       description: Создаёт одну или несколько финансовых операций из импортированного
         чека. В режиме single создаётся одна операция на всю сумму чека. В режиме
-        by_items создаются отдельные операции по выбранным позициям. После успешного
-        создания чек получает статус imported, повторное создание операций запрещено.
+        by_items создаются отдельные операции по выбранным позициям. Можно передать
+        ID уже сохранённых позиций чека или ручные позиции с name/quantity/price/amount.
+        После успешного создания чек получает статус imported, повторное создание
+        операций запрещено.
       summary: Создать операции из чека
       parameters:
       - in: path
@@ -4885,7 +4887,7 @@ paths:
                   categoryId: 2
                   description: Пятёрочка · чек от 22.05.2026
                 summary: Одна операция на весь чек
-              ОперацииПоПозициям:
+              ОперацииПоСохранённымПозициям:
                 value:
                   accountId: 1
                   mode: by_items
@@ -4894,7 +4896,23 @@ paths:
                     categoryId: 2
                   - receiptItemId: 11
                     categoryId: 3
-                summary: Операции по позициям
+                summary: Операции по сохранённым позициям
+              ОперацииПоРучнымПозициям:
+                value:
+                  accountId: 1
+                  mode: by_items
+                  items:
+                  - name: Молоко
+                    quantity: '1.000'
+                    price: '90.00'
+                    amount: '90.00'
+                    categoryId: 2
+                  - name: Хлеб
+                    quantity: '1.000'
+                    price: '60.00'
+                    amount: '60.00'
+                    categoryId: 2
+                summary: Операции по ручным позициям
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/CreateReceiptTransactionsRequest'
@@ -14808,15 +14826,36 @@ components:
         receiptItemId:
           type: integer
           minimum: 1
-          description: ID позиции чека, по которой нужно создать операцию.
+          nullable: true
+          description: ID уже сохранённой позиции чека. Если не передан, backend создаст
+            позицию вручную по name, quantity, price и amount.
         categoryId:
           type: integer
           minimum: 1
           nullable: true
-          description: ID категории для позиции. Если не передан, backend попробует
-            использовать предложенную категорию позиции чека.
-      required:
-      - receiptItemId
+          description: ID категории для позиции. Если не передан для существующей
+            позиции, backend попробует использовать предложенную категорию позиции
+            чека. Для ручной позиции категория обязательна.
+        name:
+          type: string
+          description: Название ручной позиции чека, если receiptItemId не передан.
+          maxLength: 255
+        quantity:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,9}(?:\.\d{0,3})?$
+          description: Количество ручной позиции. По умолчанию 1.000.
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Цена ручной позиции. Если не передана, используется amount.
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          description: Сумма ручной позиции. Если не передана, считается как quantity
+            × price.
     RecurringFrequencyEnum:
       enum:
       - daily

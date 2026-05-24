@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable
 
 from django.db import transaction as db_transaction
-from django.db.models import F
+from django.db.models import F, Max
 from django.utils import timezone
 
 from apps.finance.currencies.services import validate_user_currency_available
@@ -46,8 +46,16 @@ class ReceiptTransactionCreationError(ValueError):
 
 @dataclass(frozen=True)
 class ReceiptItemTransactionInput:
-    receipt_item_id: int
+    receipt_item_id: int | None = None
     category_id: int | None = None
+    name: str = ""
+    quantity: Decimal | None = None
+    price: Decimal | None = None
+    amount: Decimal | None = None
+
+    @property
+    def is_existing_item(self) -> bool:
+        return self.receipt_item_id is not None
 
 
 @dataclass(frozen=True)
@@ -227,8 +235,12 @@ def _create_transactions_by_items(
     transaction_type: str,
     item_inputs: list[ReceiptItemTransactionInput],
 ) -> list[Transaction]:
-    receipt_item_ids = [item.receipt_item_id for item in item_inputs]
-    if len(receipt_item_ids) != len(set(receipt_item_ids)):
+    existing_item_ids = [
+        item.receipt_item_id
+        for item in item_inputs
+        if item.receipt_item_id is not None
+    ]
+    if len(existing_item_ids) != len(set(existing_item_ids)):
         raise ReceiptTransactionCreationError(
             code="duplicate_receipt_items",
             message="Позиции чека не должны повторяться.",
@@ -239,10 +251,10 @@ def _create_transactions_by_items(
         item.pk: item
         for item in ReceiptItem.objects.select_for_update().filter(
             receipt=receipt,
-            pk__in=receipt_item_ids,
+            pk__in=existing_item_ids,
         )
     }
-    missing_item_ids = [item_id for item_id in receipt_item_ids if item_id not in receipt_items]
+    missing_item_ids = [item_id for item_id in existing_item_ids if item_id not in receipt_items]
     if missing_item_ids:
         raise ReceiptTransactionCreationError(
             code="receipt_item_not_found",
@@ -257,27 +269,32 @@ def _create_transactions_by_items(
     }
 
     transactions: list[Transaction] = []
-    for item_input in item_inputs:
-        receipt_item = receipt_items[item_input.receipt_item_id]
-        category = None
-        if item_input.category_id is not None:
-            category = categories.get(item_input.category_id)
-            if category is None:
-                raise ReceiptTransactionCreationError(
-                    code="category_not_found",
-                    message="Категория позиции чека не найдена.",
-                    field_errors={"items": f"Категория {item_input.category_id} недоступна."},
-                )
-        else:
-            category = receipt_item.suggested_category
+    next_line_number = _get_next_receipt_item_line_number(receipt)
 
+    for item_input in item_inputs:
+        category = _resolve_receipt_item_category(
+            user=user,
+            transaction_type=transaction_type,
+            item_input=item_input,
+            categories=categories,
+        )
+        receipt_item = _resolve_receipt_item(
+            receipt=receipt,
+            item_input=item_input,
+            existing_items=receipt_items,
+            category=category,
+            line_number=next_line_number,
+        )
+        if not item_input.is_existing_item:
+            next_line_number += 1
+
+        category = category or receipt_item.suggested_category
         if category is None:
             raise ReceiptTransactionCreationError(
                 code="category_required",
                 message="Для каждой позиции чека нужно выбрать категорию.",
                 field_errors={"items": f"Укажите категорию для позиции {receipt_item.id}."},
             )
-
         _validate_category(user=user, category=category, transaction_type=transaction_type)
 
         transactions.append(
@@ -294,6 +311,105 @@ def _create_transactions_by_items(
         )
 
     return transactions
+
+
+def _resolve_receipt_item_category(
+    *,
+    user,
+    transaction_type: str,
+    item_input: ReceiptItemTransactionInput,
+    categories: dict[int, Category],
+) -> Category | None:
+    category = None
+    if item_input.category_id is not None:
+        category = categories.get(item_input.category_id)
+        if category is None:
+            raise ReceiptTransactionCreationError(
+                code="category_not_found",
+                message="Категория позиции чека не найдена.",
+                field_errors={"items": f"Категория {item_input.category_id} недоступна."},
+            )
+
+    if category is not None:
+        _validate_category(user=user, category=category, transaction_type=transaction_type)
+        return category
+
+    if not item_input.is_existing_item:
+        raise ReceiptTransactionCreationError(
+            code="category_required",
+            message="Для каждой ручной позиции чека нужно выбрать категорию.",
+            field_errors={"items": "Укажите категорию для каждой ручной позиции."},
+        )
+
+    return category
+
+
+def _resolve_receipt_item(
+    *,
+    receipt: Receipt,
+    item_input: ReceiptItemTransactionInput,
+    existing_items: dict[int, ReceiptItem],
+    category: Category | None,
+    line_number: int,
+) -> ReceiptItem:
+    if item_input.is_existing_item:
+        receipt_item = existing_items[item_input.receipt_item_id]
+        if category is None:
+            category = receipt_item.suggested_category
+
+        if category is None:
+            raise ReceiptTransactionCreationError(
+                code="category_required",
+                message="Для каждой позиции чека нужно выбрать категорию.",
+                field_errors={"items": f"Укажите категорию для позиции {receipt_item.id}."},
+            )
+
+        return receipt_item
+
+    if category is None:
+        raise ReceiptTransactionCreationError(
+            code="category_required",
+            message="Для ручной позиции чека нужно выбрать категорию.",
+            field_errors={"items": "Укажите категорию для ручной позиции."},
+        )
+
+    amount = _quantize_money(item_input.amount)
+    quantity = _quantize_quantity(item_input.quantity or Decimal("1.000"))
+    price = _quantize_money(item_input.price or amount)
+
+    return ReceiptItem.objects.create(
+        receipt=receipt,
+        line_number=line_number,
+        name=(item_input.name or "Позиция чека").strip(),
+        quantity=quantity,
+        price=price,
+        amount=amount,
+        suggested_category=category,
+        mapping_confidence=Decimal("1.00"),
+        mapping_reason="Позиция добавлена вручную при создании операций.",
+        provider_payload={"source": "manual_create_transaction"},
+    )
+
+
+def _get_next_receipt_item_line_number(receipt: Receipt) -> int:
+    max_line_number = receipt.items.aggregate(max_line_number=Max("line_number"))["max_line_number"]
+    return int(max_line_number or 0) + 1
+
+
+def _quantize_money(value: Decimal | None) -> Decimal:
+    if value is None:
+        raise ReceiptTransactionCreationError(
+            code="receipt_item_amount_required",
+            message="Для ручной позиции чека нужно указать сумму.",
+            field_errors={"items": "Передайте amount или price."},
+        )
+    return Decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _quantize_quantity(value: Decimal | None) -> Decimal:
+    if value is None:
+        return Decimal("1.000")
+    return Decimal(value).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
 
 
 def _validate_common(*, user, receipt: Receipt, account: Account, mode: str) -> None:

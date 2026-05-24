@@ -179,6 +179,7 @@ class ReceiptCreateTransactionsView(APIView):
             "Создаёт одну или несколько финансовых операций из импортированного чека. "
             "В режиме single создаётся одна операция на всю сумму чека. "
             "В режиме by_items создаются отдельные операции по выбранным позициям. "
+            "Можно передать ID уже сохранённых позиций чека или ручные позиции с name/quantity/price/amount. "
             "После успешного создания чек получает статус imported, повторное создание операций запрещено."
         ),
         request=CreateReceiptTransactionsSerializer,
@@ -199,13 +200,25 @@ class ReceiptCreateTransactionsView(APIView):
                 request_only=True,
             ),
             OpenApiExample(
-                "Операции по позициям",
+                "Операции по сохранённым позициям",
                 value={
                     "accountId": 1,
                     "mode": "by_items",
                     "items": [
                         {"receiptItemId": 10, "categoryId": 2},
                         {"receiptItemId": 11, "categoryId": 3},
+                    ],
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Операции по ручным позициям",
+                value={
+                    "accountId": 1,
+                    "mode": "by_items",
+                    "items": [
+                        {"name": "Молоко", "quantity": "1.000", "price": "90.00", "amount": "90.00", "categoryId": 2},
+                        {"name": "Хлеб", "quantity": "1.000", "price": "60.00", "amount": "60.00", "categoryId": 2},
                     ],
                 },
                 request_only=True,

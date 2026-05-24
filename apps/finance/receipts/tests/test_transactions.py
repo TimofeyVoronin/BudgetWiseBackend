@@ -160,6 +160,43 @@ class ReceiptTransactionCreationTests(TestCase):
         self.assertEqual(result.created_count, 1)
         self.assertEqual(result.transactions[0].category, self.products)
 
+    def test_create_transactions_by_manual_receipt_items(self):
+        receipt_without_items = register_receipt_from_qr(
+            user=self.user,
+            qr_raw="t=20240523T1100&s=150.00&fn=9280440300891234&i=54321&fp=123456789&n=1",
+        ).receipt
+
+        result = create_transactions_from_receipt(
+            user=self.user,
+            receipt=receipt_without_items,
+            account=self.account,
+            mode=RECEIPT_TRANSACTION_MODE_BY_ITEMS,
+            items=[
+                ReceiptItemTransactionInput(
+                    category_id=self.products.id,
+                    name="Молоко",
+                    quantity=Decimal("1.000"),
+                    price=Decimal("90.00"),
+                    amount=Decimal("90.00"),
+                ),
+                ReceiptItemTransactionInput(
+                    category_id=self.products.id,
+                    name="Хлеб",
+                    quantity=Decimal("1.000"),
+                    price=Decimal("60.00"),
+                    amount=Decimal("60.00"),
+                ),
+            ],
+        )
+
+        self.assertEqual(result.created_count, 2)
+        self.assertEqual(receipt_without_items.items.count(), 2)
+        self.assertEqual(Transaction.objects.filter(receipt=receipt_without_items).count(), 2)
+        self.assertEqual(
+            list(receipt_without_items.items.order_by("line_number").values_list("name", "amount")),
+            [("Молоко", Decimal("90.00")), ("Хлеб", Decimal("60.00"))],
+        )
+
     def test_receipt_cannot_be_imported_twice(self):
         create_transactions_from_receipt(
             user=self.user,
@@ -254,6 +291,44 @@ class ReceiptTransactionAPITests(ReceiptTransactionCreationTests):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["createdCount"], 2)
         self.assertEqual(Transaction.objects.filter(receipt=self.receipt).count(), 2)
+
+    def test_create_by_manual_items_endpoint(self):
+        self.authenticate()
+        receipt_without_items = register_receipt_from_qr(
+            user=self.user,
+            qr_raw="t=20240523T1100&s=150.00&fn=9280440300891234&i=54321&fp=123456789&n=1",
+        ).receipt
+
+        response = self.client.post(
+            f"/api/v1/finance/receipts/{receipt_without_items.id}/create-transactions/",
+            {
+                "accountId": self.account.id,
+                "mode": "by_items",
+                "items": [
+                    {
+                        "name": "Молоко",
+                        "quantity": "1.000",
+                        "price": "90.00",
+                        "amount": "90.00",
+                        "categoryId": self.products.id,
+                    },
+                    {
+                        "name": "Хлеб",
+                        "quantity": "1.000",
+                        "price": "60.00",
+                        "amount": "60.00",
+                        "categoryId": self.products.id,
+                    },
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["createdCount"], 2)
+        self.assertEqual(len(response.data["receipt"]["items"]), 2)
+        self.assertEqual(Transaction.objects.filter(receipt=receipt_without_items).count(), 2)
+        self.assertEqual(receipt_without_items.items.count(), 2)
 
     def test_endpoint_requires_authentication(self):
         response = self.client.post(
