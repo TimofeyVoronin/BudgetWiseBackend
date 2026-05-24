@@ -18,9 +18,10 @@ from rest_framework.views import APIView
 
 from apps.finance.sync.serializers import (
     SyncBootstrapSerializer,
-    SyncMetaSerializer,
     SyncConflictResolveRequestSerializer,
     SyncConflictResolveResponseSerializer,
+    SyncDomainsSerializer,
+    SyncMetaSerializer,
     SyncPullSerializer,
     SyncPushRequestSerializer,
     SyncPushResponseSerializer,
@@ -30,6 +31,7 @@ from apps.finance.sync.services import (
     apply_push_operations,
     build_bootstrap_payload,
     build_pull_payload,
+    build_sync_domains_payload,
     build_sync_meta,
     parse_resources_query,
     resolve_conflict,
@@ -138,6 +140,54 @@ class SyncMetaView(APIView):
     )
     def get(self, request):
         return Response(build_sync_meta())
+
+
+
+class SyncDomainsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_domains_retrieve",
+        summary="Получить offline-first доменные области",
+        description=(
+            "Возвращает список доменных областей, которые поддерживают offline-first работу, "
+            "их ресурсы, зависимости, режим синхронизации и явно исключённые области. "
+            "Endpoint нужен фронту как единый контракт для IndexedDB, кэширования и UI-состояний синхронизации."
+        ),
+        responses={200: SyncDomainsSerializer},
+        examples=[
+            OpenApiExample(
+                "Доменные области",
+                value={
+                    "schemaVersion": 1,
+                    "serverTime": "2026-05-24T13:30:00+0300",
+                    "supportedResources": ["accounts", "categories", "transactions"],
+                    "writableResources": ["accounts", "categories", "transactions"],
+                    "readOnlyResources": ["receipts", "notifications"],
+                    "readOnlySnapshots": ["dashboard", "financialCalendar"],
+                    "excludedResources": ["goals", "reports"],
+                    "domainAreas": [
+                        {
+                            "key": "core-finance",
+                            "title": "Базовые финансовые данные",
+                            "resources": ["accounts", "categories", "transactions", "tags"],
+                            "snapshots": [],
+                            "actions": ["create", "update", "delete"],
+                            "syncMode": "read_write",
+                            "priority": 10,
+                            "dependencies": [],
+                            "conflictPolicy": "versioned_conflict_detection",
+                            "notes": ["transaction line_items синхронизируются внутри ресурса transactions."],
+                        }
+                    ],
+                    "outOfScope": [],
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        return Response(build_sync_domains_payload())
 
 
 class SyncBootstrapView(APIView):

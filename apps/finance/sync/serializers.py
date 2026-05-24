@@ -11,14 +11,45 @@ class SyncResourceChangesSerializer(serializers.Serializer):
     deleted = serializers.ListField(child=serializers.DictField(), default=list)
 
 
+class SyncDomainAreaSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    title = serializers.CharField()
+    description = serializers.CharField()
+    resources = serializers.ListField(child=serializers.CharField())
+    snapshots = serializers.ListField(child=serializers.CharField())
+    actions = serializers.ListField(child=serializers.CharField())
+    syncMode = serializers.CharField()
+    priority = serializers.IntegerField()
+    dependencies = serializers.ListField(child=serializers.CharField())
+    conflictPolicy = serializers.CharField()
+    notes = serializers.ListField(child=serializers.CharField())
+
+
 class SyncMetaSerializer(serializers.Serializer):
     schemaVersion = serializers.IntegerField()
     serverTime = serializers.DateTimeField()
     supportedResources = serializers.ListField(child=serializers.CharField())
+    writableResources = serializers.ListField(child=serializers.CharField(), required=False)
+    readOnlyResources = serializers.ListField(child=serializers.CharField(), required=False)
     readOnlySnapshots = serializers.ListField(child=serializers.CharField())
+    excludedResources = serializers.ListField(child=serializers.CharField(), required=False)
+    domainAreas = SyncDomainAreaSerializer(many=True, required=False)
+    outOfScope = SyncDomainAreaSerializer(many=True, required=False)
     supportedActions = serializers.ListField(child=serializers.CharField())
     conflictStrategies = serializers.ListField(child=serializers.CharField(), required=False)
     maxBatchSize = serializers.IntegerField()
+
+
+class SyncDomainsSerializer(serializers.Serializer):
+    schemaVersion = serializers.IntegerField()
+    serverTime = serializers.DateTimeField()
+    supportedResources = serializers.ListField(child=serializers.CharField())
+    writableResources = serializers.ListField(child=serializers.CharField())
+    readOnlyResources = serializers.ListField(child=serializers.CharField())
+    readOnlySnapshots = serializers.ListField(child=serializers.CharField())
+    excludedResources = serializers.ListField(child=serializers.CharField())
+    domainAreas = SyncDomainAreaSerializer(many=True)
+    outOfScope = SyncDomainAreaSerializer(many=True)
 
 
 class SyncBootstrapSerializer(serializers.Serializer):

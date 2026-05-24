@@ -25,7 +25,48 @@ class OfflineSyncAPITests(FinanceAPITestCase):
         self.assertIn("transactions", response.data["supportedResources"])
         self.assertIn("dashboard", response.data["readOnlySnapshots"])
         self.assertIn("financialCalendar", response.data["readOnlySnapshots"])
+        self.assertIn("accounts", response.data["writableResources"])
+        self.assertIn("transactions", response.data["writableResources"])
+        self.assertIn("receipts", response.data["readOnlyResources"])
+        self.assertIn("goals", response.data["excludedResources"])
+        self.assertIn("reports", response.data["excludedResources"])
+        self.assertTrue(response.data["domainAreas"])
         self.assertEqual(response.data["maxBatchSize"], 100)
+
+    def test_domains_endpoint_returns_offline_first_scope(self):
+        response = self.client.get("/api/v1/finance/sync/domains/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["schemaVersion"], 1)
+        self.assertIn("accounts", response.data["writableResources"])
+        self.assertIn("categories", response.data["writableResources"])
+        self.assertIn("transactions", response.data["writableResources"])
+        self.assertIn("transactionTemplates", response.data["writableResources"])
+        self.assertIn("plannedTransactions", response.data["writableResources"])
+        self.assertIn("receipts", response.data["readOnlyResources"])
+        self.assertIn("notifications", response.data["readOnlyResources"])
+        self.assertIn("dashboard", response.data["readOnlySnapshots"])
+        self.assertIn("financialCalendar", response.data["readOnlySnapshots"])
+        self.assertIn("goals", response.data["excludedResources"])
+        self.assertIn("reports", response.data["excludedResources"])
+
+        domain_keys = [item["key"] for item in response.data["domainAreas"]]
+        self.assertIn("core-finance", domain_keys)
+        self.assertIn("planning", domain_keys)
+        self.assertIn("analytics-snapshots", domain_keys)
+
+    def test_domains_endpoint_marks_dashboard_and_calendar_as_read_only_snapshots(self):
+        response = self.client.get("/api/v1/finance/sync/domains/")
+
+        self.assertEqual(response.status_code, 200)
+        analytics_area = next(
+            item for item in response.data["domainAreas"]
+            if item["key"] == "analytics-snapshots"
+        )
+        self.assertEqual(analytics_area["syncMode"], "read_only_snapshot")
+        self.assertIn("dashboard", analytics_area["snapshots"])
+        self.assertIn("financialCalendar", analytics_area["snapshots"])
+        self.assertEqual(analytics_area["actions"], [])
 
     def test_bootstrap_returns_selected_resources_and_snapshots(self):
         self.create_transaction(amount="250.00")

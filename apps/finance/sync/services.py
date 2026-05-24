@@ -58,6 +58,13 @@ from apps.finance.models import (
     TransactionTemplate,
     UserCurrency,
 )
+from apps.finance.sync.domains import (
+    build_offline_domain_registry,
+    get_excluded_resources,
+    get_read_only_resources,
+    get_read_only_snapshots,
+    get_writable_resources,
+)
 from apps.finance.notifications.serializers import NotificationSerializer
 from apps.finance.planned_transactions.serializers import PlannedTransactionSerializer
 from apps.finance.receipts.serializers import ReceiptBriefSerializer
@@ -82,7 +89,7 @@ SYNC_STATUS_CONFLICT = OfflineSyncOperationStatus.CONFLICT
 SYNC_STATUS_SKIPPED = OfflineSyncOperationStatus.SKIPPED
 
 SUPPORTED_ACTIONS = [SYNC_ACTION_CREATE, SYNC_ACTION_UPDATE, SYNC_ACTION_DELETE]
-READ_ONLY_SNAPSHOTS = ["dashboard", "financialCalendar"]
+READ_ONLY_SNAPSHOTS = get_read_only_snapshots()
 
 SYNC_CONFLICT_STRATEGY_SERVER_WINS = "server_wins"
 SYNC_CONFLICT_STRATEGY_CLIENT_WINS = "client_wins"
@@ -306,14 +313,37 @@ def get_server_time():
 
 
 def build_sync_meta() -> dict[str, Any]:
+    domain_registry = build_offline_domain_registry()
+
     return {
         "schemaVersion": SYNC_SCHEMA_VERSION,
         "serverTime": get_server_time(),
         "supportedResources": SUPPORTED_RESOURCES,
+        "writableResources": get_writable_resources(),
+        "readOnlyResources": get_read_only_resources(),
         "readOnlySnapshots": READ_ONLY_SNAPSHOTS,
+        "excludedResources": get_excluded_resources(),
+        "domainAreas": domain_registry["domainAreas"],
+        "outOfScope": domain_registry["outOfScope"],
         "supportedActions": SUPPORTED_ACTIONS,
         "conflictStrategies": SYNC_CONFLICT_STRATEGIES,
         "maxBatchSize": SYNC_MAX_BATCH_SIZE,
+    }
+
+
+def build_sync_domains_payload() -> dict[str, Any]:
+    server_time = get_server_time()
+    domain_registry = build_offline_domain_registry()
+
+    return {
+        "schemaVersion": SYNC_SCHEMA_VERSION,
+        "serverTime": server_time,
+        "supportedResources": SUPPORTED_RESOURCES,
+        "writableResources": get_writable_resources(),
+        "readOnlyResources": get_read_only_resources(),
+        "readOnlySnapshots": READ_ONLY_SNAPSHOTS,
+        "excludedResources": get_excluded_resources(),
+        **domain_registry,
     }
 
 
