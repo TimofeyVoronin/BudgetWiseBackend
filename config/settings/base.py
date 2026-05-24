@@ -58,6 +58,37 @@ CURRENCY_CRYPTO_RATES_URL = env(
 )
 
 
+# PWA and push notifications
+PWA_PUSH_SUBSCRIPTIONS_ENABLED = env.bool(
+    "PWA_PUSH_SUBSCRIPTIONS_ENABLED",
+    default=True,
+)
+PWA_PUSH_SEND_ENABLED = env.bool(
+    "PWA_PUSH_SEND_ENABLED",
+    default=False,
+)
+PWA_PUSH_PROVIDER = env(
+    "PWA_PUSH_PROVIDER",
+    default="web_push",
+)
+PWA_VAPID_PUBLIC_KEY = env(
+    "PWA_VAPID_PUBLIC_KEY",
+    default="",
+)
+PWA_MAX_PUSH_SUBSCRIPTIONS_PER_USER = env.int(
+    "PWA_MAX_PUSH_SUBSCRIPTIONS_PER_USER",
+    default=10,
+)
+PWA_BACKGROUND_SYNC_ENABLED = env.bool(
+    "PWA_BACKGROUND_SYNC_ENABLED",
+    default=True,
+)
+PWA_BACKGROUND_SYNC_RETRY_SECONDS = env.int(
+    "PWA_BACKGROUND_SYNC_RETRY_SECONDS",
+    default=30,
+)
+
+
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
     default="django.core.mail.backends.console.EmailBackend",
@@ -132,6 +163,7 @@ THIRD_PARTY_APPS = [
 PROJECT_APPS = [
     "apps.users.apps.UsersConfig",
     "apps.finance.apps.FinanceConfig",
+    "apps.pwa.apps.PwaConfig",
     "apps.common.apps.CommonConfig",
 ]
 
@@ -470,6 +502,9 @@ SPECTACULAR_SETTINGS = {
             ("caution", "Внимание"),
             ("risk", "Риск кассового разрыва"),
         ],
+        "PwaPushProviderEnum": [
+            ("web_push", "Web Push"),
+        ],
     },
     "SWAGGER_UI_SETTINGS": {
         "deepLinking": True,
@@ -644,6 +679,14 @@ SPECTACULAR_SETTINGS = {
                 "Финансовый календарь: месячная сетка, события доходов и расходов, "
                 "плановые операции, дневные балансы, прогноз остатка, риски "
                 "кассового разрыва и справочники фильтров."
+            ),
+        },
+        {
+            "name": "pwa",
+            "description": (
+                "PWA-инфраструктура: регистрация push-подписок браузера, "
+                "хранение ключей подписки, настройки push-уведомлений и "
+                "параметры background sync для Service Worker."
             ),
         },
         {

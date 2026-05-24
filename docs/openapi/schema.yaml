@@ -37,6 +37,7 @@ paths:
                       users: /api/v1/users/
                       settings: /api/v1/settings/app/
                       finance: /api/v1/finance/
+                      pwa: /api/v1/pwa/
                       schema: /api/schema/
                       docs: /api/docs/
                       redoc: /api/redoc/
@@ -8010,6 +8011,236 @@ paths:
                     avatarUrl: null
                   summary: Успешный ответ
           description: ''
+  /api/v1/pwa/background-sync/meta/:
+    get:
+      operationId: pwa_background_sync_meta_retrieve
+      description: 'Возвращает endpoints и параметры, которые Service Worker может
+        использовать для background sync: push изменений, pull изменений, статус и
+        журнал операций.'
+      summary: Получить параметры фоновой синхронизации PWA
+      tags:
+      - pwa
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PwaBackgroundSyncMeta'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    enabled: true
+                    syncEndpoint: /api/v1/finance/sync/push/
+                    pullEndpoint: /api/v1/finance/sync/pull/
+                    statusEndpoint: /api/v1/finance/sync/status/
+                    operationsEndpoint: /api/v1/finance/sync/operations/
+                    recommendedRetrySeconds: 30
+                    maxBatchSize: 100
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/pwa/meta/:
+    get:
+      operationId: pwa_meta_retrieve
+      description: 'Возвращает параметры PWA-инфраструктуры: доступность push-подписок,
+        фоновую синхронизацию, публичный VAPID-ключ и поддерживаемые события.'
+      summary: Получить параметры PWA-возможностей
+      tags:
+      - pwa
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PwaMeta'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    pushSubscriptionsEnabled: true
+                    pushDeliveryEnabled: false
+                    backgroundSyncEnabled: true
+                    supportedPushProvider: web_push
+                    vapidPublicKey: ''
+                    maxSubscriptionsPerUser: 10
+                    supportedEvents:
+                    - budget_limit_warning
+                    - planned_transaction_due
+                    - receipt_imported
+                    - sync_conflict
+                    - sync_failed
+                    endpoints:
+                      pushSubscriptions: /api/v1/pwa/push-subscriptions/
+                      notificationSettings: /api/v1/pwa/notification-settings/
+                      backgroundSyncMeta: /api/v1/pwa/background-sync/meta/
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/pwa/notification-settings/:
+    get:
+      operationId: pwa_notification_settings_retrieve
+      description: 'Возвращает настройки push-уведомлений текущего пользователя: включение
+        канала, события синхронизации, бюджетные предупреждения, планируемые операции,
+        импорт чеков и тихие часы.'
+      summary: Получить настройки PWA-уведомлений
+      tags:
+      - pwa
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PwaNotificationSettings'
+          description: ''
+    put:
+      operationId: pwa_notification_settings_update
+      description: Полностью обновляет настройки push-уведомлений текущего пользователя.
+      summary: Обновить настройки PWA-уведомлений
+      tags:
+      - pwa
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PwaNotificationSettingsRequest'
+            examples:
+              ОбновлениеНастроек:
+                value:
+                  pushEnabled: true
+                  syncConflict: true
+                  syncFailed: true
+                  budgetLimitWarning: true
+                  plannedTransactionDue: true
+                  receiptImported: true
+                  quietHoursEnabled: true
+                  quietHoursFrom: '22:00'
+                  quietHoursTo: 08:00
+                summary: Обновление настроек
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PwaNotificationSettingsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PwaNotificationSettingsRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PwaNotificationSettings'
+          description: ''
+  /api/v1/pwa/push-subscriptions/:
+    get:
+      operationId: pwa_push_subscriptions_list
+      description: Возвращает список сохранённых PWA push-подписок текущего пользователя.
+      summary: Получить push-подписки пользователя
+      tags:
+      - pwa
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PwaPushSubscriptionsList'
+          description: ''
+    post:
+      operationId: pwa_push_subscription_create
+      description: Создаёт или обновляет push-подписку браузера. Идемпотентность обеспечивается
+        по паре текущий пользователь + endpoint. Ключи p256dh/auth сохраняются, но
+        не возвращаются в ответе API.
+      summary: Зарегистрировать push-подписку
+      tags:
+      - pwa
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PwaPushSubscriptionCreateRequest'
+            examples:
+              РегистрацияПодписки:
+                value:
+                  deviceId: browser-device-id
+                  endpoint: https://push.example.test/subscription/abc
+                  p256dh: client-public-key
+                  auth: client-auth-secret
+                  browser: Chrome
+                  platform: Windows
+                  userAgent: Mozilla/5.0
+                  isActive: true
+                summary: Регистрация подписки
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PwaPushSubscriptionCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PwaPushSubscriptionCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PwaPushSubscription'
+          description: ''
+  /api/v1/pwa/push-subscriptions/{id}/:
+    delete:
+      operationId: pwa_push_subscription_delete
+      description: 'Выполняет soft-delete push-подписки текущего пользователя: подписка
+        остаётся в базе, но переводится в состояние isActive=false.'
+      summary: Отключить push-подписку
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID push-подписки.
+        required: true
+      tags:
+      - pwa
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PwaPushSubscriptionDelete'
+          description: ''
+  /api/v1/pwa/push-subscriptions/{id}/test/:
+    post:
+      operationId: pwa_push_subscription_test_create
+      description: Проверяет сохранённую push-подписку. На этапе BUD-1133 endpoint
+        возвращает контролируемый ответ о том, что реальный push-провайдер ещё не
+        подключён.
+      summary: Отправить тестовое push-уведомление
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: ID push-подписки.
+        required: true
+      tags:
+      - pwa
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PwaPushSubscriptionTestResponse'
+          description: ''
   /api/v1/settings/app/:
     get:
       operationId: app_settings_retrieve
@@ -15238,6 +15469,268 @@ components:
         * `skipped` - Провайдер не вызывался
         * `fetched` - Чек получен от провайдера
         * `failed` - Провайдер вернул ошибку
+    PwaBackgroundSyncMeta:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        syncEndpoint:
+          type: string
+        pullEndpoint:
+          type: string
+        statusEndpoint:
+          type: string
+        operationsEndpoint:
+          type: string
+        recommendedRetrySeconds:
+          type: integer
+        maxBatchSize:
+          type: integer
+      required:
+      - enabled
+      - maxBatchSize
+      - operationsEndpoint
+      - pullEndpoint
+      - recommendedRetrySeconds
+      - statusEndpoint
+      - syncEndpoint
+    PwaMeta:
+      type: object
+      properties:
+        pushSubscriptionsEnabled:
+          type: boolean
+        pushDeliveryEnabled:
+          type: boolean
+        backgroundSyncEnabled:
+          type: boolean
+        supportedPushProvider:
+          type: string
+        vapidPublicKey:
+          type: string
+        maxSubscriptionsPerUser:
+          type: integer
+        supportedEvents:
+          type: array
+          items:
+            type: string
+        endpoints:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - backgroundSyncEnabled
+      - endpoints
+      - maxSubscriptionsPerUser
+      - pushDeliveryEnabled
+      - pushSubscriptionsEnabled
+      - supportedEvents
+      - supportedPushProvider
+      - vapidPublicKey
+    PwaNotificationSettings:
+      type: object
+      properties:
+        pushEnabled:
+          type: boolean
+        syncConflict:
+          type: boolean
+        syncFailed:
+          type: boolean
+        budgetLimitWarning:
+          type: boolean
+        plannedTransactionDue:
+          type: boolean
+        receiptImported:
+          type: boolean
+        quietHoursEnabled:
+          type: boolean
+        quietHoursFrom:
+          type: string
+          format: time
+        quietHoursTo:
+          type: string
+          format: time
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - budgetLimitWarning
+      - createdAt
+      - plannedTransactionDue
+      - pushEnabled
+      - quietHoursEnabled
+      - quietHoursFrom
+      - quietHoursTo
+      - receiptImported
+      - syncConflict
+      - syncFailed
+      - updatedAt
+    PwaNotificationSettingsRequest:
+      type: object
+      properties:
+        pushEnabled:
+          type: boolean
+        syncConflict:
+          type: boolean
+        syncFailed:
+          type: boolean
+        budgetLimitWarning:
+          type: boolean
+        plannedTransactionDue:
+          type: boolean
+        receiptImported:
+          type: boolean
+        quietHoursEnabled:
+          type: boolean
+        quietHoursFrom:
+          type: string
+          format: time
+        quietHoursTo:
+          type: string
+          format: time
+      required:
+      - budgetLimitWarning
+      - plannedTransactionDue
+      - pushEnabled
+      - quietHoursEnabled
+      - quietHoursFrom
+      - quietHoursTo
+      - receiptImported
+      - syncConflict
+      - syncFailed
+    PwaPushProviderEnum:
+      enum:
+      - web_push
+      type: string
+      description: '* `web_push` - Web Push'
+    PwaPushSubscription:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        deviceId:
+          type: string
+          readOnly: true
+        provider:
+          allOf:
+          - $ref: '#/components/schemas/PwaPushProviderEnum'
+          title: Push-провайдер
+        endpointHost:
+          type: string
+          readOnly: true
+        browser:
+          type: string
+          title: Браузер
+          maxLength: 80
+        platform:
+          type: string
+          title: Платформа
+          maxLength: 80
+        user_agent:
+          type: string
+        isActive:
+          type: boolean
+          readOnly: true
+        lastUsedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - createdAt
+      - deviceId
+      - endpointHost
+      - id
+      - isActive
+      - lastUsedAt
+      - revokedAt
+      - updatedAt
+    PwaPushSubscriptionCreateRequest:
+      type: object
+      properties:
+        deviceId:
+          type: string
+          minLength: 1
+          maxLength: 120
+        endpoint:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 2048
+        p256dh:
+          type: string
+          minLength: 1
+        auth:
+          type: string
+          minLength: 1
+        browser:
+          type: string
+          maxLength: 80
+        platform:
+          type: string
+          maxLength: 80
+        userAgent:
+          type: string
+          maxLength: 1000
+        isActive:
+          type: boolean
+          default: true
+      required:
+      - auth
+      - deviceId
+      - endpoint
+      - p256dh
+    PwaPushSubscriptionDelete:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+        id:
+          type: string
+      required:
+      - deleted
+      - id
+    PwaPushSubscriptionTestResponse:
+      type: object
+      properties:
+        sent:
+          type: boolean
+        provider:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - provider
+      - sent
+    PwaPushSubscriptionsList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PwaPushSubscription'
+      required:
+      - items
     ReceiptBrief:
       type: object
       properties:
@@ -18441,6 +18934,9 @@ tags:
   description: 'Финансовый календарь: месячная сетка, события доходов и расходов,
     плановые операции, дневные балансы, прогноз остатка, риски кассового разрыва и
     справочники фильтров.'
+- name: pwa
+  description: 'PWA-инфраструктура: регистрация push-подписок браузера, хранение ключей
+    подписки, настройки push-уведомлений и параметры background sync для Service Worker.'
 - name: app-settings
   description: 'Настройки приложения текущего пользователя: часовой пояс, формат даты,
     формат чисел, валюта по умолчанию, справочники для формы и сброс к значениям по
