@@ -1,6 +1,6 @@
-from apps.common.api_root_views import APIRootResponseSerializer, APIRootView
-from apps.common.health_views import HealthCheckResponseSerializer, health_check
-from apps.common.metrics_views import metrics_view
+from apps.common.api.root import APIRootResponseSerializer, APIRootView
+from apps.common.monitoring.health_views import HealthCheckResponseSerializer, health_check
+from apps.common.monitoring.metrics_views import metrics_view
 
 
 __all__ = [

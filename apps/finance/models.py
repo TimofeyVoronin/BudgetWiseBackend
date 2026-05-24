@@ -1,5 +1,8 @@
+import re
+from datetime import time
 from decimal import Decimal
 
+from django.utils import timezone
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, RegexValidator
@@ -15,14 +18,596 @@ class TransactionType(models.TextChoices):
 
 class GoalStatus(models.TextChoices):
     ACTIVE = "active", "Активна"
-    COMPLETED = "completed", "Достигнута"
+    COMPLETED = "completed", "Завершена"
+    ARCHIVED = "archived", "В архиве"
     CANCELLED = "cancelled", "Отменена"
+
+
+class GoalPriority(models.TextChoices):
+    HIGH = "high", "Высокий"
+    MEDIUM = "medium", "Средний"
+    LOW = "low", "Низкий"
+
+
+class GoalCategory(models.TextChoices):
+    SAVINGS = "savings", "Накопления"
+    HOUSING = "housing", "Жильё"
+    TRANSPORT = "transport", "Транспорт"
+    TRAVEL = "travel", "Путешествия"
+    OTHER = "other", "Другое"
+
+
+class NotificationChannel(models.TextChoices):
+    IN_APP = "in_app", "In-app"
+    EMAIL = "email", "Email"
+    PUSH = "push", "Push"
+    SMS = "sms", "SMS"
+
+
+class NotificationType(models.TextChoices):
+    OPERATION = "operation", "Операции"
+    GOAL = "goal", "Цели"
+    BUDGET = "budget", "Бюджет"
+    SYSTEM = "system", "Система"
+    SECURITY = "security", "Безопасность"
+    MARKETING = "marketing", "Маркетинг и акции"
+
+
+class NotificationDeliveryStatus(models.TextChoices):
+    DELIVERED = "delivered", "Доставлено"
+    FAILED = "failed", "Ошибка доставки"
+    PENDING = "pending", "Ожидает доставки"
+    UNAVAILABLE = "unavailable", "Канал недоступен"
+
+
+class NotificationIconTone(models.TextChoices):
+    PRIMARY = "primary", "Основной"
+    SUCCESS = "success", "Успех"
+    WARNING = "warning", "Предупреждение"
+    ERROR = "error", "Ошибка"
+    INFO = "info", "Информация"
+
+
+class NotificationEntityKind(models.TextChoices):
+    TRANSACTION = "transaction", "Операция"
+    GOAL = "goal", "Цель"
+    BUDGET = "budget", "Бюджет"
+
+
+class RecurringFrequency(models.TextChoices):
+    DAILY = "daily", "Ежедневно"
+    WEEKLY = "weekly", "Еженедельно"
+    MONTHLY = "monthly", "Ежемесячно"
+    YEARLY = "yearly", "Ежегодно"
+
+
+class RecurringStatus(models.TextChoices):
+    ACTIVE = "active", "Активна"
+    PAUSED = "paused", "На паузе"
+    COMPLETED = "completed", "Завершена"
+    ERROR = "error", "Ошибка"
+
+
+class RecurringChargeStatus(models.TextChoices):
+    SUCCESS = "success", "Выполнено"
+    FAILED = "failed", "Ошибка"
+    SKIPPED = "skipped", "Пропущено"
+
+
+class PlannedStatus(models.TextChoices):
+    PENDING = "pending", "Ожидает"
+    CONFIRMED = "confirmed", "Подтверждена"
+    CANCELLED = "cancelled", "Отменена"
+    CONVERTED = "converted", "Конвертирована"
+    OVERDUE = "overdue", "Просрочена"
+
+
+class BudgetKind(models.TextChoices):
+    EXPENSE = "expense", "Расходный"
+    INCOME = "income", "Доходный"
+
+
+class BudgetPeriodType(models.TextChoices):
+    MONTH = "month", "Месяц"
+    QUARTER = "quarter", "Квартал"
+    YEAR = "year", "Год"
+
+
+class BudgetCategoryGroup(models.TextChoices):
+    MAIN = "main", "Основной бюджет"
+    FAMILY = "family", "Семейный"
+    PERSONAL = "personal", "Личный"
+
+
+class BudgetUsageStatus(models.TextChoices):
+    NORMAL = "normal", "Норма"
+    WARNING = "warning", "Близко к лимиту"
+    EXCEEDED = "exceeded", "Превышен"
+
+
+class TransactionTemplateStatus(models.TextChoices):
+    ACTIVE = "active", "Активный"
+    ARCHIVED = "archived", "В архиве"
+
+
+class TransactionTemplateIconTone(models.TextChoices):
+    PRIMARY = "primary", "Основной"
+    SUCCESS = "success", "Успех"
+    WARNING = "warning", "Предупреждение"
+    INFO = "info", "Информация"
+
+
+
+
+class ReceiptStatus(models.TextChoices):
+    PARSED = "parsed", "Распознан"
+    FETCHED = "fetched", "Получен от провайдера"
+    IMPORTED = "imported", "Импортирован"
+    DUPLICATE = "duplicate", "Дубликат"
+    ERROR = "error", "Ошибка"
+
+
+class ReceiptAuditAction(models.TextChoices):
+    QR_PARSED = "qr_parsed", "QR-код распознан"
+    PROVIDER_FETCH_SUCCESS = "provider_fetch_success", "Чек получен от провайдера"
+    PROVIDER_FETCH_FAILED = "provider_fetch_failed", "Ошибка получения от провайдера"
+    DUPLICATE_DETECTED = "duplicate_detected", "Найден дубликат"
+    ITEMS_MAPPED = "items_mapped", "Позиции сопоставлены"
+    TRANSACTIONS_CREATED = "transactions_created", "Операции созданы"
+    IMPORT_FAILED = "import_failed", "Ошибка импорта"
+
+
+class ReceiptAuditStatus(models.TextChoices):
+    SUCCESS = "success", "Успешно"
+    WARNING = "warning", "Предупреждение"
+    ERROR = "error", "Ошибка"
+
+
+class ReceiptOperationType(models.TextChoices):
+    INCOME = "income", "Приход"
+    INCOME_RETURN = "income_return", "Возврат прихода"
+    EXPENSE = "expense", "Расход"
+    EXPENSE_RETURN = "expense_return", "Возврат расхода"
+
+
+class BudgetNotificationChannel(models.TextChoices):
+    EMAIL = "email", "Email"
+    PUSH = "push", "Push"
+    IN_APP = "in_app", "In-app"
+
+
+class BudgetNotificationEventGroup(models.TextChoices):
+    BUDGET = "budget", "Бюджет"
+    GOAL = "goal", "Цель накопления"
+
+
+class BudgetNotificationEventType(models.TextChoices):
+    BUDGET_NEAR_LIMIT = "budget_near_limit", "Бюджет: приближение к лимиту"
+    BUDGET_EXCEEDED = "budget_exceeded", "Бюджет: превышение лимита"
+    BUDGET_BACK_TO_NORMAL = "budget_back_to_normal", "Бюджет: возврат в норму"
+    GOAL_MILESTONE = "goal_milestone", "Цель: достигнут промежуточный рубеж"
+    GOAL_REACHED = "goal_reached", "Цель: цель выполнена"
+    GOAL_LAGGING = "goal_lagging", "Цель: отставание от плана"
+
+
+class BudgetNotificationDeliveryStatus(models.TextChoices):
+    AVAILABLE = "available", "Доступен"
+    NOT_CONFIGURED = "not_configured", "Не настроен"
+    DISABLED = "disabled", "Отключён"
+
+
+class BudgetNotificationEventStatus(models.TextChoices):
+    GENERATED = "generated", "Сформировано"
+    DELIVERED = "delivered", "Доставлено"
+    SKIPPED = "skipped", "Пропущено"
+
+
+NOTIFICATION_QUIET_HOURS_DAYS = {
+    "mon",
+    "tue",
+    "wed",
+    "thu",
+    "fri",
+    "sat",
+    "sun",
+}
+
+
+def default_quiet_hours_days() -> list[str]:
+    return ["mon", "tue", "wed", "thu", "fri"]
+
+
+BUDGET_NOTIFICATION_THRESHOLD_IDS = {
+    "near_limit",
+    "warning",
+    "critical",
+}
+
+BUDGET_NOTIFICATION_EVENT_GROUP_BY_ID = {
+    BudgetNotificationEventType.BUDGET_NEAR_LIMIT.value: BudgetNotificationEventGroup.BUDGET.value,
+    BudgetNotificationEventType.BUDGET_EXCEEDED.value: BudgetNotificationEventGroup.BUDGET.value,
+    BudgetNotificationEventType.BUDGET_BACK_TO_NORMAL.value: BudgetNotificationEventGroup.BUDGET.value,
+    BudgetNotificationEventType.GOAL_MILESTONE.value: BudgetNotificationEventGroup.GOAL.value,
+    BudgetNotificationEventType.GOAL_REACHED.value: BudgetNotificationEventGroup.GOAL.value,
+    BudgetNotificationEventType.GOAL_LAGGING.value: BudgetNotificationEventGroup.GOAL.value,
+}
+
+
+def default_budget_notification_thresholds() -> list[dict]:
+    return [
+        {
+            "id": "near_limit",
+            "label": "Приближение к лимиту",
+            "hint": "Уведомление отправится один раз при пересечении порога.",
+            "percent": 80,
+            "active": True,
+            "locked": False,
+        },
+        {
+            "id": "warning",
+            "label": "Предупреждение",
+            "hint": "Уведомление отправится один раз при пересечении порога.",
+            "percent": 90,
+            "active": True,
+            "locked": False,
+        },
+        {
+            "id": "critical",
+            "label": "Критический порог",
+            "hint": "Фиксированный системный порог превышения бюджета.",
+            "percent": 100,
+            "active": False,
+            "locked": True,
+        },
+    ]
+
+
+def default_budget_notification_events() -> list[dict]:
+    return [
+        {
+            "id": BudgetNotificationEventType.BUDGET_NEAR_LIMIT.value,
+            "group": BudgetNotificationEventGroup.BUDGET.value,
+            "label": BudgetNotificationEventType.BUDGET_NEAR_LIMIT.label,
+            "icon": "trending-up",
+            "iconTone": "warning",
+            "enabled": True,
+        },
+        {
+            "id": BudgetNotificationEventType.BUDGET_EXCEEDED.value,
+            "group": BudgetNotificationEventGroup.BUDGET.value,
+            "label": BudgetNotificationEventType.BUDGET_EXCEEDED.label,
+            "icon": "alert-circle",
+            "iconTone": "error",
+            "enabled": True,
+        },
+        {
+            "id": BudgetNotificationEventType.BUDGET_BACK_TO_NORMAL.value,
+            "group": BudgetNotificationEventGroup.BUDGET.value,
+            "label": BudgetNotificationEventType.BUDGET_BACK_TO_NORMAL.label,
+            "icon": "check-circle",
+            "iconTone": "success",
+            "enabled": False,
+        },
+        {
+            "id": BudgetNotificationEventType.GOAL_MILESTONE.value,
+            "group": BudgetNotificationEventGroup.GOAL.value,
+            "label": BudgetNotificationEventType.GOAL_MILESTONE.label,
+            "icon": "flag",
+            "iconTone": "primary",
+            "enabled": True,
+        },
+        {
+            "id": BudgetNotificationEventType.GOAL_REACHED.value,
+            "group": BudgetNotificationEventGroup.GOAL.value,
+            "label": BudgetNotificationEventType.GOAL_REACHED.label,
+            "icon": "trophy",
+            "iconTone": "success",
+            "enabled": True,
+        },
+        {
+            "id": BudgetNotificationEventType.GOAL_LAGGING.value,
+            "group": BudgetNotificationEventGroup.GOAL.value,
+            "label": BudgetNotificationEventType.GOAL_LAGGING.label,
+            "icon": "trending-down",
+            "iconTone": "error",
+            "enabled": False,
+        },
+    ]
+
+
+def default_budget_notification_channels() -> list[dict]:
+    return [
+        {
+            "id": BudgetNotificationChannel.EMAIL.value,
+            "label": "Электронная почта",
+            "description": "Email пользователя",
+            "icon": "mail",
+            "enabled": False,
+            "deliveryHint": "Email-доставка будет подключена позже.",
+            "deliveryOk": False,
+            "deliveryStatus": BudgetNotificationDeliveryStatus.NOT_CONFIGURED.value,
+        },
+        {
+            "id": BudgetNotificationChannel.PUSH.value,
+            "label": "Push-уведомления",
+            "description": "Мобильное приложение BudgetWise",
+            "icon": "smartphone",
+            "enabled": False,
+            "deliveryHint": "Push-доставка будет подключена позже.",
+            "deliveryOk": False,
+            "deliveryStatus": BudgetNotificationDeliveryStatus.NOT_CONFIGURED.value,
+        },
+        {
+            "id": BudgetNotificationChannel.IN_APP.value,
+            "label": "In-app",
+            "description": "Центр уведомлений в приложении",
+            "icon": "bell",
+            "enabled": True,
+            "deliveryHint": "Всегда доступно",
+            "deliveryOk": True,
+            "deliveryStatus": BudgetNotificationDeliveryStatus.AVAILABLE.value,
+        },
+    ]
+
+
+def default_budget_notification_anti_spam() -> dict:
+    return {
+        "minRepeatHours": 24,
+        "groupNotifications": True,
+        "cooldownMinutes": 15,
+    }
+
+
+def default_budget_notification_goals() -> dict:
+    return {
+        "milestonePercents": [25, 50, 75, 100],
+        "milestoneEnabled": {
+            "25": True,
+            "50": True,
+            "75": True,
+            "100": True,
+        },
+        "notifyOnLag": False,
+        "lagDays": 7,
+        "selectedGoalIds": [],
+    }
+
+
+class AccountType(models.TextChoices):
+    CARD = "card", "Банковская карта"
+    DEBIT = "debit", "Дебетовая карта"
+    SAVINGS = "savings", "Накопительный"
+    CASH = "cash", "Наличные"
+    CREDIT = "credit", "Кредитный"
+    OTHER = "other", "Другое"
 
 
 hex_color_validator = RegexValidator(
     regex=r"^#[0-9A-Fa-f]{6}$",
     message="Цвет должен быть указан в HEX-формате, например #4F46E5.",
 )
+
+
+def normalize_tag_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip()).casefold()
+
+
+
+class Currency(TimeStampedModel):
+    code = models.CharField(
+        max_length=3,
+        unique=True,
+        validators=[
+            RegexValidator(
+                regex=r"^[A-Z]{3}$",
+                message="Код валюты должен состоять из 3 латинских букв.",
+            )
+        ],
+        verbose_name="Код валюты",
+    )
+    name = models.CharField(
+        max_length=100,
+        verbose_name="Название валюты",
+    )
+    symbol = models.CharField(
+        max_length=12,
+        verbose_name="Символ валюты",
+    )
+    flag_icon = models.CharField(
+        max_length=50,
+        default="currency",
+        verbose_name="Иконка валюты",
+    )
+    decimal_places = models.PositiveSmallIntegerField(
+        default=2,
+        verbose_name="Количество знаков после запятой",
+    )
+    is_system = models.BooleanField(
+        default=True,
+        verbose_name="Системная валюта",
+    )
+    is_popular = models.BooleanField(
+        default=False,
+        verbose_name="Популярная валюта",
+    )
+
+    class Meta:
+        verbose_name = "Валюта"
+        verbose_name_plural = "Валюты"
+        ordering = ["code"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(code__regex=r"^[A-Z]{3}$"),
+                name="currency_code_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(decimal_places__gte=0) & models.Q(decimal_places__lte=8),
+                name="currency_decimal_places_range",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["code"], name="idx_currency_code"),
+            models.Index(fields=["is_system"], name="idx_currency_system"),
+            models.Index(fields=["is_popular"], name="idx_currency_popular"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.code:
+            self.code = self.code.strip().upper()
+
+        if self.name:
+            self.name = " ".join(self.name.split())
+
+        if self.symbol:
+            self.symbol = self.symbol.strip()
+
+        if not self.name:
+            errors["name"] = "Название валюты не может быть пустым."
+
+        if not self.symbol:
+            errors["symbol"] = "Символ валюты не может быть пустым."
+
+        if self.decimal_places > 8:
+            errors["decimal_places"] = "Количество знаков после запятой должно быть от 0 до 8."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.code:
+            self.code = self.code.strip().upper()
+        if self.name:
+            self.name = " ".join(self.name.split())
+        if self.symbol:
+            self.symbol = self.symbol.strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.code} · {self.name}"
+
+
+class UserCurrency(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="currency_settings",
+        verbose_name="Пользователь",
+    )
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="user_settings",
+        verbose_name="Валюта",
+    )
+    custom_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Пользовательское название",
+    )
+    custom_symbol = models.CharField(
+        max_length=12,
+        blank=True,
+        verbose_name="Пользовательский символ",
+    )
+    rate_to_primary = models.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+        default=Decimal("1.00000000"),
+        validators=[MinValueValidator(Decimal("0.00000001"))],
+        verbose_name="Курс к основной валюте",
+    )
+    is_visible = models.BooleanField(
+        default=True,
+        verbose_name="Видима в интерфейсе",
+    )
+    is_primary = models.BooleanField(
+        default=False,
+        verbose_name="Основная валюта",
+    )
+    is_custom = models.BooleanField(
+        default=False,
+        verbose_name="Пользовательская валюта",
+    )
+
+    class Meta:
+        verbose_name = "Настройка валюты пользователя"
+        verbose_name_plural = "Настройки валют пользователей"
+        ordering = ["-is_primary", "currency__code"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "currency"],
+                name="unique_user_currency_setting",
+            ),
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(is_primary=True),
+                name="unique_primary_currency_per_user",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(rate_to_primary__gt=0),
+                name="user_currency_rate_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_user_currency_user"),
+            models.Index(fields=["user", "is_visible"], name="idx_user_currency_visible"),
+            models.Index(fields=["user", "is_primary"], name="idx_user_currency_primary"),
+            models.Index(fields=["user", "is_custom"], name="idx_user_currency_custom"),
+        ]
+
+    @property
+    def code(self) -> str:
+        return self.currency.code
+
+    @property
+    def display_name(self) -> str:
+        return self.custom_name or self.currency.name
+
+    @property
+    def display_symbol(self) -> str:
+        return self.custom_symbol or self.currency.symbol
+
+    @property
+    def flag_icon(self) -> str:
+        return self.currency.flag_icon
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.is_primary and not self.is_visible:
+            errors["is_visible"] = "Основная валюта должна быть видимой."
+
+        if not self.is_custom and (self.custom_name or self.custom_symbol):
+            errors["custom_name"] = "Системную валюту можно только скрывать или делать основной."
+
+        if self.custom_name:
+            self.custom_name = " ".join(self.custom_name.split())
+
+        if self.custom_symbol:
+            self.custom_symbol = self.custom_symbol.strip()
+
+        if self.is_custom and not self.display_name:
+            errors["custom_name"] = "Название пользовательской валюты не может быть пустым."
+
+        if self.is_custom and not self.display_symbol:
+            errors["custom_symbol"] = "Символ пользовательской валюты не может быть пустым."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.is_primary:
+            self.is_visible = True
+        if self.custom_name:
+            self.custom_name = " ".join(self.custom_name.split())
+        if self.custom_symbol:
+            self.custom_symbol = self.custom_symbol.strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.user}: {self.code}"
 
 
 class Account(TimeStampedModel):
@@ -36,11 +621,43 @@ class Account(TimeStampedModel):
         max_length=100,
         verbose_name="Название счёта",
     )
+    type = models.CharField(
+        max_length=20,
+        choices=AccountType.choices,
+        default=AccountType.CARD,
+        verbose_name="Тип счёта",
+    )
+    bank_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Банк",
+    )
+    initial_balance = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Начальный баланс",
+    )
     balance = models.DecimalField(
         max_digits=14,
         decimal_places=2,
         default=Decimal("0.00"),
-        verbose_name="Баланс",
+        verbose_name="Текущий баланс",
+    )
+    blocked_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Заблокированная сумма",
+    )
+    credit_limit = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Кредитный лимит",
     )
     currency = models.CharField(
         max_length=3,
@@ -53,30 +670,119 @@ class Account(TimeStampedModel):
         ],
         verbose_name="Валюта",
     )
+    icon = models.CharField(
+        max_length=50,
+        default="card",
+        verbose_name="Иконка",
+    )
+    color = models.CharField(
+        max_length=7,
+        default="#4F46E5",
+        validators=[hex_color_validator],
+        verbose_name="Цвет",
+    )
+    is_default = models.BooleanField(
+        default=False,
+        verbose_name="Счёт по умолчанию",
+    )
+    is_archived = models.BooleanField(
+        default=False,
+        verbose_name="Архивный",
+    )
     is_active = models.BooleanField(
         default=True,
         verbose_name="Активен",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
     )
 
     class Meta:
         verbose_name = "Счёт"
         verbose_name_plural = "Счета"
-        ordering = ["name"]
+        ordering = ["-is_default", "is_archived", "name"]
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "name"],
                 name="unique_account_name_per_user",
             ),
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(is_default=True),
+                name="unique_default_account_per_user",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(type__in=AccountType.values),
+                name="account_type_valid",
+            ),
             models.CheckConstraint(
                 condition=models.Q(currency__regex=r"^[A-Z]{3}$"),
                 name="account_currency_code_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(color__regex=r"^#[0-9A-Fa-f]{6}$"),
+                name="account_color_hex_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(initial_balance__gte=0),
+                name="account_initial_balance_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(blocked_amount__gte=0),
+                name="account_blocked_amount_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(credit_limit__gte=0),
+                name="account_credit_limit_non_negative",
             ),
         ]
         indexes = [
             models.Index(fields=["user"], name="idx_account_user"),
             models.Index(fields=["user", "is_active"], name="idx_account_user_active"),
+            models.Index(fields=["user", "is_archived"], name="idx_account_user_archived"),
+            models.Index(fields=["user", "is_default"], name="idx_account_user_default"),
+            models.Index(fields=["user", "type"], name="idx_account_user_type"),
+            models.Index(fields=["user", "currency"], name="idx_account_user_currency"),
             models.Index(fields=["user", "name"], name="idx_account_user_name"),
+            models.Index(
+                fields=["user", "type", "is_active", "is_archived"],
+                name="idx_account_type_status",
+            ),
         ]
+
+    @property
+    def status(self) -> str:
+        if self.is_archived:
+            return "archived"
+
+        return "active"
+
+    @property
+    def available_balance(self) -> Decimal:
+        return self.balance - self.blocked_amount + self.credit_limit
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.currency:
+            self.currency = self.currency.upper()
+
+        if self.type not in AccountType.values:
+            errors["type"] = "Недопустимый тип счёта."
+
+        if self.is_archived:
+            self.is_active = False
+            self.is_default = False
+
+        if self.blocked_amount < Decimal("0.00"):
+            errors["blocked_amount"] = "Заблокированная сумма не может быть отрицательной."
+
+        if self.credit_limit < Decimal("0.00"):
+            errors["credit_limit"] = "Кредитный лимит не может быть отрицательным."
+
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self) -> str:
         return f"{self.name} ({self.currency})"
@@ -240,6 +946,226 @@ class Category(TimeStampedModel):
         return f"{self.name} ({self.type})"
 
 
+class TagGroup(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="tag_groups",
+        verbose_name="Пользователь",
+    )
+    name = models.CharField(
+        max_length=80,
+        verbose_name="Название группы тегов",
+    )
+    normalized_name = models.CharField(
+        max_length=80,
+        blank=True,
+        editable=False,
+        verbose_name="Нормализованное название группы",
+    )
+    is_system = models.BooleanField(
+        default=False,
+        verbose_name="Системная группа",
+    )
+
+    class Meta:
+        verbose_name = "Группа тегов"
+        verbose_name_plural = "Группы тегов"
+        ordering = ["is_system", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(name__regex=r"\S"),
+                name="tag_group_name_not_blank",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_system=True, user__isnull=True)
+                    | models.Q(is_system=False, user__isnull=False)
+                ),
+                name="tag_group_owner_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "normalized_name"],
+                condition=models.Q(user__isnull=False),
+                name="unique_tag_group_name_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["normalized_name"],
+                condition=models.Q(is_system=True),
+                name="unique_system_tag_group_name",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "name"], name="idx_tag_group_user_name"),
+            models.Index(fields=["user", "is_system"], name="idx_tag_group_user_system"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        self.name = self.name.strip()
+        self.normalized_name = normalize_tag_text(self.name)
+
+        if not self.name:
+            errors["name"] = "Название группы тегов не может быть пустым."
+
+        if self.is_system and self.user_id is not None:
+            errors["user"] = "Системная группа тегов не должна быть привязана к пользователю."
+
+        if not self.is_system and self.user_id is None:
+            errors["user"] = "Пользовательская группа тегов должна быть привязана к пользователю."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.name = self.name.strip()
+        self.normalized_name = normalize_tag_text(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Tag(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="tags",
+        verbose_name="Пользователь",
+    )
+    group = models.ForeignKey(
+        TagGroup,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tags",
+        verbose_name="Группа тегов",
+    )
+    name = models.CharField(
+        max_length=80,
+        verbose_name="Название тега",
+    )
+    normalized_name = models.CharField(
+        max_length=80,
+        blank=True,
+        editable=False,
+        verbose_name="Нормализованное название тега",
+    )
+    color = models.CharField(
+        max_length=7,
+        default="#4F46E5",
+        validators=[hex_color_validator],
+        verbose_name="Цвет",
+    )
+    icon = models.CharField(
+        max_length=50,
+        default="tag",
+        verbose_name="Иконка",
+    )
+    is_visible = models.BooleanField(
+        default=True,
+        verbose_name="Показывать в формах операций",
+    )
+    is_system = models.BooleanField(
+        default=False,
+        verbose_name="Системный тег",
+    )
+    description = models.TextField(
+        blank=True,
+        verbose_name="Описание",
+    )
+
+    class Meta:
+        verbose_name = "Тег операции"
+        verbose_name_plural = "Теги операций"
+        ordering = ["is_system", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(name__regex=r"\S"),
+                name="tag_name_not_blank",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(color__regex=r"^#[0-9A-Fa-f]{6}$"),
+                name="tag_color_hex_format",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(icon__regex=r"\S"),
+                name="tag_icon_not_blank",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_system=True, user__isnull=True)
+                    | models.Q(is_system=False, user__isnull=False)
+                ),
+                name="tag_owner_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "normalized_name"],
+                condition=models.Q(user__isnull=False),
+                name="unique_tag_name_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["normalized_name"],
+                condition=models.Q(is_system=True),
+                name="unique_system_tag_name",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_tag_user"),
+            models.Index(fields=["user", "group"], name="idx_tag_user_group"),
+            models.Index(fields=["user", "is_visible"], name="idx_tag_user_visible"),
+            models.Index(fields=["user", "normalized_name"], name="idx_tag_user_norm_name"),
+            models.Index(fields=["user", "created_at"], name="idx_tag_user_created"),
+            models.Index(fields=["is_system"], name="idx_tag_system"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        self.name = self.name.strip()
+        self.icon = self.icon.strip()
+        self.color = self.color.upper()
+        self.normalized_name = normalize_tag_text(self.name)
+
+        if not self.name:
+            errors["name"] = "Название тега не может быть пустым."
+
+        if not self.icon:
+            errors["icon"] = "Иконка тега не может быть пустой."
+
+        if self.is_system and self.user_id is not None:
+            errors["user"] = "Системный тег не должен быть привязан к пользователю."
+
+        if not self.is_system and self.user_id is None:
+            errors["user"] = "Пользовательский тег должен быть привязан к пользователю."
+
+        if self.group_id:
+            if self.group.is_system:
+                pass
+            elif self.user_id and self.group.user_id != self.user_id:
+                errors["group"] = "Группа тега должна принадлежать тому же пользователю."
+            elif self.is_system:
+                errors["group"] = "Системный тег может быть связан только с системной группой."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.name = self.name.strip()
+        self.icon = self.icon.strip()
+        self.color = self.color.upper()
+        self.normalized_name = normalize_tag_text(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Transaction(TimeStampedModel):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -276,6 +1202,28 @@ class Transaction(TimeStampedModel):
     )
     operation_date = models.DateField(
         verbose_name="Дата операции",
+    )
+    tags = models.ManyToManyField(
+        Tag,
+        blank=True,
+        related_name="transactions",
+        verbose_name="Теги операции",
+    )
+    receipt = models.ForeignKey(
+        "Receipt",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transactions",
+        verbose_name="Источник: чек",
+    )
+    receipt_item = models.ForeignKey(
+        "ReceiptItem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transactions",
+        verbose_name="Источник: позиция чека",
     )
 
     class Meta:
@@ -318,6 +1266,14 @@ class Transaction(TimeStampedModel):
                 fields=["user", "created_at"],
                 name="idx_tx_user_created",
             ),
+            models.Index(
+                fields=["user", "receipt"],
+                name="idx_tx_user_receipt",
+            ),
+            models.Index(
+                fields=["receipt_item"],
+                name="idx_tx_receipt_item",
+            ),
         ]
 
     def clean(self) -> None:
@@ -332,11 +1288,715 @@ class Transaction(TimeStampedModel):
         if self.category_id and self.type and self.category.type != self.type:
             errors["category"] = "Тип категории должен совпадать с типом операции."
 
+        if self.receipt_id and self.user_id and self.receipt.user_id != self.user_id:
+            errors["receipt"] = "Чек должен принадлежать пользователю операции."
+
+        if self.receipt_item_id:
+            if self.receipt_id and self.receipt_item.receipt_id != self.receipt_id:
+                errors["receipt_item"] = "Позиция должна принадлежать указанному чеку."
+            if self.user_id and self.receipt_item.receipt.user_id != self.user_id:
+                errors["receipt_item"] = "Позиция чека должна принадлежать пользователю операции."
+
         if errors:
             raise ValidationError(errors)
 
     def __str__(self) -> str:
         return f"{self.type}: {self.amount} {self.account.currency}"
+
+
+class TransactionLineItem(TimeStampedModel):
+    transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.CASCADE,
+        related_name="line_items",
+        verbose_name="Операция",
+    )
+    line_number = models.PositiveIntegerField(
+        verbose_name="Номер строки",
+    )
+    name = models.CharField(
+        max_length=255,
+        verbose_name="Название позиции",
+    )
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        validators=[MinValueValidator(Decimal("0.001"))],
+        verbose_name="Количество",
+    )
+    unit_price = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Цена за единицу",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма позиции",
+    )
+
+    class Meta:
+        verbose_name = "Позиция операции"
+        verbose_name_plural = "Позиции операций"
+        ordering = ["transaction", "line_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["transaction", "line_number"],
+                name="unique_transaction_line_item",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gt=0),
+                name="transaction_line_item_quantity_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(unit_price__gte=0),
+                name="transaction_line_item_unit_price_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="transaction_line_item_amount_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["transaction"], name="idx_tx_line_item_tx"),
+            models.Index(fields=["name"], name="idx_tx_line_item_name"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.name:
+            self.name = self.name.strip()
+
+        if not self.name:
+            errors["name"] = "Название позиции операции не может быть пустым."
+
+        if self.quantity <= Decimal("0.000"):
+            errors["quantity"] = "Количество должно быть больше нуля."
+
+        if self.unit_price < Decimal("0.00"):
+            errors["unit_price"] = "Цена не может быть отрицательной."
+
+        if self.amount <= Decimal("0.00"):
+            errors["amount"] = "Сумма позиции должна быть больше нуля."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.line_number}. {self.name}: {self.amount}"
+
+
+class Receipt(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="receipts",
+        verbose_name="Пользователь",
+    )
+    qr_raw = models.TextField(
+        verbose_name="Исходная строка QR-кода",
+    )
+    raw_hash = models.CharField(
+        max_length=64,
+        verbose_name="SHA-256 исходного QR",
+    )
+    deduplication_key = models.CharField(
+        max_length=255,
+        verbose_name="Ключ защиты от дублей",
+    )
+    fiscal_key = models.CharField(
+        max_length=255,
+        verbose_name="Фискальный ключ",
+    )
+    fiscal_drive_number = models.CharField(
+        max_length=32,
+        verbose_name="ФН",
+    )
+    fiscal_document_number = models.CharField(
+        max_length=32,
+        verbose_name="ФД",
+    )
+    fiscal_sign = models.CharField(
+        max_length=32,
+        verbose_name="ФПД",
+    )
+    operation_type_code = models.CharField(
+        max_length=1,
+        verbose_name="Код типа операции",
+    )
+    operation_type = models.CharField(
+        max_length=30,
+        choices=ReceiptOperationType.choices,
+        verbose_name="Тип операции по чеку",
+    )
+    receipt_datetime = models.DateTimeField(
+        verbose_name="Дата и время чека",
+    )
+    total_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма чека",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ReceiptStatus.choices,
+        default=ReceiptStatus.PARSED,
+        verbose_name="Статус импорта чека",
+    )
+    provider_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Провайдер",
+    )
+    provider_code = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Код ответа провайдера",
+    )
+    store_name = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Магазин",
+    )
+    seller_inn = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name="ИНН продавца",
+    )
+    provider_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Сырой ответ провайдера",
+    )
+    duplicate_of = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="duplicate_attempts",
+        verbose_name="Дубликат чека",
+    )
+    note = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
+
+    class Meta:
+        verbose_name = "Импортированный чек"
+        verbose_name_plural = "Импортированные чеки"
+        ordering = ["-receipt_datetime", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "deduplication_key"],
+                name="unique_receipt_dedup_per_user",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(total_amount__gt=0),
+                name="receipt_total_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(operation_type__in=ReceiptOperationType.values),
+                name="receipt_operation_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=ReceiptStatus.values),
+                name="receipt_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_receipt_user"),
+            models.Index(fields=["user", "raw_hash"], name="idx_receipt_user_hash"),
+            models.Index(fields=["user", "fiscal_key"], name="idx_receipt_user_fiscal"),
+            models.Index(fields=["user", "receipt_datetime"], name="idx_receipt_user_date"),
+            models.Index(fields=["user", "status"], name="idx_receipt_user_status"),
+            models.Index(fields=["seller_inn"], name="idx_receipt_seller_inn"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        for field_name in (
+            "raw_hash",
+            "deduplication_key",
+            "fiscal_key",
+            "fiscal_drive_number",
+            "fiscal_document_number",
+            "fiscal_sign",
+            "operation_type_code",
+            "operation_type",
+            "provider_name",
+            "store_name",
+            "seller_inn",
+        ):
+            value = getattr(self, field_name, "")
+            if isinstance(value, str):
+                setattr(self, field_name, value.strip())
+
+        if self.fiscal_drive_number and not self.fiscal_drive_number.isdigit():
+            errors["fiscal_drive_number"] = "ФН должен содержать только цифры."
+
+        if self.fiscal_document_number and not self.fiscal_document_number.isdigit():
+            errors["fiscal_document_number"] = "ФД должен содержать только цифры."
+
+        if self.fiscal_sign and not self.fiscal_sign.isdigit():
+            errors["fiscal_sign"] = "ФПД должен содержать только цифры."
+
+        if self.operation_type not in ReceiptOperationType.values:
+            errors["operation_type"] = "Недопустимый тип операции по чеку."
+
+        if self.status not in ReceiptStatus.values:
+            errors["status"] = "Недопустимый статус импорта чека."
+
+        if self.total_amount <= Decimal("0.00"):
+            errors["total_amount"] = "Сумма чека должна быть больше нуля."
+
+        if self.duplicate_of_id and self.duplicate_of_id == self.id:
+            errors["duplicate_of"] = "Чек не может быть дубликатом самого себя."
+
+        if (
+            self.duplicate_of_id
+            and self.user_id
+            and self.duplicate_of.user_id != self.user_id
+        ):
+            errors["duplicate_of"] = "Дубликат должен принадлежать тому же пользователю."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.fiscal_key}: {self.total_amount}"
+
+
+class ReceiptAuditLog(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="receipt_audit_logs",
+        verbose_name="Пользователь",
+    )
+    receipt = models.ForeignKey(
+        Receipt,
+        on_delete=models.CASCADE,
+        related_name="audit_logs",
+        verbose_name="Чек",
+    )
+    action = models.CharField(
+        max_length=40,
+        choices=ReceiptAuditAction.choices,
+        verbose_name="Действие",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ReceiptAuditStatus.choices,
+        default=ReceiptAuditStatus.SUCCESS,
+        verbose_name="Статус",
+    )
+    message = models.TextField(
+        blank=True,
+        verbose_name="Сообщение",
+    )
+    qr_raw_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        verbose_name="SHA-256 исходного QR",
+    )
+    fiscal_key = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Фискальный ключ",
+    )
+    provider_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Провайдер",
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Метаданные",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания",
+    )
+
+    class Meta:
+        verbose_name = "Аудит импорта чека"
+        verbose_name_plural = "Аудит импорта чеков"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["user", "created_at"], name="idx_receipt_audit_user_time"),
+            models.Index(fields=["receipt", "created_at"], name="idx_receipt_audit_receipt"),
+            models.Index(fields=["action"], name="idx_receipt_audit_action"),
+            models.Index(fields=["status"], name="idx_receipt_audit_status"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        for field_name in ("action", "status", "message", "qr_raw_hash", "fiscal_key", "provider_name"):
+            value = getattr(self, field_name, "")
+            if isinstance(value, str):
+                setattr(self, field_name, value.strip())
+
+        if self.action not in ReceiptAuditAction.values:
+            errors["action"] = "Недопустимое действие аудита чека."
+
+        if self.status not in ReceiptAuditStatus.values:
+            errors["status"] = "Недопустимый статус аудита чека."
+
+        if self.receipt_id and self.user_id and self.receipt.user_id != self.user_id:
+            errors["receipt"] = "Событие аудита должно принадлежать пользователю чека."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.action}: receipt={self.receipt_id}"
+
+
+class ReceiptItem(TimeStampedModel):
+    receipt = models.ForeignKey(
+        Receipt,
+        on_delete=models.CASCADE,
+        related_name="items",
+        verbose_name="Чек",
+    )
+    line_number = models.PositiveIntegerField(
+        verbose_name="Номер строки",
+    )
+    name = models.CharField(
+        max_length=255,
+        verbose_name="Название позиции",
+    )
+    quantity = models.DecimalField(
+        max_digits=12,
+        decimal_places=3,
+        default=Decimal("0.000"),
+        validators=[MinValueValidator(Decimal("0.000"))],
+        verbose_name="Количество",
+    )
+    price = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Цена",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+        verbose_name="Сумма",
+    )
+    suggested_category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="suggested_receipt_items",
+        verbose_name="Предложенная категория",
+    )
+    mapping_confidence = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[
+            MinValueValidator(Decimal("0.00")),
+        ],
+        verbose_name="Уверенность сопоставления",
+    )
+    mapping_reason = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Причина сопоставления",
+    )
+    provider_payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Сырой объект позиции от провайдера",
+    )
+
+    class Meta:
+        verbose_name = "Позиция чека"
+        verbose_name_plural = "Позиции чеков"
+        ordering = ["receipt", "line_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["receipt", "line_number"],
+                name="unique_receipt_item_line",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=0),
+                name="receipt_item_quantity_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(price__gte=0),
+                name="receipt_item_price_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gte=0),
+                name="receipt_item_amount_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(mapping_confidence__gte=0)
+                    & models.Q(mapping_confidence__lte=1)
+                ),
+                name="receipt_item_mapping_confidence_range",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["receipt"], name="idx_receipt_item_receipt"),
+            models.Index(fields=["suggested_category"], name="idx_receipt_item_category"),
+            models.Index(fields=["receipt", "suggested_category"], name="idx_receipt_item_receipt_cat"),
+            models.Index(fields=["name"], name="idx_receipt_item_name"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.name:
+            self.name = self.name.strip()
+
+        if self.suggested_category_id and self.receipt_id:
+            if self.suggested_category.user_id != self.receipt.user_id:
+                errors["suggested_category"] = (
+                    "Предложенная категория должна принадлежать пользователю чека."
+                )
+
+        if self.mapping_confidence < Decimal("0.00") or self.mapping_confidence > Decimal("1.00"):
+            errors["mapping_confidence"] = "Уверенность должна быть от 0 до 1."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.line_number}. {self.name}"
+
+
+class TransactionTemplate(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="transaction_templates",
+        verbose_name="Пользователь",
+    )
+    name = models.CharField(
+        max_length=120,
+        verbose_name="Название шаблона",
+    )
+    normalized_name = models.CharField(
+        max_length=120,
+        blank=True,
+        editable=False,
+        verbose_name="Нормализованное название шаблона",
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=TransactionType.choices,
+        verbose_name="Тип операции",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма",
+    )
+    currency = models.CharField(
+        max_length=3,
+        default="RUB",
+        validators=[
+            RegexValidator(
+                regex=r"^[A-Z]{3}$",
+                message="Валюта должна быть указана в формате ISO-кода, например RUB.",
+            )
+        ],
+        verbose_name="Валюта",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="transaction_templates",
+        verbose_name="Счёт",
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name="transaction_templates",
+        verbose_name="Категория",
+    )
+    tags = models.ManyToManyField(
+        Tag,
+        blank=True,
+        related_name="transaction_templates",
+        verbose_name="Теги шаблона",
+    )
+    note = models.TextField(
+        blank=True,
+        verbose_name="Примечание",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=TransactionTemplateStatus.choices,
+        default=TransactionTemplateStatus.ACTIVE,
+        verbose_name="Статус шаблона",
+    )
+    is_default = models.BooleanField(
+        default=False,
+        verbose_name="Шаблон по умолчанию",
+    )
+    use_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Количество использований",
+    )
+    last_used_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последнего использования",
+    )
+
+    class Meta:
+        verbose_name = "Шаблон операции"
+        verbose_name_plural = "Шаблоны операций"
+        ordering = ["status", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(name__regex=r"\S"),
+                name="transaction_template_name_not_blank",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="transaction_template_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind__in=TransactionType.values),
+                name="transaction_template_kind_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=TransactionTemplateStatus.values),
+                name="transaction_template_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(currency__regex=r"^[A-Z]{3}$"),
+                name="transaction_template_currency_code_format",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "normalized_name"],
+                condition=models.Q(status=TransactionTemplateStatus.ACTIVE),
+                name="unique_active_transaction_template_name_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "kind"],
+                condition=models.Q(
+                    status=TransactionTemplateStatus.ACTIVE,
+                    is_default=True,
+                ),
+                name="unique_default_transaction_template_per_kind",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_tx_tpl_user"),
+            models.Index(fields=["user", "status"], name="idx_tx_tpl_user_status"),
+            models.Index(fields=["user", "kind"], name="idx_tx_tpl_user_kind"),
+            models.Index(fields=["user", "category"], name="idx_tx_tpl_user_category"),
+            models.Index(fields=["user", "account"], name="idx_tx_tpl_user_account"),
+            models.Index(fields=["user", "normalized_name"], name="idx_tx_tpl_user_norm_name"),
+            models.Index(fields=["user", "use_count"], name="idx_tx_tpl_user_use_count"),
+            models.Index(fields=["user", "last_used_at"], name="idx_tx_tpl_user_last_used"),
+        ]
+
+    @property
+    def is_archived(self) -> bool:
+        return self.status == TransactionTemplateStatus.ARCHIVED
+
+    @property
+    def icon(self) -> str:
+        if self.category_id and self.category.icon:
+            return self.category.icon
+
+        return "arrow-up" if self.kind == TransactionType.INCOME else "arrow-down"
+
+    @property
+    def icon_tone(self) -> str:
+        if self.kind == TransactionType.INCOME:
+            return TransactionTemplateIconTone.SUCCESS
+
+        return TransactionTemplateIconTone.WARNING
+
+    def clean(self) -> None:
+        errors = {}
+
+        self.name = self.name.strip()
+        self.normalized_name = normalize_tag_text(self.name)
+        self.currency = self.currency.upper()
+
+        if not self.name:
+            errors["name"] = "Название шаблона не может быть пустым."
+
+        if self.kind not in TransactionType.values:
+            errors["kind"] = "Недопустимый тип шаблона операции."
+
+        if self.status not in TransactionTemplateStatus.values:
+            errors["status"] = "Недопустимый статус шаблона операции."
+
+        if self.amount <= Decimal("0.00"):
+            errors["amount"] = "Сумма шаблона должна быть больше нуля."
+
+        if self.account_id and self.user_id and self.account.user_id != self.user_id:
+            errors["account"] = "Счёт должен принадлежать пользователю шаблона."
+
+        if self.account_id and (self.account.is_archived or not self.account.is_active):
+            errors["account"] = "Для шаблона можно выбрать только активный счёт."
+
+        if self.category_id and self.user_id and self.category.user_id != self.user_id:
+            errors["category"] = "Категория должна принадлежать пользователю шаблона."
+
+        if self.category_id and self.kind and self.category.type != self.kind:
+            errors["category"] = "Тип категории должен совпадать с типом шаблона."
+
+        if self.category_id and (self.category.is_archived or not self.category.is_active):
+            errors["category"] = "Для шаблона можно выбрать только активную категорию."
+
+        if self.status == TransactionTemplateStatus.ARCHIVED:
+            self.is_default = False
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.name = self.name.strip()
+        self.normalized_name = normalize_tag_text(self.name)
+        self.currency = self.currency.upper()
+
+        if self.status == TransactionTemplateStatus.ARCHIVED:
+            self.is_default = False
+
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.kind})"
 
 
 class Budget(TimeStampedModel):
@@ -352,6 +2012,18 @@ class Budget(TimeStampedModel):
         related_name="budgets",
         verbose_name="Категория",
     )
+    category_group = models.CharField(
+        max_length=30,
+        choices=BudgetCategoryGroup.choices,
+        default=BudgetCategoryGroup.MAIN,
+        verbose_name="Группа бюджета",
+    )
+    period_type = models.CharField(
+        max_length=20,
+        choices=BudgetPeriodType.choices,
+        default=BudgetPeriodType.MONTH,
+        verbose_name="Тип периода",
+    )
     amount_limit = models.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -364,9 +2036,38 @@ class Budget(TimeStampedModel):
     period_end = models.DateField(
         verbose_name="Конец периода",
     )
+    currency = models.CharField(
+        max_length=3,
+        default="RUB",
+        validators=[
+            RegexValidator(
+                regex=r"^[A-Z]{3}$",
+                message="Валюта должна быть указана в формате ISO-кода, например RUB.",
+            )
+        ],
+        verbose_name="Валюта",
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=BudgetKind.choices,
+        default=BudgetKind.EXPENSE,
+        verbose_name="Тип бюджета",
+    )
+    rollover = models.BooleanField(
+        default=False,
+        verbose_name="Перенос остатка на следующий период",
+    )
+    paused = models.BooleanField(
+        default=False,
+        verbose_name="На паузе",
+    )
     is_active = models.BooleanField(
         default=True,
         verbose_name="Активен",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
     )
 
     class Meta:
@@ -382,9 +2083,32 @@ class Budget(TimeStampedModel):
                 condition=models.Q(period_end__gte=models.F("period_start")),
                 name="budget_period_valid",
             ),
+            models.CheckConstraint(
+                condition=models.Q(period_type__in=BudgetPeriodType.values),
+                name="budget_period_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind__in=BudgetKind.values),
+                name="budget_kind_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(category_group__in=BudgetCategoryGroup.values),
+                name="budget_category_group_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(currency__regex=r"^[A-Z]{3}$"),
+                name="budget_currency_code_format",
+            ),
             models.UniqueConstraint(
-                fields=["user", "category", "period_start", "period_end"],
-                name="unique_budget_category_period_per_user",
+                fields=[
+                    "user",
+                    "category",
+                    "kind",
+                    "period_type",
+                    "period_start",
+                    "period_end",
+                ],
+                name="unique_budget_kind_category_period",
             ),
         ]
         indexes = [
@@ -398,23 +2122,56 @@ class Budget(TimeStampedModel):
                 name="idx_budget_user_cat_period",
             ),
             models.Index(fields=["user", "is_active"], name="idx_budget_user_active"),
+            models.Index(fields=["user", "period_type"], name="idx_budget_user_period_type"),
+            models.Index(fields=["user", "kind"], name="idx_budget_user_kind"),
+            models.Index(fields=["user", "category_group"], name="idx_budget_user_group"),
+            models.Index(fields=["user", "paused"], name="idx_budget_user_paused"),
+            models.Index(fields=["user", "currency"], name="idx_budget_user_currency"),
+            models.Index(
+                fields=["user", "kind", "period_type", "period_start"],
+                name="idx_budget_kind_period",
+            ),
         ]
+
+    @property
+    def limit_amount(self) -> Decimal:
+        return self.amount_limit
+
+    @property
+    def status(self) -> str:
+        if self.paused:
+            return "paused"
+
+        if not self.is_active:
+            return "inactive"
+
+        return "active"
 
     def clean(self) -> None:
         errors = {}
+
+        if self.currency:
+            self.currency = self.currency.upper()
 
         if self.period_start and self.period_end and self.period_end < self.period_start:
             errors["period_end"] = (
                 "Дата окончания периода не может быть раньше даты начала."
             )
 
+        if self.period_type not in BudgetPeriodType.values:
+            errors["period_type"] = "Недопустимый тип периода бюджета."
+
+        if self.kind not in BudgetKind.values:
+            errors["kind"] = "Недопустимый тип бюджета."
+
+        if self.category_group not in BudgetCategoryGroup.values:
+            errors["category_group"] = "Недопустимая группа бюджета."
+
         if self.category_id and self.user_id and self.category.user_id != self.user_id:
             errors["category"] = "Категория бюджета должна принадлежать пользователю."
 
-        if self.category_id and self.category.type != TransactionType.EXPENSE:
-            errors["category"] = (
-                "Бюджет можно создавать только для категории расходов."
-            )
+        if self.category_id and self.kind and self.category.type != self.kind:
+            errors["category"] = "Тип категории должен совпадать с типом бюджета."
 
         if self.category_id and not self.category.is_active:
             errors["category"] = "Нельзя использовать неактивную категорию в бюджете."
@@ -425,8 +2182,14 @@ class Budget(TimeStampedModel):
         if errors:
             raise ValidationError(errors)
 
+    def save(self, *args, **kwargs):
+        if self.currency:
+            self.currency = self.currency.upper()
+
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
-        return f"{self.category.name}: {self.amount_limit}"
+        return f"{self.category.name}: {self.amount_limit} {self.currency}"
 
 
 class Goal(TimeStampedModel):
@@ -447,6 +2210,18 @@ class Goal(TimeStampedModel):
     name = models.CharField(
         max_length=150,
         verbose_name="Название цели",
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=GoalCategory.choices,
+        default=GoalCategory.SAVINGS,
+        verbose_name="Категория цели",
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=GoalPriority.choices,
+        default=GoalPriority.MEDIUM,
+        verbose_name="Приоритет",
     )
     target_amount = models.DecimalField(
         max_digits=14,
@@ -472,6 +2247,21 @@ class Goal(TimeStampedModel):
         default=GoalStatus.ACTIVE,
         verbose_name="Статус",
     )
+    icon = models.CharField(
+        max_length=50,
+        default="target",
+        verbose_name="Иконка",
+    )
+    color = models.CharField(
+        max_length=7,
+        default="#4F46E5",
+        validators=[hex_color_validator],
+        verbose_name="Цвет",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
 
     class Meta:
         verbose_name = "Финансовая цель"
@@ -490,6 +2280,18 @@ class Goal(TimeStampedModel):
                 condition=models.Q(status__in=GoalStatus.values),
                 name="goal_status_valid",
             ),
+            models.CheckConstraint(
+                condition=models.Q(category__in=GoalCategory.values),
+                name="goal_category_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(priority__in=GoalPriority.values),
+                name="goal_priority_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(color__regex=r"^#[0-9A-Fa-f]{6}$"),
+                name="goal_color_hex_format",
+            ),
             models.UniqueConstraint(
                 fields=["user", "name"],
                 name="unique_goal_name_per_user",
@@ -500,7 +2302,21 @@ class Goal(TimeStampedModel):
             models.Index(fields=["user", "status"], name="idx_goal_user_status"),
             models.Index(fields=["user", "deadline"], name="idx_goal_user_deadline"),
             models.Index(fields=["user", "account"], name="idx_goal_user_account"),
+            models.Index(fields=["user", "category"], name="idx_goal_user_category"),
+            models.Index(fields=["user", "priority"], name="idx_goal_user_priority"),
+            models.Index(
+                fields=["user", "status", "deadline"],
+                name="idx_goal_user_status_deadline",
+            ),
         ]
+
+    @property
+    def progress_percent(self) -> Decimal:
+        if self.target_amount <= 0:
+            return Decimal("0.00")
+
+        percent = self.current_amount / self.target_amount * Decimal("100")
+        return min(percent, Decimal("100.00")).quantize(Decimal("0.01"))
 
     def clean(self) -> None:
         errors = {}
@@ -508,8 +2324,1491 @@ class Goal(TimeStampedModel):
         if self.account_id and self.user_id and self.account.user_id != self.user_id:
             errors["account"] = "Счёт цели должен принадлежать пользователю."
 
+        if self.category not in GoalCategory.values:
+            errors["category"] = "Недопустимая категория цели."
+
+        if self.priority not in GoalPriority.values:
+            errors["priority"] = "Недопустимый приоритет цели."
+
+        if self.status not in GoalStatus.values:
+            errors["status"] = "Недопустимый статус цели."
+
         if errors:
             raise ValidationError(errors)
 
     def __str__(self) -> str:
         return f"{self.name}: {self.current_amount}/{self.target_amount}"
+
+
+class GoalContribution(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="goal_contributions",
+        verbose_name="Пользователь",
+    )
+    goal = models.ForeignKey(
+        Goal,
+        on_delete=models.PROTECT,
+        related_name="contributions",
+        verbose_name="Цель",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="goal_contributions",
+        verbose_name="Счёт-источник",
+    )
+    transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="goal_contributions",
+        verbose_name="Связанная операция",
+    )
+    account_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Название счёта на момент пополнения",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма пополнения",
+    )
+    contribution_date = models.DateField(
+        verbose_name="Дата пополнения",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
+
+    class Meta:
+        verbose_name = "Пополнение цели"
+        verbose_name_plural = "Пополнения целей"
+        ordering = ["-contribution_date", "-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="goal_contribution_amount_positive",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_gcontrib_user"),
+            models.Index(fields=["goal", "contribution_date"], name="idx_gcontrib_goal_dt"),
+            models.Index(
+                fields=["user", "goal", "contribution_date"],
+                name="idx_gcontrib_user_goal_dt",
+            ),
+            models.Index(fields=["account"], name="idx_gcontrib_account"),
+            models.Index(fields=["transaction"], name="idx_gcontrib_tx"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.goal_id and self.user_id and self.goal.user_id != self.user_id:
+            errors["goal"] = "Цель должна принадлежать пользователю пополнения."
+
+        if self.account_id and self.user_id and self.account.user_id != self.user_id:
+            errors["account"] = "Счёт пополнения должен принадлежать пользователю."
+
+        if self.transaction_id and self.user_id and self.transaction.user_id != self.user_id:
+            errors["transaction"] = "Операция должна принадлежать пользователю."
+
+        if (
+            self.transaction_id
+            and self.account_id
+            and self.transaction.account_id != self.account_id
+        ):
+            errors["transaction"] = (
+                "Связанная операция должна относиться к счёту пополнения."
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.account_id and not self.account_name:
+            self.account_name = self.account.name
+
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.goal.name}: +{self.amount}"
+
+
+class Notification(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+        verbose_name="Пользователь",
+    )
+    title = models.CharField(
+        max_length=200,
+        verbose_name="Заголовок уведомления",
+    )
+    body = models.TextField(
+        blank=True,
+        verbose_name="Текст уведомления",
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=NotificationType.choices,
+        default=NotificationType.SYSTEM,
+        verbose_name="Тип уведомления",
+    )
+    channel = models.CharField(
+        max_length=20,
+        choices=NotificationChannel.choices,
+        default=NotificationChannel.IN_APP,
+        verbose_name="Канал доставки",
+    )
+    delivery_status = models.CharField(
+        max_length=20,
+        choices=NotificationDeliveryStatus.choices,
+        default=NotificationDeliveryStatus.DELIVERED,
+        verbose_name="Статус доставки",
+    )
+    delivery_error = models.TextField(
+        blank=True,
+        verbose_name="Ошибка доставки",
+    )
+    icon = models.CharField(
+        max_length=50,
+        default="bell",
+        verbose_name="Иконка",
+    )
+    icon_tone = models.CharField(
+        max_length=20,
+        choices=NotificationIconTone.choices,
+        default=NotificationIconTone.PRIMARY,
+        verbose_name="Тон иконки",
+    )
+    is_read = models.BooleanField(
+        default=False,
+        verbose_name="Прочитано",
+    )
+    read_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата прочтения",
+    )
+    is_archived = models.BooleanField(
+        default=False,
+        verbose_name="В архиве",
+    )
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата архивации",
+    )
+    entity_kind = models.CharField(
+        max_length=20,
+        choices=NotificationEntityKind.choices,
+        blank=True,
+        verbose_name="Тип связанной сущности",
+    )
+    entity_id = models.PositiveBigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="ID связанной сущности",
+    )
+    entity_route_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Маршрут связанной сущности",
+    )
+    entity_label = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Название связанной сущности",
+    )
+    entity_tag = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Тег связанной сущности",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Сумма",
+    )
+    account_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Название счёта",
+    )
+    category_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Название категории",
+    )
+    related_goal_name = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Название связанной цели",
+    )
+    related_goal_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Процент связанной цели",
+    )
+    delivery_steps = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Шаги доставки",
+    )
+
+    class Meta:
+        verbose_name = "Уведомление"
+        verbose_name_plural = "Уведомления"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(type__in=NotificationType.values),
+                name="notification_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(channel__in=NotificationChannel.values),
+                name="notification_channel_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(delivery_status__in=NotificationDeliveryStatus.values),
+                name="notif_delivery_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(icon_tone__in=NotificationIconTone.values),
+                name="notif_icon_tone_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(entity_kind="")
+                    | models.Q(entity_kind__in=NotificationEntityKind.values)
+                ),
+                name="notif_entity_kind_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_notif_user"),
+            models.Index(fields=["user", "is_read"], name="idx_notif_user_read"),
+            models.Index(fields=["user", "is_archived"], name="idx_notif_user_archived"),
+            models.Index(fields=["user", "type"], name="idx_notif_user_type"),
+            models.Index(fields=["user", "channel"], name="idx_notif_user_channel"),
+            models.Index(fields=["user", "created_at"], name="idx_notif_user_created"),
+            models.Index(fields=["user", "entity_kind", "entity_id"], name="idx_notif_entity"),
+            models.Index(fields=["user", "delivery_status"], name="idx_notif_delivery"),
+        ]
+
+    @property
+    def status(self) -> str:
+        if self.is_archived:
+            return "archived"
+
+        if self.is_read:
+            return "read"
+
+        return "unread"
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.type not in NotificationType.values:
+            errors["type"] = "Недопустимый тип уведомления."
+
+        if self.channel not in NotificationChannel.values:
+            errors["channel"] = "Недопустимый канал уведомления."
+
+        if self.delivery_status not in NotificationDeliveryStatus.values:
+            errors["delivery_status"] = "Недопустимый статус доставки."
+
+        if self.icon_tone not in NotificationIconTone.values:
+            errors["icon_tone"] = "Недопустимый тон иконки."
+
+        if self.entity_kind and self.entity_kind not in NotificationEntityKind.values:
+            errors["entity_kind"] = "Недопустимый тип связанной сущности."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.status})"
+
+class NotificationSettings(TimeStampedModel):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notification_settings",
+        verbose_name="Пользователь",
+    )
+    in_app_enabled = models.BooleanField(
+        default=True,
+        verbose_name="In-app уведомления включены",
+    )
+    email_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Email уведомления включены",
+    )
+    push_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Push уведомления включены",
+    )
+    sms_enabled = models.BooleanField(
+        default=True,
+        verbose_name="SMS уведомления включены",
+    )
+    operation_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления по операциям включены",
+    )
+    goal_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления по целям включены",
+    )
+    budget_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления по бюджетам включены",
+    )
+    system_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Системные уведомления включены",
+    )
+    security_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Уведомления безопасности включены",
+    )
+    marketing_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Маркетинговые уведомления включены",
+    )
+    quiet_hours_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Тихие часы включены",
+    )
+    quiet_hours_start = models.TimeField(
+        default=time(22, 0),
+        verbose_name="Начало тихих часов",
+    )
+    quiet_hours_end = models.TimeField(
+        default=time(8, 0),
+        verbose_name="Окончание тихих часов",
+    )
+    quiet_hours_days = models.JSONField(
+        default=default_quiet_hours_days,
+        blank=True,
+        verbose_name="Дни тихих часов",
+    )
+
+    class Meta:
+        verbose_name = "Настройки уведомлений"
+        verbose_name_plural = "Настройки уведомлений"
+        ordering = ["user_id"]
+
+    CHANNEL_FIELD_MAP = {
+        NotificationChannel.IN_APP: "in_app_enabled",
+        NotificationChannel.EMAIL: "email_enabled",
+        NotificationChannel.PUSH: "push_enabled",
+        NotificationChannel.SMS: "sms_enabled",
+    }
+
+    TYPE_FIELD_MAP = {
+        NotificationType.OPERATION: "operation_enabled",
+        NotificationType.GOAL: "goal_enabled",
+        NotificationType.BUDGET: "budget_enabled",
+        NotificationType.SYSTEM: "system_enabled",
+        NotificationType.SECURITY: "security_enabled",
+        NotificationType.MARKETING: "marketing_enabled",
+    }
+
+    def is_channel_enabled(self, channel: str) -> bool:
+        field_name = self.CHANNEL_FIELD_MAP.get(channel)
+
+        if not field_name:
+            return False
+
+        return bool(getattr(self, field_name))
+
+    def is_type_enabled(self, notification_type: str) -> bool:
+        field_name = self.TYPE_FIELD_MAP.get(notification_type)
+
+        if not field_name:
+            return False
+
+        return bool(getattr(self, field_name))
+
+    def is_quiet_time(self, moment=None) -> bool:
+        if not self.quiet_hours_enabled:
+            return False
+
+        if moment is None:
+            moment = timezone.localtime()
+
+        day_key = moment.strftime("%a").lower()[:3]
+
+        if day_key not in self.quiet_hours_days:
+            return False
+
+        current_time = moment.time()
+        start_time = self.quiet_hours_start
+        end_time = self.quiet_hours_end
+
+        if start_time <= end_time:
+            return start_time <= current_time < end_time
+
+        return current_time >= start_time or current_time < end_time
+
+    def clean(self) -> None:
+        errors = {}
+
+        if not isinstance(self.quiet_hours_days, list):
+            errors["quiet_hours_days"] = "Дни тихих часов должны быть списком."
+
+        else:
+            invalid_days = [
+                day
+                for day in self.quiet_hours_days
+                if day not in NOTIFICATION_QUIET_HOURS_DAYS
+            ]
+
+            if invalid_days:
+                errors["quiet_hours_days"] = (
+                    "Недопустимые дни тихих часов: "
+                    f"{', '.join(invalid_days)}."
+                )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"Настройки уведомлений пользователя {self.user_id}"
+
+
+def _is_bool_value(value) -> bool:
+    return isinstance(value, bool)
+
+
+def _is_int_value(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _validate_bool_json_value(value, *, field_path: str, errors: dict) -> None:
+    if not _is_bool_value(value):
+        errors[field_path] = "Значение должно быть true или false."
+
+
+def _normalize_int_list(value, *, field_path: str, min_value: int, max_value: int, errors: dict) -> list[int]:
+    if not isinstance(value, list):
+        errors[field_path] = "Значение должно быть списком."
+        return []
+
+    result = []
+
+    for item in value:
+        if not _is_int_value(item):
+            errors[field_path] = "Все значения должны быть целыми числами."
+            return []
+
+        if item < min_value or item > max_value:
+            errors[field_path] = f"Значения должны быть в диапазоне от {min_value} до {max_value}."
+            return []
+
+        result.append(item)
+
+    if len(set(result)) != len(result):
+        errors[field_path] = "Значения не должны повторяться."
+
+    return result
+
+
+class BudgetNotificationSettings(TimeStampedModel):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="budget_notification_settings",
+        verbose_name="Пользователь",
+    )
+    enabled = models.BooleanField(
+        default=False,
+        verbose_name="Уведомления о бюджетах и целях включены",
+    )
+    thresholds_enabled = models.BooleanField(
+        default=True,
+        verbose_name="Пороговые уведомления включены",
+    )
+    thresholds = models.JSONField(
+        default=default_budget_notification_thresholds,
+        blank=True,
+        verbose_name="Пороги бюджета",
+    )
+    events = models.JSONField(
+        default=default_budget_notification_events,
+        blank=True,
+        verbose_name="Типы событий",
+    )
+    channels = models.JSONField(
+        default=default_budget_notification_channels,
+        blank=True,
+        verbose_name="Каналы доставки",
+    )
+    anti_spam = models.JSONField(
+        default=default_budget_notification_anti_spam,
+        blank=True,
+        verbose_name="Защита от дублей и спама",
+    )
+    goals = models.JSONField(
+        default=default_budget_notification_goals,
+        blank=True,
+        verbose_name="Настройки уведомлений по целям",
+    )
+    preview_usage_percent = models.PositiveSmallIntegerField(
+        default=87,
+        validators=[MinValueValidator(0)],
+        verbose_name="Процент использования бюджета для предпросмотра",
+    )
+
+    class Meta:
+        verbose_name = "Настройки уведомлений о бюджете"
+        verbose_name_plural = "Настройки уведомлений о бюджете"
+        ordering = ["user_id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(preview_usage_percent__gte=0)
+                & models.Q(preview_usage_percent__lte=100),
+                name="budget_notif_preview_percent_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["enabled"], name="idx_budget_notif_enabled"),
+            models.Index(fields=["thresholds_enabled"], name="idx_budget_notif_thresholds"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.preview_usage_percent < 0 or self.preview_usage_percent > 100:
+            errors["preview_usage_percent"] = "Процент предпросмотра должен быть от 0 до 100."
+
+        self.thresholds = self._clean_thresholds(self.thresholds, errors)
+        self.events = self._clean_events(self.events, errors)
+        self.channels = self._clean_channels(self.channels, errors)
+        self.anti_spam = self._clean_anti_spam(self.anti_spam, errors)
+        self.goals = self._clean_goals(self.goals, errors)
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        errors = {}
+        self.thresholds = self._clean_thresholds(self.thresholds, errors)
+        self.events = self._clean_events(self.events, errors)
+        self.channels = self._clean_channels(self.channels, errors)
+        self.anti_spam = self._clean_anti_spam(self.anti_spam, errors)
+        self.goals = self._clean_goals(self.goals, errors)
+
+        if errors:
+            raise ValidationError(errors)
+
+        super().save(*args, **kwargs)
+
+    def _clean_thresholds(self, value, errors: dict) -> list[dict]:
+        if value in (None, ""):
+            value = default_budget_notification_thresholds()
+
+        if not isinstance(value, list):
+            errors["thresholds"] = "Пороги должны быть списком."
+            return default_budget_notification_thresholds()
+
+        normalized = []
+        seen_ids = set()
+        active_percents = []
+
+        for index, item in enumerate(value, start=1):
+            if not isinstance(item, dict):
+                errors["thresholds"] = f"Порог #{index} должен быть объектом."
+                continue
+
+            threshold_id = str(item.get("id", "")).strip()
+            if threshold_id not in BUDGET_NOTIFICATION_THRESHOLD_IDS:
+                errors[f"thresholds.{threshold_id or index}.id"] = "Недопустимый идентификатор порога."
+                continue
+
+            if threshold_id in seen_ids:
+                errors[f"thresholds.{threshold_id}.id"] = "Порог не должен повторяться."
+                continue
+
+            seen_ids.add(threshold_id)
+
+            percent = item.get("percent")
+            if not _is_int_value(percent):
+                errors[f"thresholds.{threshold_id}.percent"] = "Процент должен быть целым числом."
+                continue
+
+            if percent < 1 or percent > 100:
+                errors[f"thresholds.{threshold_id}.percent"] = "Процент должен быть от 1 до 100."
+                continue
+
+            active = item.get("active", True)
+            locked = item.get("locked", False)
+
+            _validate_bool_json_value(active, field_path=f"thresholds.{threshold_id}.active", errors=errors)
+            _validate_bool_json_value(locked, field_path=f"thresholds.{threshold_id}.locked", errors=errors)
+
+            if threshold_id == "critical" and percent != 100:
+                errors[f"thresholds.{threshold_id}.percent"] = "Критический порог должен быть равен 100%."
+
+            if active:
+                active_percents.append(percent)
+
+            normalized.append(
+                {
+                    "id": threshold_id,
+                    "label": str(item.get("label") or self._get_default_threshold_label(threshold_id)),
+                    "hint": str(item.get("hint") or "Уведомление отправится один раз при пересечении порога."),
+                    "percent": percent,
+                    "active": bool(active),
+                    "locked": bool(locked),
+                }
+            )
+
+        if len(set(active_percents)) != len(active_percents):
+            errors["thresholds"] = "Активные пороги не должны повторяться."
+
+        if active_percents != sorted(active_percents):
+            errors["thresholds"] = "Активные пороги должны идти по возрастанию."
+
+        return normalized
+
+    def _clean_events(self, value, errors: dict) -> list[dict]:
+        if value in (None, ""):
+            value = default_budget_notification_events()
+
+        if not isinstance(value, list):
+            errors["events"] = "Типы событий должны быть списком."
+            return default_budget_notification_events()
+
+        allowed_event_ids = set(BudgetNotificationEventType.values)
+        normalized = []
+        seen_ids = set()
+
+        for index, item in enumerate(value, start=1):
+            if not isinstance(item, dict):
+                errors["events"] = f"Тип события #{index} должен быть объектом."
+                continue
+
+            event_id = str(item.get("id", "")).strip()
+            if event_id not in allowed_event_ids:
+                errors[f"events.{event_id or index}.id"] = "Недопустимый тип события."
+                continue
+
+            if event_id in seen_ids:
+                errors[f"events.{event_id}.id"] = "Тип события не должен повторяться."
+                continue
+
+            seen_ids.add(event_id)
+            group = str(item.get("group") or BUDGET_NOTIFICATION_EVENT_GROUP_BY_ID[event_id])
+            expected_group = BUDGET_NOTIFICATION_EVENT_GROUP_BY_ID[event_id]
+
+            if group != expected_group:
+                errors[f"events.{event_id}.group"] = "Группа события не соответствует типу события."
+
+            enabled = item.get("enabled", True)
+            _validate_bool_json_value(enabled, field_path=f"events.{event_id}.enabled", errors=errors)
+
+            normalized.append(
+                {
+                    "id": event_id,
+                    "group": expected_group,
+                    "label": str(item.get("label") or BudgetNotificationEventType(event_id).label),
+                    "icon": str(item.get("icon") or "bell"),
+                    "iconTone": str(item.get("iconTone") or NotificationIconTone.PRIMARY.value),
+                    "enabled": bool(enabled),
+                }
+            )
+
+        return normalized
+
+    def _clean_channels(self, value, errors: dict) -> list[dict]:
+        if value in (None, ""):
+            value = default_budget_notification_channels()
+
+        if not isinstance(value, list):
+            errors["channels"] = "Каналы доставки должны быть списком."
+            return default_budget_notification_channels()
+
+        allowed_channel_ids = set(BudgetNotificationChannel.values)
+        normalized = []
+        seen_ids = set()
+
+        for index, item in enumerate(value, start=1):
+            if not isinstance(item, dict):
+                errors["channels"] = f"Канал доставки #{index} должен быть объектом."
+                continue
+
+            channel_id = str(item.get("id", "")).strip()
+            if channel_id not in allowed_channel_ids:
+                errors[f"channels.{channel_id or index}.id"] = "Недопустимый канал доставки."
+                continue
+
+            if channel_id in seen_ids:
+                errors[f"channels.{channel_id}.id"] = "Канал доставки не должен повторяться."
+                continue
+
+            seen_ids.add(channel_id)
+            enabled = item.get("enabled", False)
+            _validate_bool_json_value(enabled, field_path=f"channels.{channel_id}.enabled", errors=errors)
+
+            delivery_status = BudgetNotificationDeliveryStatus.AVAILABLE.value
+            delivery_ok = True
+            delivery_hint = "Всегда доступно"
+
+            if channel_id != BudgetNotificationChannel.IN_APP.value:
+                delivery_status = BudgetNotificationDeliveryStatus.NOT_CONFIGURED.value
+                delivery_ok = False
+                delivery_hint = "Канал будет подключен позже."
+
+            normalized.append(
+                {
+                    "id": channel_id,
+                    "label": str(item.get("label") or BudgetNotificationChannel(channel_id).label),
+                    "description": str(item.get("description") or ""),
+                    "icon": str(item.get("icon") or "bell"),
+                    "enabled": bool(enabled),
+                    "deliveryHint": str(item.get("deliveryHint") or delivery_hint),
+                    "deliveryOk": delivery_ok,
+                    "deliveryStatus": delivery_status,
+                }
+            )
+
+        return normalized
+
+    def _clean_anti_spam(self, value, errors: dict) -> dict:
+        if value in (None, ""):
+            value = default_budget_notification_anti_spam()
+
+        if not isinstance(value, dict):
+            errors["anti_spam"] = "Настройки защиты от дублей должны быть объектом."
+            return default_budget_notification_anti_spam()
+
+        min_repeat_hours = value.get("minRepeatHours", 24)
+        cooldown_minutes = value.get("cooldownMinutes", 15)
+        group_notifications = value.get("groupNotifications", True)
+
+        if not _is_int_value(min_repeat_hours) or not 1 <= min_repeat_hours <= 168:
+            errors["antiSpam.minRepeatHours"] = "Минимальный интервал должен быть от 1 до 168 часов."
+
+        if not _is_int_value(cooldown_minutes) or not 0 <= cooldown_minutes <= 1440:
+            errors["antiSpam.cooldownMinutes"] = "Пауза после изменения настроек должна быть от 0 до 1440 минут."
+
+        _validate_bool_json_value(
+            group_notifications,
+            field_path="antiSpam.groupNotifications",
+            errors=errors,
+        )
+
+        return {
+            "minRepeatHours": int(min_repeat_hours) if _is_int_value(min_repeat_hours) else 24,
+            "groupNotifications": bool(group_notifications),
+            "cooldownMinutes": int(cooldown_minutes) if _is_int_value(cooldown_minutes) else 15,
+        }
+
+    def _clean_goals(self, value, errors: dict) -> dict:
+        if value in (None, ""):
+            value = default_budget_notification_goals()
+
+        if not isinstance(value, dict):
+            errors["goals"] = "Настройки целей должны быть объектом."
+            return default_budget_notification_goals()
+
+        milestone_percents = _normalize_int_list(
+            value.get("milestonePercents", [25, 50, 75, 100]),
+            field_path="goals.milestonePercents",
+            min_value=1,
+            max_value=100,
+            errors=errors,
+        )
+
+        if milestone_percents != sorted(milestone_percents):
+            errors["goals.milestonePercents"] = "Рубежи целей должны идти по возрастанию."
+
+        milestone_enabled = value.get("milestoneEnabled", {})
+        if not isinstance(milestone_enabled, dict):
+            errors["goals.milestoneEnabled"] = "Настройки рубежей должны быть объектом."
+            milestone_enabled = {}
+
+        normalized_milestones = {}
+        for percent in milestone_percents:
+            raw_value = milestone_enabled.get(str(percent), True)
+            _validate_bool_json_value(
+                raw_value,
+                field_path=f"goals.milestoneEnabled.{percent}",
+                errors=errors,
+            )
+            normalized_milestones[str(percent)] = bool(raw_value)
+
+        notify_on_lag = value.get("notifyOnLag", False)
+        _validate_bool_json_value(notify_on_lag, field_path="goals.notifyOnLag", errors=errors)
+
+        lag_days = value.get("lagDays", 7)
+        if not _is_int_value(lag_days) or not 1 <= lag_days <= 365:
+            errors["goals.lagDays"] = "Количество дней отставания должно быть от 1 до 365."
+
+        selected_goal_ids = value.get("selectedGoalIds", [])
+        if not isinstance(selected_goal_ids, list):
+            errors["goals.selectedGoalIds"] = "Выбранные цели должны быть списком."
+            selected_goal_ids = []
+
+        normalized_goal_ids = []
+        for raw_goal_id in selected_goal_ids:
+            try:
+                goal_id = int(raw_goal_id)
+            except (TypeError, ValueError):
+                errors["goals.selectedGoalIds"] = "ID целей должны быть числами."
+                normalized_goal_ids = []
+                break
+
+            normalized_goal_ids.append(goal_id)
+
+        if normalized_goal_ids and self.user_id:
+            existing_count = Goal.objects.filter(
+                user_id=self.user_id,
+                id__in=normalized_goal_ids,
+            ).count()
+            if existing_count != len(set(normalized_goal_ids)):
+                errors["goals.selectedGoalIds"] = "Некоторые цели не найдены или недоступны пользователю."
+
+        return {
+            "milestonePercents": milestone_percents,
+            "milestoneEnabled": normalized_milestones,
+            "notifyOnLag": bool(notify_on_lag),
+            "lagDays": int(lag_days) if _is_int_value(lag_days) else 7,
+            "selectedGoalIds": normalized_goal_ids,
+        }
+
+    @staticmethod
+    def _get_default_threshold_label(threshold_id: str) -> str:
+        labels = {
+            "near_limit": "Приближение к лимиту",
+            "warning": "Предупреждение",
+            "critical": "Критический порог",
+        }
+        return labels.get(threshold_id, threshold_id)
+
+    def __str__(self) -> str:
+        return f"Настройки бюджетных уведомлений пользователя {self.user_id}"
+
+
+class BudgetNotificationEvent(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="budget_notification_events",
+        verbose_name="Пользователь",
+    )
+    event_type = models.CharField(
+        max_length=50,
+        choices=BudgetNotificationEventType.choices,
+        verbose_name="Тип события",
+    )
+    related_object_type = models.CharField(
+        max_length=20,
+        choices=NotificationEntityKind.choices,
+        verbose_name="Тип связанного объекта",
+    )
+    related_object_id = models.PositiveBigIntegerField(
+        verbose_name="ID связанного объекта",
+    )
+    threshold_id = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name="ID порога",
+    )
+    title = models.CharField(
+        max_length=200,
+        verbose_name="Заголовок события",
+    )
+    message = models.TextField(
+        blank=True,
+        verbose_name="Текст события",
+    )
+    icon = models.CharField(
+        max_length=50,
+        default="bell",
+        verbose_name="Иконка",
+    )
+    icon_tone = models.CharField(
+        max_length=20,
+        choices=NotificationIconTone.choices,
+        default=NotificationIconTone.PRIMARY,
+        verbose_name="Тон иконки",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=BudgetNotificationEventStatus.choices,
+        default=BudgetNotificationEventStatus.GENERATED,
+        verbose_name="Статус события",
+    )
+    deduplication_key = models.CharField(
+        max_length=255,
+        verbose_name="Ключ защиты от дублей",
+    )
+    payload = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Данные события",
+    )
+
+    class Meta:
+        verbose_name = "Событие бюджетного уведомления"
+        verbose_name_plural = "События бюджетных уведомлений"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(event_type__in=BudgetNotificationEventType.values),
+                name="budget_notif_event_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(related_object_type__in=NotificationEntityKind.values),
+                name="budget_notif_event_obj_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(icon_tone__in=NotificationIconTone.values),
+                name="budget_notif_event_tone_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=BudgetNotificationEventStatus.values),
+                name="budget_notif_event_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_bn_event_user"),
+            models.Index(fields=["user", "event_type"], name="idx_bn_event_user_type"),
+            models.Index(fields=["user", "related_object_type", "related_object_id"], name="idx_bn_event_object"),
+            models.Index(fields=["user", "deduplication_key"], name="idx_bn_event_dedup"),
+            models.Index(fields=["user", "created_at"], name="idx_bn_event_created"),
+            models.Index(fields=["status"], name="idx_bn_event_status"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.event_type not in BudgetNotificationEventType.values:
+            errors["event_type"] = "Недопустимый тип события уведомления."
+
+        if self.related_object_type not in NotificationEntityKind.values:
+            errors["related_object_type"] = "Недопустимый тип связанного объекта."
+
+        if self.icon_tone not in NotificationIconTone.values:
+            errors["icon_tone"] = "Недопустимый тон иконки."
+
+        if self.status not in BudgetNotificationEventStatus.values:
+            errors["status"] = "Недопустимый статус события."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.event_type})"
+
+
+class RecurringTransaction(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recurring_transactions",
+        verbose_name="Пользователь",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="recurring_transactions",
+        verbose_name="Счёт",
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name="recurring_transactions",
+        verbose_name="Категория",
+    )
+    name = models.CharField(
+        max_length=150,
+        verbose_name="Название регулярной операции",
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=TransactionType.choices,
+        default=TransactionType.EXPENSE,
+        verbose_name="Тип операции",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма",
+    )
+    frequency = models.CharField(
+        max_length=20,
+        choices=RecurringFrequency.choices,
+        default=RecurringFrequency.MONTHLY,
+        verbose_name="Периодичность",
+    )
+    day_of_month = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="День месяца",
+    )
+    start_date = models.DateField(
+        verbose_name="Дата начала",
+    )
+    has_end = models.BooleanField(
+        default=False,
+        verbose_name="Есть дата окончания",
+    )
+    end_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Дата окончания",
+    )
+    next_charge_date = models.DateField(
+        verbose_name="Дата следующего списания",
+    )
+    last_charge_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последнего списания",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=RecurringStatus.choices,
+        default=RecurringStatus.ACTIVE,
+        verbose_name="Статус",
+    )
+    template_id = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="ID шаблона",
+    )
+    template_name = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Название шаблона",
+    )
+    created_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Количество созданных операций",
+    )
+    last_error_code = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Код последней ошибки",
+    )
+    last_error_message = models.TextField(
+        blank=True,
+        verbose_name="Сообщение последней ошибки",
+    )
+    last_failed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последней ошибки",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
+
+    class Meta:
+        verbose_name = "Регулярная операция"
+        verbose_name_plural = "Регулярные операции"
+        ordering = ["next_charge_date", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="rtx_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(type__in=TransactionType.values),
+                name="rtx_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(frequency__in=RecurringFrequency.values),
+                name="rtx_frequency_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=RecurringStatus.values),
+                name="rtx_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(day_of_month__isnull=True)
+                    | (
+                        models.Q(day_of_month__gte=1)
+                        & models.Q(day_of_month__lte=31)
+                    )
+                ),
+                name="rtx_day_of_month_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(has_end=False)
+                    | models.Q(end_date__gte=models.F("start_date"))
+                ),
+                name="rtx_date_range_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_rtx_user"),
+            models.Index(fields=["user", "status"], name="idx_rtx_user_status"),
+            models.Index(fields=["user", "frequency"], name="idx_rtx_user_freq"),
+            models.Index(fields=["user", "account"], name="idx_rtx_user_account"),
+            models.Index(fields=["user", "category"], name="idx_rtx_user_category"),
+            models.Index(fields=["user", "next_charge_date"], name="idx_rtx_user_next"),
+            models.Index(fields=["user", "status", "next_charge_date"], name="idx_rtx_status_next"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.account_id and self.user_id and self.account.user_id != self.user_id:
+            errors["account"] = "Счёт должен принадлежать пользователю."
+
+        if self.category_id and self.user_id and self.category.user_id != self.user_id:
+            errors["category"] = "Категория должна принадлежать пользователю."
+
+        if self.category_id and self.type and self.category.type != self.type:
+            errors["category"] = "Тип категории должен совпадать с типом операции."
+
+        if self.account_id and not self.account.is_active:
+            errors["account"] = "Нельзя использовать неактивный счёт."
+
+        if self.account_id and self.account.is_archived:
+            errors["account"] = "Нельзя использовать архивный счёт."
+
+        if self.category_id and not self.category.is_active:
+            errors["category"] = "Нельзя использовать неактивную категорию."
+
+        if self.category_id and self.category.is_archived:
+            errors["category"] = "Нельзя использовать архивную категорию."
+
+        if self.frequency not in RecurringFrequency.values:
+            errors["frequency"] = "Недопустимая периодичность."
+
+        if self.status not in RecurringStatus.values:
+            errors["status"] = "Недопустимый статус."
+
+        if self.type not in TransactionType.values:
+            errors["type"] = "Недопустимый тип операции."
+
+        if self.day_of_month is not None and not 1 <= self.day_of_month <= 31:
+            errors["day_of_month"] = "День месяца должен быть от 1 до 31."
+
+        if self.has_end and not self.end_date:
+            errors["end_date"] = "Укажите дату окончания."
+
+        if self.has_end and self.end_date and self.start_date and self.end_date < self.start_date:
+            errors["end_date"] = "Дата окончания не может быть раньше даты начала."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.name}: {self.amount}"
+
+
+class RecurringTransactionCharge(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recurring_transaction_charges",
+        verbose_name="Пользователь",
+    )
+    recurring_transaction = models.ForeignKey(
+        RecurringTransaction,
+        on_delete=models.CASCADE,
+        related_name="charges",
+        verbose_name="Регулярная операция",
+    )
+    transaction = models.ForeignKey(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recurring_charges",
+        verbose_name="Созданная операция",
+    )
+    charged_at = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="Дата попытки списания",
+    )
+    scheduled_date = models.DateField(
+        verbose_name="Плановая дата списания",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=RecurringChargeStatus.choices,
+        default=RecurringChargeStatus.SUCCESS,
+        verbose_name="Статус списания",
+    )
+    error_code = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Код ошибки",
+    )
+    error_message = models.TextField(
+        blank=True,
+        verbose_name="Сообщение ошибки",
+    )
+
+    class Meta:
+        verbose_name = "История регулярного списания"
+        verbose_name_plural = "История регулярных списаний"
+        ordering = ["-charged_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="rtx_charge_amount_pos",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=RecurringChargeStatus.values),
+                name="rtx_charge_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_rtx_charge_user"),
+            models.Index(fields=["recurring_transaction"], name="idx_rtx_charge_rtx"),
+            models.Index(fields=["user", "status"], name="idx_rtx_charge_status"),
+            models.Index(fields=["user", "charged_at"], name="idx_rtx_charge_date"),
+            models.Index(fields=["transaction"], name="idx_rtx_charge_tx"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if (
+            self.recurring_transaction_id
+            and self.user_id
+            and self.recurring_transaction.user_id != self.user_id
+        ):
+            errors["recurring_transaction"] = (
+                "Регулярная операция должна принадлежать пользователю."
+            )
+
+        if self.transaction_id and self.user_id and self.transaction.user_id != self.user_id:
+            errors["transaction"] = "Операция должна принадлежать пользователю."
+
+        if self.status not in RecurringChargeStatus.values:
+            errors["status"] = "Недопустимый статус списания."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.recurring_transaction_id}: {self.status}"
+
+
+class PlannedTransaction(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="planned_transactions",
+        verbose_name="Пользователь",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        related_name="planned_transactions",
+        verbose_name="Счёт",
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name="planned_transactions",
+        verbose_name="Категория",
+    )
+    converted_transaction = models.OneToOneField(
+        Transaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_planned_transaction",
+        verbose_name="Созданная операция",
+    )
+    name = models.CharField(
+        max_length=150,
+        verbose_name="Название плановой операции",
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=TransactionType.choices,
+        default=TransactionType.EXPENSE,
+        verbose_name="Тип операции",
+    )
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        verbose_name="Сумма",
+    )
+    planned_date = models.DateField(
+        verbose_name="Плановая дата операции",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=PlannedStatus.choices,
+        default=PlannedStatus.PENDING,
+        verbose_name="Статус",
+    )
+    include_in_forecast = models.BooleanField(
+        default=True,
+        verbose_name="Учитывать в прогнозе баланса",
+    )
+    converted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата конвертации",
+    )
+    last_error_code = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Код последней ошибки",
+    )
+    last_error_message = models.TextField(
+        blank=True,
+        verbose_name="Сообщение последней ошибки",
+    )
+    last_failed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последней ошибки",
+    )
+    comment = models.TextField(
+        blank=True,
+        verbose_name="Комментарий",
+    )
+
+    class Meta:
+        verbose_name = "Планируемая операция"
+        verbose_name_plural = "Планируемые операции"
+        ordering = ["planned_date", "name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="ptx_amount_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(type__in=TransactionType.values),
+                name="ptx_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=PlannedStatus.values),
+                name="ptx_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_ptx_user"),
+            models.Index(fields=["user", "status"], name="idx_ptx_user_status"),
+            models.Index(fields=["user", "planned_date"], name="idx_ptx_user_date"),
+            models.Index(fields=["user", "account"], name="idx_ptx_user_account"),
+            models.Index(fields=["user", "category"], name="idx_ptx_user_category"),
+            models.Index(fields=["user", "include_in_forecast"], name="idx_ptx_user_forecast"),
+            models.Index(fields=["user", "status", "planned_date"], name="idx_ptx_status_date"),
+            models.Index(fields=["converted_transaction"], name="idx_ptx_converted_tx"),
+        ]
+
+    @property
+    def signed_amount(self) -> Decimal:
+        if self.type == TransactionType.INCOME:
+            return self.amount
+
+        return -self.amount
+
+    @property
+    def forecast_delta(self) -> Decimal:
+        if not self.include_in_forecast:
+            return Decimal("0.00")
+
+        if self.status not in {
+            PlannedStatus.PENDING,
+            PlannedStatus.CONFIRMED,
+        }:
+            return Decimal("0.00")
+
+        return self.signed_amount
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.account_id and self.user_id and self.account.user_id != self.user_id:
+            errors["account"] = "Счёт должен принадлежать пользователю."
+
+        if self.category_id and self.user_id and self.category.user_id != self.user_id:
+            errors["category"] = "Категория должна принадлежать пользователю."
+
+        if self.category_id and self.type and self.category.type != self.type:
+            errors["category"] = "Тип категории должен совпадать с типом операции."
+
+        if self.account_id and not self.account.is_active:
+            errors["account"] = "Нельзя использовать неактивный счёт."
+
+        if self.account_id and self.account.is_archived:
+            errors["account"] = "Нельзя использовать архивный счёт."
+
+        if self.category_id and not self.category.is_active:
+            errors["category"] = "Нельзя использовать неактивную категорию."
+
+        if self.category_id and self.category.is_archived:
+            errors["category"] = "Нельзя использовать архивную категорию."
+
+        if self.type not in TransactionType.values:
+            errors["type"] = "Недопустимый тип операции."
+
+        if self.status not in PlannedStatus.values:
+            errors["status"] = "Недопустимый статус плановой операции."
+
+        if (
+            self.converted_transaction_id
+            and self.user_id
+            and self.converted_transaction.user_id != self.user_id
+        ):
+            errors["converted_transaction"] = (
+                "Созданная операция должна принадлежать пользователю."
+            )
+
+        if (
+            self.converted_transaction_id
+            and self.account_id
+            and self.converted_transaction.account_id != self.account_id
+        ):
+            errors["converted_transaction"] = (
+                "Созданная операция должна относиться к тому же счёту."
+            )
+
+        if (
+            self.converted_transaction_id
+            and self.category_id
+            and self.converted_transaction.category_id != self.category_id
+        ):
+            errors["converted_transaction"] = (
+                "Созданная операция должна относиться к той же категории."
+            )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self) -> str:
+        return f"{self.name}: {self.amount}"
+

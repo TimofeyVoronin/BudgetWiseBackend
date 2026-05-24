@@ -1,14 +1,219 @@
+import uuid
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 
 
+def user_avatar_upload_to(instance, filename: str) -> str:
+    suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    return f"avatars/user_{instance.pk or 'new'}/{uuid.uuid4().hex}.{suffix}"
+
+
+
 class User(AbstractUser):
     email = models.EmailField(unique=True)
+    middle_name = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Отчество",
+    )
+    phone = models.CharField(
+        max_length=32,
+        blank=True,
+        verbose_name="Телефон",
+    )
+    city = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="Город",
+    )
+    bio = models.TextField(
+        blank=True,
+        verbose_name="Краткое описание",
+    )
+
+    avatar = models.FileField(
+        upload_to=user_avatar_upload_to,
+        null=True,
+        blank=True,
+        verbose_name="Аватар",
+    )
 
     def __str__(self) -> str:
         return self.email or self.username
+
+    @property
+    def full_name(self) -> str:
+        parts = [self.last_name, self.first_name, self.middle_name]
+        full_name = " ".join(part for part in parts if part).strip()
+        return full_name or self.username or self.email
+
+
+class UserProfileAuditAction(models.TextChoices):
+    PROFILE_UPDATED = "profile_updated", "Профиль обновлён"
+    NAME_CHANGED = "name_changed", "ФИО изменено"
+    EMAIL_CHANGED = "email_changed", "Email изменён"
+    PHONE_CHANGED = "phone_changed", "Телефон изменён"
+    CITY_CHANGED = "city_changed", "Город изменён"
+    BIO_CHANGED = "bio_changed", "Описание изменено"
+    AVATAR_UPLOADED = "avatar_uploaded", "Аватар загружен"
+    AVATAR_DELETED = "avatar_deleted", "Аватар удалён"
+
+
+class UserProfileAuditLog(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="profile_audit_logs",
+        verbose_name="Пользователь",
+    )
+    action = models.CharField(
+        max_length=40,
+        choices=UserProfileAuditAction.choices,
+        verbose_name="Действие",
+    )
+    changed_fields = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Изменённые поля",
+    )
+    old_values = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Старые значения",
+    )
+    new_values = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Новые значения",
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Метаданные",
+    )
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        verbose_name="IP адрес",
+    )
+    user_agent = models.TextField(
+        blank=True,
+        verbose_name="User-Agent",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания",
+    )
+
+    class Meta:
+        verbose_name = "Аудит профиля пользователя"
+        verbose_name_plural = "Аудит профилей пользователей"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["user", "created_at"], name="idx_prof_audit_user_time"),
+            models.Index(fields=["action"], name="idx_prof_audit_action"),
+        ]
+
+    def clean(self) -> None:
+        if isinstance(self.action, str):
+            self.action = self.action.strip()
+
+        if self.action not in UserProfileAuditAction.values:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"action": "Недопустимое действие аудита профиля."})
+
+        if isinstance(self.user_agent, str):
+            self.user_agent = self.user_agent.strip()[:1000]
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.action}: user={self.user_id}"
+
+
+class AppDateFormat(models.TextChoices):
+    DD_MM_YYYY = "DD.MM.YYYY", "ДД.ММ.ГГГГ"
+    YYYY_MM_DD = "YYYY-MM-DD", "ГГГГ-ММ-ДД"
+    MM_DD_YYYY = "MM/DD/YYYY", "ММ/ДД/ГГГГ"
+
+
+class AppNumberFormat(models.TextChoices):
+    RU_RU = "ru-RU", "Русский формат"
+    EN_US = "en-US", "Английский формат"
+
+
+class UserAppSettings(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="app_settings",
+        verbose_name="Пользователь",
+    )
+    timezone = models.CharField(
+        max_length=64,
+        default="Asia/Krasnoyarsk",
+        verbose_name="Часовой пояс",
+    )
+    date_format = models.CharField(
+        max_length=20,
+        choices=AppDateFormat.choices,
+        default=AppDateFormat.DD_MM_YYYY,
+        verbose_name="Формат даты",
+    )
+    number_format = models.CharField(
+        max_length=20,
+        choices=AppNumberFormat.choices,
+        default=AppNumberFormat.RU_RU,
+        verbose_name="Формат чисел",
+    )
+    default_currency = models.CharField(
+        max_length=3,
+        default="RUB",
+        verbose_name="Валюта по умолчанию",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания",
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Дата обновления",
+    )
+
+    class Meta:
+        verbose_name = "Настройки приложения пользователя"
+        verbose_name_plural = "Настройки приложения пользователей"
+        indexes = [
+            models.Index(fields=["user"], name="idx_appset_user"),
+            models.Index(fields=["default_currency"], name="idx_appset_currency"),
+        ]
+
+    def clean(self) -> None:
+        self.timezone = str(self.timezone or "").strip()
+        self.default_currency = str(self.default_currency or "").strip().upper()
+
+        if self.date_format not in AppDateFormat.values:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"date_format": "Недопустимый формат даты."})
+
+        if self.number_format not in AppNumberFormat.values:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"number_format": "Недопустимый формат чисел."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"App settings for user_id={self.user_id}"
 
 
 class PasswordResetToken(models.Model):
