@@ -144,8 +144,9 @@ class PwaPushSubscriptionTestView(APIView):
         operation_id="pwa_push_subscription_test_create",
         summary="Отправить тестовое push-уведомление",
         description=(
-            "Проверяет сохранённую push-подписку. На этапе BUD-1133 endpoint возвращает "
-            "контролируемый ответ о том, что реальный push-провайдер ещё не подключён."
+            "Отправляет тестовое push-уведомление через Web Push provider, если "
+            "PWA_PUSH_SEND_ENABLED=True и VAPID-ключи настроены. Если отправка отключена, "
+            "возвращает контролируемый ответ без внешнего запроса."
         ),
         parameters=[
             OpenApiParameter(

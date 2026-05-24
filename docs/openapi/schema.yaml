@@ -8062,6 +8062,7 @@ paths:
                     pushSubscriptionsEnabled: true
                     pushDeliveryEnabled: false
                     backgroundSyncEnabled: true
+                    pushProviderConfigured: false
                     supportedPushProvider: web_push
                     vapidPublicKey: ''
                     maxSubscriptionsPerUser: 10
@@ -8219,9 +8220,9 @@ paths:
   /api/v1/pwa/push-subscriptions/{id}/test/:
     post:
       operationId: pwa_push_subscription_test_create
-      description: Проверяет сохранённую push-подписку. На этапе BUD-1133 endpoint
-        возвращает контролируемый ответ о том, что реальный push-провайдер ещё не
-        подключён.
+      description: Отправляет тестовое push-уведомление через Web Push provider, если
+        PWA_PUSH_SEND_ENABLED=True и VAPID-ключи настроены. Если отправка отключена,
+        возвращает контролируемый ответ без внешнего запроса.
       summary: Отправить тестовое push-уведомление
       parameters:
       - in: path
@@ -15513,6 +15514,8 @@ components:
           type: array
           items:
             type: string
+        pushProviderConfigured:
+          type: boolean
         endpoints:
           type: object
           additionalProperties:
@@ -15522,6 +15525,7 @@ components:
       - endpoints
       - maxSubscriptionsPerUser
       - pushDeliveryEnabled
+      - pushProviderConfigured
       - pushSubscriptionsEnabled
       - supportedEvents
       - supportedPushProvider
@@ -15730,6 +15734,9 @@ components:
           type: string
         message:
           type: string
+        statusCode:
+          type: integer
+          nullable: true
       required:
       - provider
       - sent

@@ -16,6 +16,7 @@ class PwaMetaSerializer(serializers.Serializer):
     vapidPublicKey = serializers.CharField(allow_blank=True)
     maxSubscriptionsPerUser = serializers.IntegerField()
     supportedEvents = serializers.ListField(child=serializers.CharField())
+    pushProviderConfigured = serializers.BooleanField()
     endpoints = serializers.DictField(child=serializers.CharField())
 
 
@@ -115,6 +116,7 @@ class PwaPushSubscriptionTestResponseSerializer(serializers.Serializer):
     provider = serializers.CharField()
     code = serializers.CharField(required=False)
     message = serializers.CharField(required=False)
+    statusCode = serializers.IntegerField(required=False, allow_null=True)
 
 
 PWA_SUPPORTED_EVENTS = [
@@ -132,6 +134,7 @@ PWA_META_EXAMPLE = OpenApiExample(
         "pushSubscriptionsEnabled": True,
         "pushDeliveryEnabled": False,
         "backgroundSyncEnabled": True,
+        "pushProviderConfigured": False,
         "supportedPushProvider": "web_push",
         "vapidPublicKey": "",
         "maxSubscriptionsPerUser": 10,

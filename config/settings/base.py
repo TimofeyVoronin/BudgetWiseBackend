@@ -95,6 +95,10 @@ PWA_BACKGROUND_SYNC_RETRY_SECONDS = env.int(
     "PWA_BACKGROUND_SYNC_RETRY_SECONDS",
     default=30,
 )
+PWA_PUSH_TTL_SECONDS = env.int(
+    "PWA_PUSH_TTL_SECONDS",
+    default=60,
+)
 
 
 EMAIL_BACKEND = env(

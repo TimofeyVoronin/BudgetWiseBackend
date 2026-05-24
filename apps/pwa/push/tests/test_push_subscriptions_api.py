@@ -280,3 +280,99 @@ class PwaPushSubscriptionAPITests(PwaAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["sent"])
         self.assertEqual(response.data["code"], "push_subscription_inactive")
+
+    @override_settings(
+        PWA_PUSH_SEND_ENABLED=True,
+        PWA_VAPID_PRIVATE_KEY="test-private-key",
+        PWA_VAPID_SUBJECT="mailto:test@example.com",
+        PWA_PUSH_TTL_SECONDS=120,
+    )
+    def test_test_push_subscription_sends_web_push_when_provider_enabled(self):
+        from unittest.mock import patch
+
+        subscription = PwaPushSubscription.objects.create(
+            user=self.user,
+            device_id="own-device",
+            endpoint="https://push.example.test/own",
+            p256dh="own-key",
+            auth="own-auth",
+        )
+
+        with patch("apps.pwa.push.services.webpush") as mocked_webpush:
+            response = self.client.post(
+                f"/api/v1/pwa/push-subscriptions/{subscription.pk}/test/"
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["sent"])
+        self.assertEqual(response.data["provider"], "web_push")
+        self.assertEqual(response.data["code"], "push_sent")
+        mocked_webpush.assert_called_once()
+
+        call_kwargs = mocked_webpush.call_args.kwargs
+        self.assertEqual(call_kwargs["subscription_info"]["endpoint"], subscription.endpoint)
+        self.assertEqual(call_kwargs["subscription_info"]["keys"]["p256dh"], "own-key")
+        self.assertEqual(call_kwargs["subscription_info"]["keys"]["auth"], "own-auth")
+        self.assertEqual(call_kwargs["vapid_private_key"], "test-private-key")
+        self.assertEqual(call_kwargs["vapid_claims"], {"sub": "mailto:test@example.com"})
+        self.assertEqual(call_kwargs["ttl"], 120)
+        self.assertIn("Тестовое push-уведомление", call_kwargs["data"])
+
+        subscription.refresh_from_db()
+        self.assertTrue(subscription.is_active)
+        self.assertIsNotNone(subscription.last_used_at)
+
+    @override_settings(
+        PWA_PUSH_SEND_ENABLED=True,
+        PWA_VAPID_PRIVATE_KEY="",
+        PWA_VAPID_SUBJECT="mailto:test@example.com",
+    )
+    def test_test_push_subscription_requires_vapid_private_key(self):
+        subscription = PwaPushSubscription.objects.create(
+            user=self.user,
+            device_id="own-device",
+            endpoint="https://push.example.test/own",
+            p256dh="own-key",
+            auth="own-auth",
+        )
+
+        response = self.client.post(f"/api/v1/pwa/push-subscriptions/{subscription.pk}/test/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["sent"])
+        self.assertEqual(response.data["code"], "push_provider_not_configured")
+
+    @override_settings(
+        PWA_PUSH_SEND_ENABLED=True,
+        PWA_VAPID_PRIVATE_KEY="test-private-key",
+        PWA_VAPID_SUBJECT="mailto:test@example.com",
+    )
+    def test_test_push_subscription_deactivates_gone_subscription(self):
+        from unittest.mock import Mock, patch
+
+        class PushGoneError(Exception):
+            def __init__(self):
+                super().__init__("gone")
+                self.response = Mock(status_code=410)
+
+        subscription = PwaPushSubscription.objects.create(
+            user=self.user,
+            device_id="own-device",
+            endpoint="https://push.example.test/own",
+            p256dh="own-key",
+            auth="own-auth",
+        )
+
+        with patch("apps.pwa.push.services.webpush", side_effect=PushGoneError()):
+            response = self.client.post(
+                f"/api/v1/pwa/push-subscriptions/{subscription.pk}/test/"
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["sent"])
+        self.assertEqual(response.data["code"], "push_subscription_gone")
+        self.assertEqual(response.data["statusCode"], 410)
+
+        subscription.refresh_from_db()
+        self.assertFalse(subscription.is_active)
+        self.assertIsNotNone(subscription.revoked_at)
