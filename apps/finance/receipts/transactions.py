@@ -503,16 +503,38 @@ def _create_transaction(
         receipt_item=receipt_item,
     )
     if receipt_item is not None:
-        TransactionLineItem.objects.create(
+        _copy_receipt_items_to_transaction(
             transaction=transaction,
-            line_number=1,
+            receipt_items=[receipt_item],
+        )
+    else:
+        _copy_receipt_items_to_transaction(
+            transaction=transaction,
+            receipt_items=receipt.items.order_by("line_number", "id"),
+        )
+
+    _apply_account_balance_delta(transaction)
+    return transaction
+
+
+def _copy_receipt_items_to_transaction(
+    *,
+    transaction: Transaction,
+    receipt_items: Iterable[ReceiptItem],
+) -> None:
+    line_items = [
+        TransactionLineItem(
+            transaction=transaction,
+            line_number=index,
             name=receipt_item.name,
             quantity=receipt_item.quantity or Decimal("1.000"),
             unit_price=receipt_item.price or receipt_item.amount,
             amount=receipt_item.amount,
         )
-    _apply_account_balance_delta(transaction)
-    return transaction
+        for index, receipt_item in enumerate(receipt_items, start=1)
+    ]
+    if line_items:
+        TransactionLineItem.objects.bulk_create(line_items)
 
 
 def _apply_account_balance_delta(transaction: Transaction) -> None:

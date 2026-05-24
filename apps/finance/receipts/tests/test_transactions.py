@@ -126,6 +126,11 @@ class ReceiptTransactionCreationTests(TestCase):
         self.account.refresh_from_db()
         self.assertEqual(self.receipt.status, ReceiptStatus.IMPORTED)
         self.assertEqual(self.account.balance, Decimal("8749.50"))
+        self.assertEqual(transaction.line_items.count(), 2)
+        self.assertEqual(
+            list(transaction.line_items.order_by("line_number").values_list("name", "amount")),
+            [("Молоко", Decimal("90.00")), ("Капучино", Decimal("180.00"))],
+        )
 
     def test_create_transactions_by_receipt_items(self):
         result = create_transactions_from_receipt(
@@ -271,6 +276,9 @@ class ReceiptTransactionAPITests(ReceiptTransactionCreationTests):
         self.assertEqual(response.data["receipt"]["status"], ReceiptStatus.IMPORTED)
         self.assertEqual(len(response.data["transactions"]), 1)
         self.assertEqual(response.data["transactions"][0]["receiptId"], self.receipt.id)
+        self.assertEqual(len(response.data["transactions"][0]["line_items"]), 2)
+        self.assertEqual(response.data["transactions"][0]["line_items"][0]["name"], "Молоко")
+        self.assertEqual(response.data["transactions"][0]["line_items"][1]["name"], "Капучино")
 
     def test_create_by_items_endpoint(self):
         self.authenticate()
