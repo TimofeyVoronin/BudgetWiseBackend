@@ -3812,3 +3812,139 @@ class PlannedTransaction(TimeStampedModel):
     def __str__(self) -> str:
         return f"{self.name}: {self.amount}"
 
+
+
+class OfflineSyncOperationStatus(models.TextChoices):
+    APPLIED = "applied", "Применена"
+    DUPLICATE = "duplicate", "Дубликат"
+    FAILED = "failed", "Ошибка"
+    CONFLICT = "conflict", "Конфликт"
+    SKIPPED = "skipped", "Пропущена"
+
+
+class OfflineSyncOperationAction(models.TextChoices):
+    CREATE = "create", "Создание"
+    UPDATE = "update", "Обновление"
+    DELETE = "delete", "Удаление"
+
+
+class OfflineSyncOperation(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="offline_sync_operations",
+        verbose_name="Пользователь",
+    )
+    client_id = models.CharField(
+        max_length=100,
+        verbose_name="ID клиента",
+    )
+    device_id = models.CharField(
+        max_length=150,
+        verbose_name="ID устройства",
+    )
+    client_mutation_id = models.CharField(
+        max_length=150,
+        verbose_name="ID клиентской мутации",
+    )
+    resource = models.CharField(
+        max_length=60,
+        verbose_name="Ресурс",
+    )
+    action = models.CharField(
+        max_length=20,
+        choices=OfflineSyncOperationAction.choices,
+        verbose_name="Действие",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=OfflineSyncOperationStatus.choices,
+        default=OfflineSyncOperationStatus.APPLIED,
+        verbose_name="Статус",
+    )
+    object_id = models.PositiveBigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="ID объекта на сервере",
+    )
+    request_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        verbose_name="Хеш запроса",
+    )
+    response_data = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Сохранённый ответ",
+    )
+    error_data = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Данные ошибки",
+    )
+
+    class Meta:
+        verbose_name = "Операция оффлайн-синхронизации"
+        verbose_name_plural = "Операции оффлайн-синхронизации"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "client_id", "device_id", "client_mutation_id"],
+                name="unique_offline_sync_mutation",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(action__in=OfflineSyncOperationAction.values),
+                name="offline_sync_action_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=OfflineSyncOperationStatus.values),
+                name="offline_sync_status_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "resource"], name="idx_sync_op_user_resource"),
+            models.Index(fields=["user", "status"], name="idx_sync_op_user_status"),
+            models.Index(fields=["user", "client_id", "device_id"], name="idx_sync_op_client_device"),
+            models.Index(fields=["user", "created_at"], name="idx_sync_op_user_created"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.client_mutation_id}: {self.resource}/{self.action}/{self.status}"
+
+
+class OfflineSyncTombstone(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="offline_sync_tombstones",
+        verbose_name="Пользователь",
+    )
+    resource = models.CharField(
+        max_length=60,
+        verbose_name="Ресурс",
+    )
+    object_id = models.PositiveBigIntegerField(
+        verbose_name="ID удалённого объекта",
+    )
+    deleted_at = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="Дата удаления",
+    )
+
+    class Meta:
+        verbose_name = "Маркер удаления для оффлайн-синхронизации"
+        verbose_name_plural = "Маркеры удаления для оффлайн-синхронизации"
+        ordering = ["-deleted_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "resource", "object_id"],
+                name="unique_offline_sync_tombstone",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "resource", "deleted_at"], name="idx_sync_tomb_user_res_date"),
+            models.Index(fields=["user", "deleted_at"], name="idx_sync_tomb_user_date"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.resource}:{self.object_id} deleted at {self.deleted_at}"

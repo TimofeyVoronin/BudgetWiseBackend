@@ -5447,6 +5447,243 @@ paths:
               schema:
                 $ref: '#/components/schemas/RecurringScheduleValidationResponse'
           description: ''
+  /api/v1/finance/sync/bootstrap/:
+    get:
+      operationId: finance_sync_bootstrap_retrieve
+      description: Возвращает полный набор выбранных ресурсов для первичного наполнения
+        IndexedDB и read-only snapshots для dashboard/financialCalendar. Цели и отчёты
+        не включаются.
+      summary: Получить начальный снимок данных для оффлайн-режима
+      parameters:
+      - in: query
+        name: calendarMonth
+        schema:
+          type: integer
+        description: Месяц финансового календаря 1-12.
+      - in: query
+        name: calendarYear
+        schema:
+          type: integer
+        description: Год финансового календаря.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта dashboard.
+      - in: query
+        name: month
+        schema:
+          type: string
+        description: Месяц динамики dashboard в формате YYYY-MM.
+      - in: query
+        name: period
+        schema:
+          type: string
+        description: 'Период dashboard: week, month, year.'
+      - in: query
+        name: resources
+        schema:
+          type: string
+        description: CSV-список ресурсов, например accounts,transactions,dashboard,financialCalendar.
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncBootstrap'
+          description: ''
+  /api/v1/finance/sync/conflicts/resolve/:
+    post:
+      operationId: finance_sync_conflict_resolve_create
+      description: Применяет выбранную стратегию разрешения конфликта для серверной
+        записи. server_wins оставляет серверную версию без изменений, client_wins
+        применяет клиентский payload, merge применяет вручную собранный payload после
+        выбора полей на фронте.
+      summary: Разрешить конфликт оффлайн-синхронизации
+      tags:
+      - finance-sync
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncConflictResolveRequestRequest'
+            examples:
+              РучнойMergeОперации:
+                value:
+                  resource: transactions
+                  serverId: 12
+                  strategy: merge
+                  payload:
+                    description: Итоговое описание после ручного merge
+                    amount: '120.00'
+                summary: Ручной merge операции
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SyncConflictResolveRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SyncConflictResolveRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncConflictResolveResponse'
+              examples:
+                Ответ:
+                  value:
+                    status: resolved
+                    resource: transactions
+                    serverId: 12
+                    strategy: merge
+                    version: 2026-05-24T13:45:00+0300
+                    data:
+                      id: 12
+                      description: Итоговое описание после ручного merge
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/sync/meta/:
+    get:
+      operationId: finance_sync_meta_retrieve
+      description: Возвращает версию sync-схемы, поддерживаемые ресурсы, read-only
+        snapshots и максимально допустимый размер batch-запроса.
+      summary: Получить параметры оффлайн-синхронизации
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncMeta'
+              examples:
+                Meta:
+                  value:
+                    schemaVersion: 1
+                    serverTime: 2026-05-24T13:30:00+0300
+                    supportedResources:
+                    - accounts
+                    - categories
+                    - transactions
+                    readOnlySnapshots:
+                    - dashboard
+                    - financialCalendar
+                    supportedActions:
+                    - create
+                    - update
+                    - delete
+                    maxBatchSize: 100
+          description: ''
+  /api/v1/finance/sync/pull/:
+    get:
+      operationId: finance_sync_pull_retrieve
+      description: Возвращает upserted/deleted по выбранным ресурсам после параметра
+        since. Dashboard и финансовый календарь возвращаются как свежие snapshots.
+      summary: Получить изменения после последней синхронизации
+      parameters:
+      - in: query
+        name: resources
+        schema:
+          type: string
+        description: CSV-список ресурсов.
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date-time
+        description: syncToken или ISO datetime последней синхронизации.
+        required: true
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPull'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/finance/sync/push/:
+    post:
+      operationId: finance_sync_push_create
+      description: Принимает пачку create/update/delete операций, проверяет корректность
+        batch-запроса, защищает от дублей по clientMutationId и локальному clientId,
+        отклоняет повреждённые операции без падения всего запроса и возвращает результат
+        по каждой операции.
+      summary: Отправить batch оффлайн-изменений на сервер
+      tags:
+      - finance-sync
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequestRequest'
+            examples:
+              СозданиеОперацииИзОффлайна:
+                value:
+                  clientId: web-pwa
+                  deviceId: browser-device-id
+                  baseSyncToken: 2026-05-24T12:00:00+0300
+                  operations:
+                  - clientMutationId: uuid-1
+                    resource: transactions
+                    action: create
+                    clientId: local-transaction-1
+                    clientUpdatedAt: 2026-05-24T13:00:00+0300
+                    payload:
+                      account: 1
+                      category: 1
+                      type: expense
+                      amount: '110.00'
+                      operation_date: '2026-05-24'
+                      description: Оффлайн операция
+                summary: Создание операции из оффлайна
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPushResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/v1/finance/tags/:
     get:
       operationId: finance_tags_list
@@ -8415,6 +8652,16 @@ components:
       - icon
       - id
       - name
+    ActionEnum:
+      enum:
+      - create
+      - update
+      - delete
+      type: string
+      description: |-
+        * `create` - create
+        * `update` - update
+        * `delete` - delete
     AddCurrencyFromCatalogRequest:
       type: object
       properties:
@@ -15449,6 +15696,260 @@ components:
       required:
       - channels
       - sent
+    StrategyEnum:
+      enum:
+      - server_wins
+      - client_wins
+      - merge
+      type: string
+      description: |-
+        * `server_wins` - server_wins
+        * `client_wins` - client_wins
+        * `merge` - merge
+    SyncBootstrap:
+      type: object
+      properties:
+        serverTime:
+          type: string
+          format: date-time
+        syncToken:
+          type: string
+          format: date-time
+        resources:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              additionalProperties: {}
+        snapshots:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: {}
+      required:
+      - resources
+      - serverTime
+      - syncToken
+    SyncConflictResolveRequestRequest:
+      type: object
+      properties:
+        resource:
+          type: string
+          minLength: 1
+          maxLength: 60
+        serverId:
+          type: integer
+          minimum: 1
+        strategy:
+          $ref: '#/components/schemas/StrategyEnum'
+        payload:
+          type: object
+          additionalProperties: {}
+      required:
+      - resource
+      - serverId
+      - strategy
+    SyncConflictResolveResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        resource:
+          type: string
+        serverId:
+          type: integer
+        strategy:
+          type: string
+        version:
+          type: string
+          format: date-time
+          nullable: true
+        data:
+          type: object
+          additionalProperties: {}
+      required:
+      - data
+      - resource
+      - serverId
+      - status
+      - strategy
+    SyncMeta:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        serverTime:
+          type: string
+          format: date-time
+        supportedResources:
+          type: array
+          items:
+            type: string
+        readOnlySnapshots:
+          type: array
+          items:
+            type: string
+        supportedActions:
+          type: array
+          items:
+            type: string
+        conflictStrategies:
+          type: array
+          items:
+            type: string
+        maxBatchSize:
+          type: integer
+      required:
+      - maxBatchSize
+      - readOnlySnapshots
+      - schemaVersion
+      - serverTime
+      - supportedActions
+      - supportedResources
+    SyncPull:
+      type: object
+      properties:
+        serverTime:
+          type: string
+          format: date-time
+        syncToken:
+          type: string
+          format: date-time
+        changes:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SyncResourceChanges'
+        snapshots:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: {}
+      required:
+      - changes
+      - serverTime
+      - syncToken
+    SyncPushOperationRequest:
+      type: object
+      properties:
+        clientMutationId:
+          type: string
+          minLength: 1
+          maxLength: 150
+        resource:
+          type: string
+          minLength: 1
+          maxLength: 60
+        action:
+          $ref: '#/components/schemas/ActionEnum'
+        clientId:
+          type: string
+          nullable: true
+          maxLength: 150
+        serverId:
+          type: integer
+          minimum: 1
+          nullable: true
+        clientUpdatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        baseVersion:
+          type: string
+          format: date-time
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: {}
+      required:
+      - action
+      - clientMutationId
+      - resource
+    SyncPushRequestRequest:
+      type: object
+      properties:
+        clientId:
+          type: string
+          minLength: 1
+          maxLength: 100
+        deviceId:
+          type: string
+          minLength: 1
+          maxLength: 150
+        baseSyncToken:
+          type: string
+          format: date-time
+          nullable: true
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncPushOperationRequest'
+      required:
+      - clientId
+      - deviceId
+      - operations
+    SyncPushResponse:
+      type: object
+      properties:
+        serverTime:
+          type: string
+          format: date-time
+        syncToken:
+          type: string
+          format: date-time
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncPushResult'
+      required:
+      - results
+      - serverTime
+      - syncToken
+    SyncPushResult:
+      type: object
+      properties:
+        clientMutationId:
+          type: string
+        resource:
+          type: string
+        action:
+          type: string
+        status:
+          type: string
+        clientId:
+          type: string
+          nullable: true
+        serverId:
+          type: integer
+          nullable: true
+        version:
+          type: string
+          format: date-time
+          nullable: true
+        data:
+          type: object
+          additionalProperties: {}
+        error:
+          type: object
+          additionalProperties: {}
+      required:
+      - action
+      - clientMutationId
+      - resource
+      - status
+    SyncResourceChanges:
+      type: object
+      properties:
+        upserted:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        deleted:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
     Tag:
       type: object
       properties:
@@ -17119,6 +17620,10 @@ tags:
 - name: finance-dashboard
   description: 'Главный дашборд: агрегированные показатели по счетам, доходам, расходам,
     последним операциям и категориям расходов.'
+- name: finance-sync
+  description: 'Оффлайн-синхронизация: meta-параметры, начальный снимок данных, получение
+    изменений после последней синхронизации и batch-отправка оффлайн-операций с идемпотентностью
+    по clientMutationId.'
 - name: finance-calendar
   description: 'Финансовый календарь: месячная сетка, события доходов и расходов,
     плановые операции, дневные балансы, прогноз остатка, риски кассового разрыва и

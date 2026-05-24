@@ -65,6 +65,12 @@ router.register("transactions", TransactionViewSet, basename="transaction")
 urlpatterns = [
 
     path(
+        "sync/",
+        include("apps.finance.sync.urls"),
+        name="sync",
+    ),
+
+    path(
         "calculators/",
         CalculatorsHubView.as_view(),
         name="calculators-hub",
