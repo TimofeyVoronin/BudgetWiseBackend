@@ -19,6 +19,8 @@ from rest_framework.views import APIView
 from apps.finance.sync.serializers import (
     SyncBootstrapSerializer,
     SyncMetaSerializer,
+    SyncConflictResolveRequestSerializer,
+    SyncConflictResolveResponseSerializer,
     SyncPullSerializer,
     SyncPushRequestSerializer,
     SyncPushResponseSerializer,
@@ -30,6 +32,7 @@ from apps.finance.sync.services import (
     build_pull_payload,
     build_sync_meta,
     parse_resources_query,
+    resolve_conflict,
 )
 
 
@@ -261,3 +264,61 @@ class SyncPushView(APIView):
             operations=data["operations"],
         )
         return Response(payload, status=status.HTTP_200_OK)
+
+class SyncConflictResolveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_conflict_resolve_create",
+        summary="Разрешить конфликт оффлайн-синхронизации",
+        description=(
+            "Применяет выбранную стратегию разрешения конфликта для серверной записи. "
+            "server_wins оставляет серверную версию без изменений, client_wins применяет "
+            "клиентский payload, merge применяет вручную собранный payload после выбора полей на фронте."
+        ),
+        request=SyncConflictResolveRequestSerializer,
+        responses={200: SyncConflictResolveResponseSerializer, 400: OpenApiTypes.OBJECT},
+        examples=[
+            OpenApiExample(
+                "Ручной merge операции",
+                request_only=True,
+                value={
+                    "resource": "transactions",
+                    "serverId": 12,
+                    "strategy": "merge",
+                    "payload": {
+                        "description": "Итоговое описание после ручного merge",
+                        "amount": "120.00",
+                    },
+                },
+            ),
+            OpenApiExample(
+                "Ответ",
+                response_only=True,
+                value={
+                    "status": "resolved",
+                    "resource": "transactions",
+                    "serverId": 12,
+                    "strategy": "merge",
+                    "version": "2026-05-24T13:45:00+0300",
+                    "data": {"id": 12, "description": "Итоговое описание после ручного merge"},
+                },
+            ),
+        ],
+    )
+    def post(self, request):
+        serializer = SyncConflictResolveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        payload = resolve_conflict(
+            user=request.user,
+            request=request,
+            resource=data["resource"],
+            server_id=data["serverId"],
+            strategy=data["strategy"],
+            payload=data.get("payload") or {},
+        )
+        return Response(payload, status=status.HTTP_200_OK)
+

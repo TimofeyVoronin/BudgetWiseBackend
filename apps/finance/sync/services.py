@@ -84,6 +84,15 @@ SYNC_STATUS_SKIPPED = OfflineSyncOperationStatus.SKIPPED
 SUPPORTED_ACTIONS = [SYNC_ACTION_CREATE, SYNC_ACTION_UPDATE, SYNC_ACTION_DELETE]
 READ_ONLY_SNAPSHOTS = ["dashboard", "financialCalendar"]
 
+SYNC_CONFLICT_STRATEGY_SERVER_WINS = "server_wins"
+SYNC_CONFLICT_STRATEGY_CLIENT_WINS = "client_wins"
+SYNC_CONFLICT_STRATEGY_MERGE = "merge"
+SYNC_CONFLICT_STRATEGIES = [
+    SYNC_CONFLICT_STRATEGY_SERVER_WINS,
+    SYNC_CONFLICT_STRATEGY_CLIENT_WINS,
+    SYNC_CONFLICT_STRATEGY_MERGE,
+]
+
 
 @dataclass(frozen=True)
 class SyncResourceConfig:
@@ -303,6 +312,7 @@ def build_sync_meta() -> dict[str, Any]:
         "supportedResources": SUPPORTED_RESOURCES,
         "readOnlySnapshots": READ_ONLY_SNAPSHOTS,
         "supportedActions": SUPPORTED_ACTIONS,
+        "conflictStrategies": SYNC_CONFLICT_STRATEGIES,
         "maxBatchSize": SYNC_MAX_BATCH_SIZE,
     }
 
@@ -1078,7 +1088,12 @@ def detect_conflict(*, config: SyncResourceConfig, instance, operation: dict, re
             status=SYNC_STATUS_CONFLICT,
             server_id=instance.pk,
             version=updated_at,
-            data={"server": serialize_single_resource(config, instance, request=request)},
+            data=build_conflict_data(
+                config=config,
+                instance=instance,
+                operation=operation,
+                request=request,
+            ),
             error={
                 "code": "sync_conflict",
                 "message": "Объект был изменён на сервере после последней синхронизации.",
@@ -1088,6 +1103,140 @@ def detect_conflict(*, config: SyncResourceConfig, instance, operation: dict, re
 
     return None
 
+
+def build_conflict_data(*, config: SyncResourceConfig, instance, operation: dict, request) -> dict:
+    payload = operation.get("payload") or {}
+    server_data = serialize_single_resource(config, instance, request=request)
+
+    return {
+        "clientData": payload,
+        "serverData": server_data,
+        "baseVersion": operation.get("baseVersion"),
+        "serverVersion": getattr(instance, "updated_at", None),
+        "conflictFields": build_conflict_fields(client_data=payload, server_data=server_data),
+        "availableStrategies": SYNC_CONFLICT_STRATEGIES,
+    }
+
+
+def build_conflict_fields(*, client_data: dict, server_data: dict) -> list[dict]:
+    conflict_fields: list[dict] = []
+
+    for field_name, client_value in client_data.items():
+        if field_name in {"id", "created_at", "updated_at"}:
+            continue
+
+        server_field_name = resolve_server_field_name(field_name, server_data)
+        server_value = server_data.get(server_field_name) if server_field_name else None
+
+        if make_json_safe(client_value) != make_json_safe(server_value):
+            conflict_fields.append(
+                {
+                    "field": field_name,
+                    "serverField": server_field_name or field_name,
+                    "clientValue": make_json_safe(client_value),
+                    "serverValue": make_json_safe(server_value),
+                }
+            )
+
+    return conflict_fields
+
+
+def resolve_server_field_name(field_name: str, server_data: dict) -> str | None:
+    if field_name in server_data:
+        return field_name
+
+    aliases = {
+        "operation_date": "operation_date",
+        "date": "date",
+        "isVisible": "isVisible",
+        "is_visible": "isVisible",
+        "isPrimary": "isPrimary",
+        "is_primary": "isPrimary",
+        "rateToPrimary": "rateToPrimary",
+        "rate_to_primary": "rateToPrimary",
+        "line_items": "line_items",
+        "lineItems": "line_items",
+    }
+
+    alias = aliases.get(field_name)
+    if alias in server_data:
+        return alias
+
+    return None
+
+
+def resolve_conflict(*, user, request, resource: str, server_id: int, strategy: str, payload: dict | None = None) -> dict:
+    if resource not in RESOURCE_CONFIGS:
+        raise serializers.ValidationError({"resource": [f"Ресурс {resource} не поддерживается."]})
+
+    if resource in READ_ONLY_SNAPSHOTS:
+        raise serializers.ValidationError({"resource": ["Read-only snapshots нельзя разрешать как конфликты данных."]})
+
+    if strategy not in SYNC_CONFLICT_STRATEGIES:
+        raise serializers.ValidationError({"strategy": ["Неподдерживаемая стратегия разрешения конфликта."]})
+
+    config = RESOURCE_CONFIGS[resource]
+    if not config.writable:
+        raise serializers.ValidationError({"resource": [f"Ресурс {resource} недоступен для изменения."]})
+
+    try:
+        instance = config.queryset_builder(user).get(pk=server_id)
+    except config.model.DoesNotExist as exc:
+        raise serializers.ValidationError({"serverId": ["Синхронизируемый объект не найден."]}) from exc
+
+    payload = payload or {}
+
+    if strategy == SYNC_CONFLICT_STRATEGY_SERVER_WINS:
+        data = serialize_single_resource(config, instance, request=request)
+        return build_conflict_resolve_result(
+            resource=resource,
+            server_id=instance.pk,
+            strategy=strategy,
+            version=getattr(instance, "updated_at", get_server_time()),
+            data=data,
+        )
+
+    if not payload:
+        raise serializers.ValidationError({"payload": ["Для client_wins и merge нужно передать payload с итоговыми значениями."]})
+
+    with db_transaction.atomic():
+        if resource == "currencies":
+            update_synced_currency(instance=instance, payload=payload)
+            instance.refresh_from_db()
+            updated_instance = instance
+        else:
+            serializer = config.serializer_class(
+                instance,
+                data=payload,
+                partial=True,
+                context={"request": request},
+            )
+            serializer.is_valid(raise_exception=True)
+
+            if config.update_handler:
+                updated_instance = config.update_handler(serializer)
+            else:
+                updated_instance = serializer.save()
+
+    data = serialize_single_resource(config, updated_instance, request=request)
+    return build_conflict_resolve_result(
+        resource=resource,
+        server_id=updated_instance.pk,
+        strategy=strategy,
+        version=getattr(updated_instance, "updated_at", get_server_time()),
+        data=data,
+    )
+
+
+def build_conflict_resolve_result(*, resource: str, server_id: int, strategy: str, version, data: dict) -> dict:
+    return {
+        "status": "resolved",
+        "resource": resource,
+        "serverId": server_id,
+        "strategy": strategy,
+        "version": version,
+        "data": data,
+    }
 
 def persist_operation_result(*, user, client_id: str, device_id: str, operation: dict, request_hash: str, result: dict) -> None:
     safe_result = make_json_safe(result)

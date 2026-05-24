@@ -5496,6 +5496,65 @@ paths:
               schema:
                 $ref: '#/components/schemas/SyncBootstrap'
           description: ''
+  /api/v1/finance/sync/conflicts/resolve/:
+    post:
+      operationId: finance_sync_conflict_resolve_create
+      description: Применяет выбранную стратегию разрешения конфликта для серверной
+        записи. server_wins оставляет серверную версию без изменений, client_wins
+        применяет клиентский payload, merge применяет вручную собранный payload после
+        выбора полей на фронте.
+      summary: Разрешить конфликт оффлайн-синхронизации
+      tags:
+      - finance-sync
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncConflictResolveRequestRequest'
+            examples:
+              РучнойMergeОперации:
+                value:
+                  resource: transactions
+                  serverId: 12
+                  strategy: merge
+                  payload:
+                    description: Итоговое описание после ручного merge
+                    amount: '120.00'
+                summary: Ручной merge операции
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SyncConflictResolveRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SyncConflictResolveRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncConflictResolveResponse'
+              examples:
+                Ответ:
+                  value:
+                    status: resolved
+                    resource: transactions
+                    serverId: 12
+                    strategy: merge
+                    version: 2026-05-24T13:45:00+0300
+                    data:
+                      id: 12
+                      description: Итоговое описание после ручного merge
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/v1/finance/sync/meta/:
     get:
       operationId: finance_sync_meta_retrieve
@@ -15637,6 +15696,16 @@ components:
       required:
       - channels
       - sent
+    StrategyEnum:
+      enum:
+      - server_wins
+      - client_wins
+      - merge
+      type: string
+      description: |-
+        * `server_wins` - server_wins
+        * `client_wins` - client_wins
+        * `merge` - merge
     SyncBootstrap:
       type: object
       properties:
@@ -15662,6 +15731,49 @@ components:
       - resources
       - serverTime
       - syncToken
+    SyncConflictResolveRequestRequest:
+      type: object
+      properties:
+        resource:
+          type: string
+          minLength: 1
+          maxLength: 60
+        serverId:
+          type: integer
+          minimum: 1
+        strategy:
+          $ref: '#/components/schemas/StrategyEnum'
+        payload:
+          type: object
+          additionalProperties: {}
+      required:
+      - resource
+      - serverId
+      - strategy
+    SyncConflictResolveResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        resource:
+          type: string
+        serverId:
+          type: integer
+        strategy:
+          type: string
+        version:
+          type: string
+          format: date-time
+          nullable: true
+        data:
+          type: object
+          additionalProperties: {}
+      required:
+      - data
+      - resource
+      - serverId
+      - status
+      - strategy
     SyncMeta:
       type: object
       properties:
@@ -15679,6 +15791,10 @@ components:
           items:
             type: string
         supportedActions:
+          type: array
+          items:
+            type: string
+        conflictStrategies:
           type: array
           items:
             type: string

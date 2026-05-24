@@ -434,3 +434,126 @@ class OfflineSyncAPITests(FinanceAPITestCase):
         result = response.data["results"][0]
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["error"]["code"], "read_only_snapshot_resource")
+
+    def test_push_conflict_response_contains_manual_resolution_data(self):
+        transaction = self.create_transaction(amount="100.00", description="Серверная версия")
+        base_version = transaction.updated_at
+        Transaction.objects.filter(pk=transaction.pk).update(
+            description="Изменено на сервере",
+            updated_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            "/api/v1/finance/sync/push/",
+            {
+                "clientId": "web-pwa",
+                "deviceId": "browser-1",
+                "operations": [
+                    {
+                        "clientMutationId": "mutation-rich-conflict",
+                        "resource": "transactions",
+                        "action": "update",
+                        "serverId": transaction.pk,
+                        "baseVersion": base_version.isoformat(),
+                        "payload": {
+                            "description": "Клиентская версия",
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.data["results"][0]
+        self.assertEqual(result["status"], "conflict")
+        self.assertEqual(result["error"]["code"], "sync_conflict")
+        self.assertIn("clientData", result["data"])
+        self.assertIn("serverData", result["data"])
+        self.assertIn("conflictFields", result["data"])
+        self.assertIn("server_wins", result["data"]["availableStrategies"])
+        self.assertIn("client_wins", result["data"]["availableStrategies"])
+        self.assertIn("merge", result["data"]["availableStrategies"])
+        self.assertEqual(result["data"]["clientData"]["description"], "Клиентская версия")
+        self.assertEqual(result["data"]["serverData"]["description"], "Изменено на сервере")
+        self.assertEqual(result["data"]["conflictFields"][0]["field"], "description")
+
+    def test_resolve_conflict_server_wins_keeps_server_version(self):
+        transaction = self.create_transaction(amount="100.00", description="Серверная версия")
+
+        response = self.client.post(
+            "/api/v1/finance/sync/conflicts/resolve/",
+            {
+                "resource": "transactions",
+                "serverId": transaction.pk,
+                "strategy": "server_wins",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "resolved")
+        self.assertEqual(response.data["strategy"], "server_wins")
+        self.assertEqual(response.data["data"]["description"], "Серверная версия")
+        transaction.refresh_from_db()
+        self.assertEqual(transaction.description, "Серверная версия")
+
+    def test_resolve_conflict_client_wins_applies_client_payload(self):
+        transaction = self.create_transaction(amount="100.00", description="Серверная версия")
+
+        response = self.client.post(
+            "/api/v1/finance/sync/conflicts/resolve/",
+            {
+                "resource": "transactions",
+                "serverId": transaction.pk,
+                "strategy": "client_wins",
+                "payload": {
+                    "description": "Клиентская версия",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "resolved")
+        self.assertEqual(response.data["strategy"], "client_wins")
+        self.assertEqual(response.data["data"]["description"], "Клиентская версия")
+        transaction.refresh_from_db()
+        self.assertEqual(transaction.description, "Клиентская версия")
+
+    def test_resolve_conflict_merge_applies_manual_payload(self):
+        transaction = self.create_transaction(amount="100.00", description="Серверная версия")
+
+        response = self.client.post(
+            "/api/v1/finance/sync/conflicts/resolve/",
+            {
+                "resource": "transactions",
+                "serverId": transaction.pk,
+                "strategy": "merge",
+                "payload": {
+                    "description": "Ручной merge",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "resolved")
+        self.assertEqual(response.data["strategy"], "merge")
+        self.assertEqual(response.data["data"]["description"], "Ручной merge")
+        transaction.refresh_from_db()
+        self.assertEqual(transaction.description, "Ручной merge")
+
+    def test_resolve_conflict_rejects_read_only_snapshot(self):
+        response = self.client.post(
+            "/api/v1/finance/sync/conflicts/resolve/",
+            {
+                "resource": "dashboard",
+                "serverId": 1,
+                "strategy": "server_wins",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("resource", response.data["error"]["field_errors"])

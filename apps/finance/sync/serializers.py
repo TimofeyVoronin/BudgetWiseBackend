@@ -17,6 +17,7 @@ class SyncMetaSerializer(serializers.Serializer):
     supportedResources = serializers.ListField(child=serializers.CharField())
     readOnlySnapshots = serializers.ListField(child=serializers.CharField())
     supportedActions = serializers.ListField(child=serializers.CharField())
+    conflictStrategies = serializers.ListField(child=serializers.CharField(), required=False)
     maxBatchSize = serializers.IntegerField()
 
 
@@ -110,3 +111,42 @@ class SyncPushResponseSerializer(serializers.Serializer):
     serverTime = serializers.DateTimeField()
     syncToken = serializers.DateTimeField()
     results = SyncPushResultSerializer(many=True)
+
+
+class SyncConflictFieldSerializer(serializers.Serializer):
+    field = serializers.CharField()
+    serverField = serializers.CharField()
+    clientValue = serializers.JSONField(allow_null=True)
+    serverValue = serializers.JSONField(allow_null=True)
+
+
+class SyncConflictDataSerializer(serializers.Serializer):
+    clientData = serializers.DictField()
+    serverData = serializers.DictField()
+    baseVersion = serializers.DateTimeField(allow_null=True, required=False)
+    serverVersion = serializers.DateTimeField(allow_null=True, required=False)
+    conflictFields = SyncConflictFieldSerializer(many=True)
+    availableStrategies = serializers.ListField(child=serializers.CharField())
+
+
+class SyncConflictResolveRequestSerializer(serializers.Serializer):
+    resource = serializers.CharField(max_length=60, trim_whitespace=True)
+    serverId = serializers.IntegerField(min_value=1)
+    strategy = serializers.ChoiceField(choices=["server_wins", "client_wins", "merge"])
+    payload = serializers.DictField(required=False, default=dict)
+
+    def validate(self, attrs):
+        strategy = attrs.get("strategy")
+        payload = attrs.get("payload") or {}
+        if strategy in {"client_wins", "merge"} and not payload:
+            raise serializers.ValidationError({"payload": "Для client_wins и merge нужно передать payload."})
+        return attrs
+
+
+class SyncConflictResolveResponseSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    resource = serializers.CharField()
+    serverId = serializers.IntegerField()
+    strategy = serializers.CharField()
+    version = serializers.DateTimeField(allow_null=True, required=False)
+    data = serializers.DictField()
