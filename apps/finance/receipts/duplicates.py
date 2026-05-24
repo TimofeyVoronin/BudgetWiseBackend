@@ -189,6 +189,61 @@ def register_receipt_from_qr(
     )
 
 
+def update_receipt_from_provider_details(
+    *,
+    receipt: Receipt,
+    provider_details: FiscalReceiptDetails,
+    status: str = ReceiptStatus.FETCHED,
+) -> list:
+    """Update an existing parsed receipt with provider data and remap items."""
+
+    receipt.status = status
+    receipt.provider_name = provider_details.provider
+    receipt.provider_code = provider_details.provider_code
+    receipt.store_name = provider_details.organization_name
+    receipt.seller_inn = provider_details.seller_inn
+    receipt.provider_payload = dict(provider_details.raw_response)
+    receipt.total_amount = provider_details.total_amount or receipt.total_amount
+    receipt.save(
+        update_fields=[
+            "status",
+            "provider_name",
+            "provider_code",
+            "store_name",
+            "seller_inn",
+            "provider_payload",
+            "total_amount",
+            "updated_at",
+        ]
+    )
+
+    from apps.finance.receipts.audit import log_receipt_audit_event
+    from apps.finance.receipts.item_mapper import map_receipt_details_to_items
+
+    log_receipt_audit_event(
+        receipt=receipt,
+        action=ReceiptAuditAction.PROVIDER_FETCH_SUCCESS,
+        status=ReceiptAuditStatus.SUCCESS,
+        message="Существующий чек обновлён данными внешнего провайдера.",
+        metadata={
+            "receiptStatus": receipt.status,
+            "providerCode": receipt.provider_code,
+            "totalAmount": str(receipt.total_amount),
+        },
+    )
+
+    created_items = map_receipt_details_to_items(receipt, provider_details)
+    log_receipt_audit_event(
+        receipt=receipt,
+        action=ReceiptAuditAction.ITEMS_MAPPED,
+        status=ReceiptAuditStatus.SUCCESS,
+        message="Позиции существующего чека сопоставлены с внутренними сущностями.",
+        metadata={"itemsCount": len(created_items)},
+    )
+
+    return created_items
+
+
 def _receipt_kwargs_from_qr(
     *,
     user,

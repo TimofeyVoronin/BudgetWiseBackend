@@ -98,6 +98,26 @@ class ReceiptQRImportAPITests(TestCase):
         self.assertEqual(second.data["receipt"]["id"], first.data["receipt"]["id"])
         self.assertEqual(Receipt.objects.filter(user=self.user).count(), 1)
 
+
+    @patch("apps.finance.receipts.views.get_receipt_provider_client")
+    def test_qr_endpoint_refetches_items_for_existing_parsed_receipt(self, mocked_get_client):
+        self.authenticate()
+        first = self.client.get(self.url, {"qrRaw": VALID_QR, "fetchProvider": "false"})
+        details = normalize_proverkacheka_response(self.provider_payload())
+        mocked_get_client.return_value = MockReceiptProviderClient(receipt=details)
+
+        second = self.client.get(self.url, {"qrRaw": VALID_QR, "fetchProvider": "true"})
+
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertTrue(first.data["created"])
+        self.assertFalse(second.data["created"])
+        self.assertTrue(second.data["isDuplicate"])
+        self.assertEqual(second.data["providerStatus"], "fetched")
+        self.assertEqual(second.data["receipt"]["id"], first.data["receipt"]["id"])
+        self.assertEqual(second.data["receipt"]["status"], ReceiptStatus.FETCHED)
+        self.assertEqual(len(second.data["receipt"]["items"]), 2)
+
     def test_qr_endpoint_rejects_invalid_qr(self):
         self.authenticate()
 

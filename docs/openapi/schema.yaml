@@ -6974,6 +6974,15 @@ paths:
                   tagIds:
                   - 1
                   - 2
+                  line_items:
+                  - name: Молоко
+                    qty: '1.000'
+                    unit_price_rub: '100.00'
+                    sum_rub: '100.00'
+                  - name: Хлеб
+                    qty: '1.000'
+                    unit_price_rub: '50.00'
+                    sum_rub: '50.00'
                 summary: Создание расходной операции
           application/x-www-form-urlencoded:
             schema:
@@ -13913,6 +13922,10 @@ components:
             type: integer
             minimum: 1
           writeOnly: true
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionLineItemRequest'
     PatchedTransactionTemplateRequest:
       type: object
       properties:
@@ -15901,6 +15914,10 @@ components:
           items:
             $ref: '#/components/schemas/TransactionTag'
           readOnly: true
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionLineItem'
         receiptId:
           type: integer
           readOnly: true
@@ -15930,6 +15947,59 @@ components:
       - tags
       - type
       - updated_at
+    TransactionLineItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название позиции
+          maxLength: 255
+        qty:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,9}(?:\.\d{0,3})?$
+        unit_price_rub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        sum_rub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - id
+      - name
+      - qty
+      - sum_rub
+      - unit_price_rub
+    TransactionLineItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название позиции
+          maxLength: 255
+        qty:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,9}(?:\.\d{0,3})?$
+        unit_price_rub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        sum_rub:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+      required:
+      - name
+      - qty
+      - sum_rub
+      - unit_price_rub
     TransactionRequest:
       type: object
       properties:
@@ -15961,6 +16031,10 @@ components:
             type: integer
             minimum: 1
           writeOnly: true
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionLineItemRequest'
       required:
       - account
       - amount

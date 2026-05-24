@@ -14,7 +14,11 @@ from apps.finance.models import (
     ReceiptStatus,
 )
 from apps.finance.receipts.audit import log_receipt_audit_event
-from apps.finance.receipts.duplicates import check_receipt_duplicate, register_receipt_from_qr
+from apps.finance.receipts.duplicates import (
+    check_receipt_duplicate,
+    register_receipt_from_qr,
+    update_receipt_from_provider_details,
+)
 from apps.finance.receipts.provider import ReceiptProviderError, get_receipt_provider_client
 from apps.finance.receipts.qr import ReceiptQRParseError, parse_receipt_qr
 from apps.finance.receipts.serializers import (
@@ -113,17 +117,6 @@ class ReceiptImportByQRView(APIView):
             raise ValidationError(exc.field_errors or {"qrRaw": exc.message}, code=exc.code) from exc
 
         duplicate_check = check_receipt_duplicate(request.user, qr_data)
-        if duplicate_check.existing_receipt is not None:
-            result = register_receipt_from_qr(user=request.user, qr_data=qr_data)
-            response_data = build_receipt_qr_import_response(
-                receipt=result.receipt,
-                created=result.created,
-                is_duplicate=result.is_duplicate,
-                provider_status="skipped",
-                provider_error=None,
-            )
-            return Response(response_data, status=status.HTTP_200_OK)
-
         provider_details = None
         provider_status = "skipped"
         provider_error = None
@@ -139,6 +132,39 @@ class ReceiptImportByQRView(APIView):
                     "message": exc.message,
                     "fieldErrors": exc.field_errors,
                 }
+
+        if duplicate_check.existing_receipt is not None:
+            result = register_receipt_from_qr(user=request.user, qr_data=qr_data)
+            receipt = result.receipt
+
+            if provider_details is not None and not receipt.items.exists():
+                update_receipt_from_provider_details(
+                    receipt=receipt,
+                    provider_details=provider_details,
+                    status=ReceiptStatus.FETCHED,
+                )
+                receipt.refresh_from_db()
+
+            if provider_error is not None:
+                log_receipt_audit_event(
+                    receipt=receipt,
+                    action=ReceiptAuditAction.PROVIDER_FETCH_FAILED,
+                    status=ReceiptAuditStatus.ERROR,
+                    message=provider_error["message"],
+                    metadata={
+                        "code": provider_error["code"],
+                        "fieldErrors": provider_error["fieldErrors"],
+                    },
+                )
+
+            response_data = build_receipt_qr_import_response(
+                receipt=receipt,
+                created=result.created,
+                is_duplicate=result.is_duplicate,
+                provider_status=provider_status,
+                provider_error=provider_error,
+            )
+            return Response(response_data, status=status.HTTP_200_OK)
 
         result = register_receipt_from_qr(
             user=request.user,
