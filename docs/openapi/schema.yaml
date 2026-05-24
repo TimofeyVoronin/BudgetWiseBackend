@@ -5570,8 +5570,10 @@ paths:
   /api/v1/finance/sync/push/:
     post:
       operationId: finance_sync_push_create
-      description: Принимает пачку create/update/delete операций, применяет их идемпотентно
-        по clientMutationId и возвращает результат по каждой операции.
+      description: Принимает пачку create/update/delete операций, проверяет корректность
+        batch-запроса, защищает от дублей по clientMutationId и локальному clientId,
+        отклоняет повреждённые операции без падения всего запроса и возвращает результат
+        по каждой операции.
       summary: Отправить batch оффлайн-изменений на сервер
       tags:
       - finance-sync

@@ -210,8 +210,9 @@ class SyncPushView(APIView):
         operation_id="finance_sync_push_create",
         summary="Отправить batch оффлайн-изменений на сервер",
         description=(
-            "Принимает пачку create/update/delete операций, применяет их идемпотентно по "
-            "clientMutationId и возвращает результат по каждой операции."
+            "Принимает пачку create/update/delete операций, проверяет корректность batch-запроса, "
+            "защищает от дублей по clientMutationId и локальному clientId, отклоняет повреждённые "
+            "операции без падения всего запроса и возвращает результат по каждой операции."
         ),
         request=SyncPushRequestSerializer,
         responses={200: SyncPushResponseSerializer, 400: OpenApiTypes.OBJECT},

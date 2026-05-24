@@ -524,6 +524,27 @@ def apply_single_operation(*, user, request, client_id: str, device_id: str, ope
         saved_response["status"] = SYNC_STATUS_DUPLICATE
         return saved_response
 
+    integrity_error = validate_operation_integrity(operation)
+    if integrity_error is not None:
+        persist_operation_result(
+            user=user,
+            client_id=client_id,
+            device_id=device_id,
+            operation=operation,
+            request_hash=request_hash,
+            result=integrity_error,
+        )
+        return integrity_error
+
+    duplicate_create_result = find_duplicate_create_by_client_id(
+        user=user,
+        client_id=client_id,
+        device_id=device_id,
+        operation=operation,
+    )
+    if duplicate_create_result is not None:
+        return duplicate_create_result
+
     result = execute_operation(user=user, request=request, operation=operation)
     persist_operation_result(
         user=user,
@@ -535,6 +556,155 @@ def apply_single_operation(*, user, request, client_id: str, device_id: str, ope
     )
     return result
 
+
+
+def validate_operation_integrity(operation: dict) -> dict | None:
+    resource = operation["resource"]
+    action = operation["action"]
+    payload = operation.get("payload") or {}
+
+    if resource in READ_ONLY_SNAPSHOTS:
+        return build_result(
+            operation,
+            status=SYNC_STATUS_FAILED,
+            error={
+                "code": "read_only_snapshot_resource",
+                "message": f"Snapshot {resource} доступен только через bootstrap/pull и не принимается в push.",
+                "fieldErrors": {"resource": ["Read-only snapshot нельзя отправлять как изменяемый ресурс."]},
+            },
+        )
+
+    if resource not in RESOURCE_CONFIGS:
+        return build_result(
+            operation,
+            status=SYNC_STATUS_FAILED,
+            error={
+                "code": "unsupported_resource",
+                "message": f"Ресурс {resource} не поддерживается.",
+                "fieldErrors": {"resource": ["Неподдерживаемый ресурс синхронизации."]},
+            },
+        )
+
+    if action == SYNC_ACTION_CREATE:
+        if operation.get("serverId"):
+            return build_result(
+                operation,
+                status=SYNC_STATUS_FAILED,
+                error={
+                    "code": "corrupted_operation",
+                    "message": "Для create-операции нельзя передавать serverId.",
+                    "fieldErrors": {"serverId": ["Для create-операции serverId должен отсутствовать."]},
+                },
+            )
+
+        if not operation.get("clientId"):
+            return build_result(
+                operation,
+                status=SYNC_STATUS_FAILED,
+                error={
+                    "code": "client_id_required",
+                    "message": "Для create-операции нужно передать clientId локальной записи.",
+                    "fieldErrors": {"clientId": ["clientId обязателен для create-операций."]},
+                },
+            )
+
+        if not payload:
+            return build_result(
+                operation,
+                status=SYNC_STATUS_FAILED,
+                error={
+                    "code": "empty_payload",
+                    "message": "Create-операция должна содержать payload.",
+                    "fieldErrors": {"payload": ["payload обязателен для create-операций."]},
+                },
+            )
+
+    if action == SYNC_ACTION_UPDATE:
+        if not operation.get("serverId"):
+            return build_result(
+                operation,
+                status=SYNC_STATUS_FAILED,
+                error={
+                    "code": "server_id_required",
+                    "message": "Для update-операции нужно передать serverId.",
+                    "fieldErrors": {"serverId": ["serverId обязателен для update-операций."]},
+                },
+            )
+
+        if not payload:
+            return build_result(
+                operation,
+                status=SYNC_STATUS_FAILED,
+                error={
+                    "code": "empty_payload",
+                    "message": "Update-операция должна содержать payload с изменениями.",
+                    "fieldErrors": {"payload": ["payload обязателен для update-операций."]},
+                },
+            )
+
+    if action == SYNC_ACTION_DELETE and not operation.get("serverId"):
+        return build_result(
+            operation,
+            status=SYNC_STATUS_FAILED,
+            error={
+                "code": "server_id_required",
+                "message": "Для delete-операции нужно передать serverId.",
+                "fieldErrors": {"serverId": ["serverId обязателен для delete-операций."]},
+            },
+        )
+
+    if action in {SYNC_ACTION_UPDATE, SYNC_ACTION_DELETE}:
+        payload_id = payload.get("id")
+        server_id = operation.get("serverId")
+        if payload_id is not None and str(payload_id) != str(server_id):
+            return build_result(
+                operation,
+                status=SYNC_STATUS_FAILED,
+                error={
+                    "code": "server_id_payload_mismatch",
+                    "message": "serverId операции не совпадает с id внутри payload.",
+                    "fieldErrors": {"payload.id": ["payload.id должен совпадать с serverId."]},
+                },
+            )
+
+    return None
+
+
+def find_duplicate_create_by_client_id(*, user, client_id: str, device_id: str, operation: dict) -> dict | None:
+    if operation["action"] != SYNC_ACTION_CREATE:
+        return None
+
+    client_object_id = operation.get("clientId")
+    if not client_object_id:
+        return None
+
+    existing = (
+        OfflineSyncOperation.objects
+        .filter(
+            user=user,
+            client_id=client_id,
+            device_id=device_id,
+            resource=operation["resource"],
+            action=SYNC_ACTION_CREATE,
+            status=SYNC_STATUS_APPLIED,
+            response_data__clientId=client_object_id,
+        )
+        .exclude(client_mutation_id=operation["clientMutationId"])
+        .order_by("created_at", "id")
+        .first()
+    )
+
+    if not existing:
+        return None
+
+    saved_response = dict(existing.response_data or {})
+    return build_result(
+        operation,
+        status=SYNC_STATUS_DUPLICATE,
+        server_id=saved_response.get("serverId") or existing.object_id,
+        version=saved_response.get("version"),
+        data=saved_response.get("data"),
+    )
 
 def execute_operation(*, user, request, operation: dict) -> dict:
     resource = operation["resource"]

@@ -1,4 +1,9 @@
+import re
+
 from rest_framework import serializers
+
+
+SYNC_CLIENT_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]+$")
 
 
 class SyncResourceChangesSerializer(serializers.Serializer):
@@ -30,10 +35,10 @@ class SyncPullSerializer(serializers.Serializer):
 
 
 class SyncPushOperationSerializer(serializers.Serializer):
-    clientMutationId = serializers.CharField(max_length=150)
-    resource = serializers.CharField(max_length=60)
+    clientMutationId = serializers.CharField(max_length=150, trim_whitespace=True)
+    resource = serializers.CharField(max_length=60, trim_whitespace=True)
     action = serializers.ChoiceField(choices=["create", "update", "delete"])
-    clientId = serializers.CharField(max_length=150, required=False, allow_blank=True, allow_null=True)
+    clientId = serializers.CharField(max_length=150, required=False, allow_blank=True, allow_null=True, trim_whitespace=True)
     serverId = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     clientUpdatedAt = serializers.DateTimeField(required=False, allow_null=True)
     baseVersion = serializers.DateTimeField(required=False, allow_null=True)
@@ -41,13 +46,33 @@ class SyncPushOperationSerializer(serializers.Serializer):
 
 
 class SyncPushRequestSerializer(serializers.Serializer):
-    clientId = serializers.CharField(max_length=100)
-    deviceId = serializers.CharField(max_length=150)
+    clientId = serializers.CharField(max_length=100, trim_whitespace=True)
+    deviceId = serializers.CharField(max_length=150, trim_whitespace=True)
     baseSyncToken = serializers.DateTimeField(required=False, allow_null=True)
     operations = SyncPushOperationSerializer(many=True)
 
+    def validate_clientId(self, value: str) -> str:
+        return self._validate_client_identifier(value, field_name="clientId")
+
+    def validate_deviceId(self, value: str) -> str:
+        return self._validate_client_identifier(value, field_name="deviceId")
+
+    def _validate_client_identifier(self, value: str, *, field_name: str) -> str:
+        if not value:
+            raise serializers.ValidationError("Значение обязательно.")
+
+        if not SYNC_CLIENT_IDENTIFIER_PATTERN.fullmatch(value):
+            raise serializers.ValidationError(
+                "Допустимы только латинские буквы, цифры, точка, подчёркивание, двоеточие и дефис."
+            )
+
+        return value
+
     def validate_operations(self, value):
         max_batch_size = self.context.get("max_batch_size", 100)
+
+        if not value:
+            raise serializers.ValidationError("Batch синхронизации должен содержать хотя бы одну операцию.")
 
         if len(value) > max_batch_size:
             raise serializers.ValidationError(

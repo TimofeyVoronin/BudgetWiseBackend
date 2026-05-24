@@ -197,3 +197,240 @@ class OfflineSyncAPITests(FinanceAPITestCase):
                 object_id=account.pk,
             ).exists()
         )
+
+    def test_push_rejects_empty_operations_batch(self):
+        response = self.client.post(
+            "/api/v1/finance/sync/push/",
+            {
+                "clientId": "web-pwa",
+                "deviceId": "browser-1",
+                "operations": [],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("operations", response.data["error"]["field_errors"])
+
+    def test_push_rejects_duplicate_mutation_ids_inside_batch(self):
+        operation = {
+            "clientMutationId": "same-mutation",
+            "resource": "transactions",
+            "action": "create",
+            "clientId": "local-tx-1",
+            "payload": {
+                "account": self.account.pk,
+                "category": self.expense_category.pk,
+                "type": "expense",
+                "amount": "10.00",
+                "operation_date": self.today.isoformat(),
+            },
+        }
+        response = self.client.post(
+            "/api/v1/finance/sync/push/",
+            {
+                "clientId": "web-pwa",
+                "deviceId": "browser-1",
+                "operations": [operation, {**operation}],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("operations", response.data["error"]["field_errors"])
+
+    def test_push_duplicate_mutation_with_changed_payload_returns_failed(self):
+        payload = {
+            "clientId": "web-pwa",
+            "deviceId": "browser-1",
+            "operations": [
+                {
+                    "clientMutationId": "mutation-reuse",
+                    "resource": "transactions",
+                    "action": "create",
+                    "clientId": "local-tx-reuse",
+                    "payload": {
+                        "account": self.account.pk,
+                        "category": self.expense_category.pk,
+                        "type": "expense",
+                        "amount": "10.00",
+                        "operation_date": self.today.isoformat(),
+                    },
+                }
+            ],
+        }
+        first_response = self.client.post("/api/v1/finance/sync/push/", payload, format="json")
+        payload["operations"][0]["payload"]["amount"] = "20.00"
+        second_response = self.client.post("/api/v1/finance/sync/push/", payload, format="json")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        result = second_response.data["results"][0]
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"]["code"], "duplicate_mutation_payload_mismatch")
+        self.assertEqual(Transaction.objects.filter(amount=Decimal("10.00")).count(), 1)
+        self.assertFalse(Transaction.objects.filter(amount=Decimal("20.00")).exists())
+
+    def test_push_create_requires_local_client_id(self):
+        response = self.client.post(
+            "/api/v1/finance/sync/push/",
+            {
+                "clientId": "web-pwa",
+                "deviceId": "browser-1",
+                "operations": [
+                    {
+                        "clientMutationId": "mutation-without-client-id",
+                        "resource": "transactions",
+                        "action": "create",
+                        "payload": {
+                            "account": self.account.pk,
+                            "category": self.expense_category.pk,
+                            "type": "expense",
+                            "amount": "10.00",
+                            "operation_date": self.today.isoformat(),
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.data["results"][0]
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"]["code"], "client_id_required")
+        self.assertFalse(Transaction.objects.filter(amount=Decimal("10.00")).exists())
+
+    def test_push_create_with_same_client_id_is_treated_as_duplicate(self):
+        first_payload = {
+            "clientId": "web-pwa",
+            "deviceId": "browser-1",
+            "operations": [
+                {
+                    "clientMutationId": "mutation-local-1",
+                    "resource": "transactions",
+                    "action": "create",
+                    "clientId": "local-transaction-duplicate",
+                    "payload": {
+                        "account": self.account.pk,
+                        "category": self.expense_category.pk,
+                        "type": "expense",
+                        "amount": "10.00",
+                        "operation_date": self.today.isoformat(),
+                        "description": "Локальная операция",
+                    },
+                }
+            ],
+        }
+        second_payload = {
+            "clientId": "web-pwa",
+            "deviceId": "browser-1",
+            "operations": [
+                {
+                    "clientMutationId": "mutation-local-2",
+                    "resource": "transactions",
+                    "action": "create",
+                    "clientId": "local-transaction-duplicate",
+                    "payload": {
+                        "account": self.account.pk,
+                        "category": self.expense_category.pk,
+                        "type": "expense",
+                        "amount": "10.00",
+                        "operation_date": self.today.isoformat(),
+                        "description": "Локальная операция",
+                    },
+                }
+            ],
+        }
+
+        first_response = self.client.post("/api/v1/finance/sync/push/", first_payload, format="json")
+        second_response = self.client.post("/api/v1/finance/sync/push/", second_payload, format="json")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(first_response.data["results"][0]["status"], "applied")
+        self.assertEqual(second_response.data["results"][0]["status"], "duplicate")
+        self.assertEqual(Transaction.objects.filter(description="Локальная операция").count(), 1)
+
+    def test_push_update_payload_id_mismatch_returns_failed(self):
+        transaction = self.create_transaction(amount="100.00")
+        response = self.client.post(
+            "/api/v1/finance/sync/push/",
+            {
+                "clientId": "web-pwa",
+                "deviceId": "browser-1",
+                "operations": [
+                    {
+                        "clientMutationId": "mutation-id-mismatch",
+                        "resource": "transactions",
+                        "action": "update",
+                        "serverId": transaction.pk,
+                        "baseVersion": transaction.updated_at.isoformat(),
+                        "payload": {
+                            "id": transaction.pk + 1,
+                            "description": "Некорректное изменение",
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.data["results"][0]
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"]["code"], "server_id_payload_mismatch")
+
+    def test_push_rejects_other_user_server_id_without_500(self):
+        other_transaction = self.create_transaction(
+            user=self.other_user,
+            account=self.other_account,
+            category=self.other_category,
+            amount="100.00",
+        )
+        response = self.client.post(
+            "/api/v1/finance/sync/push/",
+            {
+                "clientId": "web-pwa",
+                "deviceId": "browser-1",
+                "operations": [
+                    {
+                        "clientMutationId": "mutation-other-user",
+                        "resource": "transactions",
+                        "action": "update",
+                        "serverId": other_transaction.pk,
+                        "payload": {"description": "Попытка изменить чужую операцию"},
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.data["results"][0]
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"]["code"], "validation_failed")
+
+    def test_push_read_only_snapshot_returns_failed_result(self):
+        response = self.client.post(
+            "/api/v1/finance/sync/push/",
+            {
+                "clientId": "web-pwa",
+                "deviceId": "browser-1",
+                "operations": [
+                    {
+                        "clientMutationId": "mutation-dashboard",
+                        "resource": "dashboard",
+                        "action": "update",
+                        "serverId": 1,
+                        "payload": {"id": 1},
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.data["results"][0]
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"]["code"], "read_only_snapshot_resource")
