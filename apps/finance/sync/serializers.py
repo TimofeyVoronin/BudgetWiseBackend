@@ -25,6 +25,25 @@ class SyncDomainAreaSerializer(serializers.Serializer):
     notes = serializers.ListField(child=serializers.CharField())
 
 
+
+
+class SyncVersioningSerializer(serializers.Serializer):
+    schemaVersion = serializers.IntegerField()
+    serverTime = serializers.DateTimeField()
+    strategy = serializers.CharField()
+    serverVersionField = serializers.CharField()
+    syncTokenFormat = serializers.CharField()
+    entityVersionFormat = serializers.CharField()
+    etagFormat = serializers.CharField()
+    clientRecordFields = serializers.DictField(child=serializers.CharField())
+    operationFields = serializers.DictField(child=serializers.CharField())
+    conflictDetection = serializers.DictField()
+    tombstones = serializers.DictField()
+    vectorClocks = serializers.DictField()
+    writableResources = serializers.ListField(child=serializers.CharField())
+    readOnlySnapshots = serializers.ListField(child=serializers.CharField())
+
+
 class SyncMetaSerializer(serializers.Serializer):
     schemaVersion = serializers.IntegerField()
     serverTime = serializers.DateTimeField()
@@ -37,6 +56,7 @@ class SyncMetaSerializer(serializers.Serializer):
     outOfScope = SyncDomainAreaSerializer(many=True, required=False)
     supportedActions = serializers.ListField(child=serializers.CharField())
     conflictStrategies = serializers.ListField(child=serializers.CharField(), required=False)
+    versioning = serializers.DictField(required=False)
     maxBatchSize = serializers.IntegerField()
 
 
@@ -134,6 +154,7 @@ class SyncPushResultSerializer(serializers.Serializer):
     clientId = serializers.CharField(allow_blank=True, allow_null=True, required=False)
     serverId = serializers.IntegerField(allow_null=True, required=False)
     version = serializers.DateTimeField(allow_null=True, required=False)
+    serverVersion = serializers.CharField(allow_blank=True, allow_null=True, required=False)
     data = serializers.DictField(required=False)
     error = serializers.DictField(required=False)
 

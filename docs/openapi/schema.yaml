@@ -5746,6 +5746,39 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+  /api/v1/finance/sync/versioning/:
+    get:
+      operationId: finance_sync_versioning_retrieve
+      description: 'Возвращает правила версионирования записей для IndexedDB и sync
+        API: serverVersion на основе updated_at, syncToken, ETag/revision-формат,
+        поля клиентской записи и правила определения конфликтов. Векторные часы в
+        MVP не используются.'
+      summary: Получить формат версионирования offline-first данных
+      tags:
+      - finance-sync
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncVersioning'
+              examples:
+                ФорматВерсий:
+                  value:
+                    schemaVersion: 1
+                    serverTime: 2026-05-24T13:30:00+0300
+                    strategy: timestamp_based
+                    serverVersionField: updated_at
+                    syncTokenFormat: iso8601_datetime
+                    entityVersionFormat: '{resource}:{serverId}:{serverVersion}'
+                    etagFormat: W/"sha256:{hash}"
+                    vectorClocks:
+                      supported: false
+                      reason: В MVP используется timestamp-based versioning.
+                  summary: Формат версий
+          description: ''
   /api/v1/finance/tags/:
     get:
       operationId: finance_tags_list
@@ -15973,6 +16006,9 @@ components:
           type: array
           items:
             type: string
+        versioning:
+          type: object
+          additionalProperties: {}
         maxBatchSize:
           type: integer
       required:
@@ -16101,6 +16137,9 @@ components:
           type: string
           format: date-time
           nullable: true
+        serverVersion:
+          type: string
+          nullable: true
         data:
           type: object
           additionalProperties: {}
@@ -16125,6 +16164,64 @@ components:
           items:
             type: object
             additionalProperties: {}
+    SyncVersioning:
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+        serverTime:
+          type: string
+          format: date-time
+        strategy:
+          type: string
+        serverVersionField:
+          type: string
+        syncTokenFormat:
+          type: string
+        entityVersionFormat:
+          type: string
+        etagFormat:
+          type: string
+        clientRecordFields:
+          type: object
+          additionalProperties:
+            type: string
+        operationFields:
+          type: object
+          additionalProperties:
+            type: string
+        conflictDetection:
+          type: object
+          additionalProperties: {}
+        tombstones:
+          type: object
+          additionalProperties: {}
+        vectorClocks:
+          type: object
+          additionalProperties: {}
+        writableResources:
+          type: array
+          items:
+            type: string
+        readOnlySnapshots:
+          type: array
+          items:
+            type: string
+      required:
+      - clientRecordFields
+      - conflictDetection
+      - entityVersionFormat
+      - etagFormat
+      - operationFields
+      - readOnlySnapshots
+      - schemaVersion
+      - serverTime
+      - serverVersionField
+      - strategy
+      - syncTokenFormat
+      - tombstones
+      - vectorClocks
+      - writableResources
     Tag:
       type: object
       properties:

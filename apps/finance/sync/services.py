@@ -65,6 +65,11 @@ from apps.finance.sync.domains import (
     get_read_only_snapshots,
     get_writable_resources,
 )
+from apps.finance.sync.versioning import (
+    build_record_sync_metadata,
+    build_versioning_payload,
+    normalize_sync_datetime,
+)
 from apps.finance.notifications.serializers import NotificationSerializer
 from apps.finance.planned_transactions.serializers import PlannedTransactionSerializer
 from apps.finance.receipts.serializers import ReceiptBriefSerializer
@@ -327,6 +332,7 @@ def build_sync_meta() -> dict[str, Any]:
         "outOfScope": domain_registry["outOfScope"],
         "supportedActions": SUPPORTED_ACTIONS,
         "conflictStrategies": SYNC_CONFLICT_STRATEGIES,
+        "versioning": build_versioning_payload(),
         "maxBatchSize": SYNC_MAX_BATCH_SIZE,
     }
 
@@ -344,6 +350,14 @@ def build_sync_domains_payload() -> dict[str, Any]:
         "readOnlySnapshots": READ_ONLY_SNAPSHOTS,
         "excludedResources": get_excluded_resources(),
         **domain_registry,
+    }
+
+
+def build_sync_versioning_contract() -> dict[str, Any]:
+    return {
+        "schemaVersion": SYNC_SCHEMA_VERSION,
+        "serverTime": get_server_time(),
+        **build_versioning_payload(),
     }
 
 
@@ -386,17 +400,36 @@ def serialize_resource(resource: str, *, user, request, since=None) -> list[dict
     if since is not None and hasattr(config.model, "updated_at"):
         queryset = queryset.filter(updated_at__gt=since)
 
+    instances = list(queryset)
     serializer = config.serializer_class(
-        queryset,
+        instances,
         many=True,
         context={"request": request},
     )
-    return list(serializer.data)
+
+    records: list[dict] = []
+    for instance, serialized in zip(instances, serializer.data, strict=False):
+        data = dict(serialized)
+        server_version = getattr(instance, "updated_at", None)
+        data["_sync"] = build_record_sync_metadata(
+            resource=config.name,
+            server_id=getattr(instance, "pk", None),
+            server_version=server_version,
+        )
+        records.append(data)
+    return records
 
 
 def serialize_single_resource(config: SyncResourceConfig, instance, *, request) -> dict:
     serializer = config.serializer_class(instance, context={"request": request})
-    return dict(serializer.data)
+    data = dict(serializer.data)
+    server_version = getattr(instance, "updated_at", None)
+    data["_sync"] = build_record_sync_metadata(
+        resource=config.name,
+        server_id=getattr(instance, "pk", None),
+        server_version=server_version,
+    )
+    return data
 
 
 def build_deleted_items(resource: str, *, user, since=None) -> list[dict]:
@@ -408,6 +441,12 @@ def build_deleted_items(resource: str, *, user, since=None) -> list[dict]:
         {
             "id": str(item.object_id),
             "deletedAt": item.deleted_at,
+            "_sync": build_record_sync_metadata(
+                resource=resource,
+                server_id=item.object_id,
+                server_version=item.deleted_at,
+                deleted=True,
+            ),
         }
         for item in queryset.order_by("deleted_at", "id")
     ]
@@ -1318,6 +1357,7 @@ def build_result(operation: dict, *, status: str, server_id=None, version=None, 
         "clientId": operation.get("clientId"),
         "serverId": server_id,
         "version": version,
+        "serverVersion": normalize_sync_datetime(version),
     }
 
     if data is not None:

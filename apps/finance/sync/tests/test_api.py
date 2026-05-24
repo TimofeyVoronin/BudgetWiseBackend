@@ -68,6 +68,38 @@ class OfflineSyncAPITests(FinanceAPITestCase):
         self.assertIn("financialCalendar", analytics_area["snapshots"])
         self.assertEqual(analytics_area["actions"], [])
 
+
+    def test_versioning_endpoint_returns_timestamp_based_contract(self):
+        response = self.client.get("/api/v1/finance/sync/versioning/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["schemaVersion"], 1)
+        self.assertEqual(response.data["strategy"], "timestamp_based")
+        self.assertEqual(response.data["serverVersionField"], "updated_at")
+        self.assertEqual(response.data["syncTokenFormat"], "iso8601_datetime")
+        self.assertFalse(response.data["vectorClocks"]["supported"])
+        self.assertIn("baseVersion", response.data["clientRecordFields"])
+        self.assertIn("clientMutationId", response.data["operationFields"])
+        self.assertIn("transactions", response.data["writableResources"])
+        self.assertIn("dashboard", response.data["readOnlySnapshots"])
+
+    def test_bootstrap_records_include_sync_metadata(self):
+        transaction = self.create_transaction(amount="250.00")
+
+        response = self.client.get(
+            "/api/v1/finance/sync/bootstrap/",
+            {"resources": "transactions"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        items = response.data["resources"]["transactions"]
+        saved = next(item for item in items if item["id"] == transaction.pk)
+        self.assertIn("_sync", saved)
+        self.assertEqual(saved["_sync"]["resource"], "transactions")
+        self.assertEqual(saved["_sync"]["serverId"], str(transaction.pk))
+        self.assertIn("transactions:", saved["_sync"]["revision"])
+        self.assertIn("sha256", saved["_sync"]["etag"])
+
     def test_bootstrap_returns_selected_resources_and_snapshots(self):
         self.create_transaction(amount="250.00")
 

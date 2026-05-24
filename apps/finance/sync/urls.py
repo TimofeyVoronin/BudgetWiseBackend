@@ -7,12 +7,14 @@ from apps.finance.sync.views import (
     SyncMetaView,
     SyncPullView,
     SyncPushView,
+    SyncVersioningView,
 )
 
 
 urlpatterns = [
     path("meta/", SyncMetaView.as_view(), name="sync-meta"),
     path("domains/", SyncDomainsView.as_view(), name="sync-domains"),
+    path("versioning/", SyncVersioningView.as_view(), name="sync-versioning"),
     path("bootstrap/", SyncBootstrapView.as_view(), name="sync-bootstrap"),
     path("pull/", SyncPullView.as_view(), name="sync-pull"),
     path("push/", SyncPushView.as_view(), name="sync-push"),

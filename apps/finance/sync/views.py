@@ -25,6 +25,7 @@ from apps.finance.sync.serializers import (
     SyncPullSerializer,
     SyncPushRequestSerializer,
     SyncPushResponseSerializer,
+    SyncVersioningSerializer,
 )
 from apps.finance.sync.services import (
     SYNC_MAX_BATCH_SIZE,
@@ -33,6 +34,7 @@ from apps.finance.sync.services import (
     build_pull_payload,
     build_sync_domains_payload,
     build_sync_meta,
+    build_sync_versioning_contract,
     parse_resources_query,
     resolve_conflict,
 )
@@ -188,6 +190,43 @@ class SyncDomainsView(APIView):
     )
     def get(self, request):
         return Response(build_sync_domains_payload())
+
+
+class SyncVersioningView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["finance-sync"],
+        operation_id="finance_sync_versioning_retrieve",
+        summary="Получить формат версионирования offline-first данных",
+        description=(
+            "Возвращает правила версионирования записей для IndexedDB и sync API: "
+            "serverVersion на основе updated_at, syncToken, ETag/revision-формат, "
+            "поля клиентской записи и правила определения конфликтов. "
+            "Векторные часы в MVP не используются."
+        ),
+        responses={200: SyncVersioningSerializer},
+        examples=[
+            OpenApiExample(
+                "Формат версий",
+                value={
+                    "schemaVersion": 1,
+                    "serverTime": "2026-05-24T13:30:00+0300",
+                    "strategy": "timestamp_based",
+                    "serverVersionField": "updated_at",
+                    "syncTokenFormat": "iso8601_datetime",
+                    "entityVersionFormat": "{resource}:{serverId}:{serverVersion}",
+                    "etagFormat": "W/\"sha256:{hash}\"",
+                    "vectorClocks": {
+                        "supported": False,
+                        "reason": "В MVP используется timestamp-based versioning.",
+                    },
+                },
+            )
+        ],
+    )
+    def get(self, request):
+        return Response(build_sync_versioning_contract())
 
 
 class SyncBootstrapView(APIView):
