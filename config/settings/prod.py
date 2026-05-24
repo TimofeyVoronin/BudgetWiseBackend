@@ -7,6 +7,8 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
 SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
@@ -32,32 +34,25 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": str(LOG_DIR / "budgetwise.log"),
-            "maxBytes": 1024 * 1024 * 5,
-            "backupCount": 5,
-            "formatter": "verbose",
-        },
     },
     "loggers": {
         "django": {
-            "handlers": ["console", "file"],
+            "handlers": ["console"],
             "level": env("DJANGO_LOG_LEVEL", default="INFO"),
             "propagate": False,
         },
         "django.request": {
-            "handlers": ["console", "file"],
+            "handlers": ["console"],
             "level": "WARNING",
             "propagate": False,
         },
         "django.db.backends": {
-            "handlers": ["console", "file"],
+            "handlers": ["console"],
             "level": env("DJANGO_SQL_LOG_LEVEL", default="WARNING"),
             "propagate": False,
         },
         "apps": {
-            "handlers": ["console", "file"],
+            "handlers": ["console"],
             "level": env("APP_LOG_LEVEL", default="INFO"),
             "propagate": False,
         },
