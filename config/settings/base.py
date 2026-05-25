@@ -3,6 +3,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -182,6 +183,10 @@ PROJECT_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + DRF_APPS + THIRD_PARTY_APPS + PROJECT_APPS
 
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "if-match",
+)
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",

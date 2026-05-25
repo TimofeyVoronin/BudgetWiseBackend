@@ -36,9 +36,10 @@ CORS_ALLOW_CREDENTIALS = env.bool(
     default=False,
 )
 
-CORS_ALLOW_HEADERS = list(default_headers) + [
-    "authorization",
-]
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "if-match",
+)
 
 
 LOGGING = {
