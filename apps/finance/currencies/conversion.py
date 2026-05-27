@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal
 
 from django.core.cache import cache
 from rest_framework.exceptions import ValidationError
 
+from apps.finance.currencies.money import MoneyAmount, normalize_decimal, quantize_money
 from apps.finance.currencies.rates import refresh_user_currency_rates
 from apps.finance.currencies.services import (
     DEFAULT_CURRENCY_CODE,
@@ -17,23 +18,10 @@ from apps.finance.currencies.services import (
     validate_user_currency_available,
 )
 
-MONEY_DECIMAL_PLACES = Decimal("0.01")
 RATE_FAILURE_CACHE_KEY = "finance:currency-rates:failure"
 CURRENCY_WARNING_SERVICE_UNAVAILABLE = (
     "Курсы валют временно недоступны. Используются последние доступные значения."
 )
-
-
-@dataclass(frozen=True)
-class MoneyAmount:
-    amount: Decimal
-    currency: str
-
-    def as_payload(self) -> dict:
-        return {
-            "amount": float(self.amount),
-            "currency": self.currency,
-        }
 
 
 @dataclass(frozen=True)
@@ -240,16 +228,3 @@ def get_currency_conversion_service(
         force_refresh=force_refresh,
     )
 
-
-def normalize_decimal(value) -> Decimal:
-    if isinstance(value, Decimal):
-        return value
-
-    try:
-        return Decimal(str(value or "0").replace(",", "."))
-    except (InvalidOperation, ValueError) as exc:
-        raise ValidationError({"amount": ["Некорректная сумма."]}) from exc
-
-
-def quantize_money(value: Decimal) -> Decimal:
-    return value.quantize(MONEY_DECIMAL_PLACES, rounding=ROUND_HALF_UP)
