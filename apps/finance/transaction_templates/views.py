@@ -18,6 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.finance.accounts.accounting import create_transaction_with_balance_update
+from apps.finance.currencies.conversion import get_currency_conversion_service
 from apps.finance.models import (
     TransactionTemplate,
     TransactionTemplateStatus,
@@ -52,7 +53,17 @@ from apps.finance.transaction_templates.services import (
 )
 
 
+def get_template_display_currency_query_param(query_params) -> str | None:
+    return (
+        query_params.get("currency")
+        or query_params.get("currencyCode")
+        or query_params.get("currency_code")
+    )
+
+
 TEMPLATE_LIST_PARAMETERS = [
+    OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм в ответе."),
+    OpenApiParameter("currencyCode", OpenApiTypes.STR, description="Frontend-friendly alias для currency."),
     OpenApiParameter("search", OpenApiTypes.STR, description="Поиск по названию, примечанию, категории, счёту или тегу."),
     OpenApiParameter("status", OpenApiTypes.STR, description="Статус шаблона: active или archived."),
     OpenApiParameter("categories", OpenApiTypes.STR, description="ID категорий через запятую."),
@@ -203,6 +214,22 @@ class TransactionTemplateViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def get_currency_converter(self):
+        if not hasattr(self, "_currency_converter"):
+            self._currency_converter = get_currency_conversion_service(
+                self.request.user,
+                display_currency=get_template_display_currency_query_param(
+                    self.request.query_params,
+                ),
+            )
+
+        return self._currency_converter
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["currency_converter"] = self.get_currency_converter()
+        return context
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         total_items = queryset.count()
@@ -234,6 +261,7 @@ class TransactionTemplateViewSet(viewsets.ModelViewSet):
                     "totalItems": total_items,
                     "totalPages": paginator.num_pages or 1,
                 },
+                "currencyContext": self.get_currency_converter().context_payload(),
             }
         )
 
@@ -332,7 +360,12 @@ class TransactionTemplateViewSet(viewsets.ModelViewSet):
                 {"template": ["Архивный шаблон нельзя применить."]}
             )
 
-        return Response(build_apply_draft_payload(template))
+        return Response(
+            build_apply_draft_payload(
+                template,
+                converter=self.get_currency_converter(),
+            )
+        )
 
     @extend_schema(
         tags=["finance-transaction-templates"],
@@ -383,8 +416,9 @@ class TransactionTemplateViewSet(viewsets.ModelViewSet):
                 "template": self.get_serializer(template).data,
                 "transaction": TransactionSerializer(
                     transaction,
-                    context={"request": request},
+                    context=self.get_serializer_context(),
                 ).data,
+                "currencyContext": self.get_currency_converter().context_payload(),
             }
         )
 

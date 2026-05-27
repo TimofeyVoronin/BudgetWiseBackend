@@ -189,7 +189,15 @@ def seed_currency_catalog() -> None:
 
 
 def ensure_user_currencies(user) -> None:
-    seed_currency_catalog()
+    catalog_codes = set(CATALOG_BY_CODE.keys())
+    existing_system_codes = set(
+        Currency.objects
+        .filter(is_system=True, code__in=catalog_codes)
+        .values_list("code", flat=True)
+    )
+
+    if catalog_codes - existing_system_codes:
+        seed_currency_catalog()
 
     existing_codes = set(
         UserCurrency.objects

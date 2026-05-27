@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.cache import cache
 from rest_framework.exceptions import ValidationError
 
@@ -11,12 +12,11 @@ from apps.finance.currencies.rates import refresh_user_currency_rates
 from apps.finance.currencies.services import (
     DEFAULT_CURRENCY_CODE,
     ensure_user_currencies,
-    get_user_currency_by_code,
-    get_user_default_currency_code,
-    get_user_primary_currency_code,
+    is_valid_currency_code,
     normalize_currency_code,
-    validate_user_currency_available,
 )
+from apps.finance.models import UserCurrency
+from apps.users.models import UserAppSettings
 
 RATE_FAILURE_CACHE_KEY = "finance:currency-rates:failure"
 CURRENCY_WARNING_SERVICE_UNAVAILABLE = (
@@ -60,16 +60,86 @@ class CurrencyConversionService:
         force_refresh: bool = False,
     ) -> None:
         self.user = user
-        ensure_user_currencies(user)
+        self._user_currencies_by_code = self._load_user_currencies_by_code()
 
-        if refresh_rates:
+        if not self._user_currencies_by_code:
+            ensure_user_currencies(user)
+            self._user_currencies_by_code = self._load_user_currencies_by_code()
+
+        if refresh_rates and getattr(settings, "CURRENCY_RATES_ENABLED", True):
             refresh_user_currency_rates(user, force=force_refresh)
+            self._user_currencies_by_code = self._load_user_currencies_by_code()
 
-        self.primary_currency = get_user_primary_currency_code(user)
+        self.primary_currency = self._resolve_primary_currency()
         self.display_currency = self.resolve_display_currency(
             display_currency,
             require_visible=require_visible_display_currency,
         )
+        self._rate_to_primary_cache: dict[str, Decimal] = {
+            self.primary_currency: Decimal("1.00000000"),
+        }
+
+    def _load_user_currencies_by_code(self) -> dict[str, UserCurrency]:
+        return {
+            user_currency.currency.code: user_currency
+            for user_currency in (
+                UserCurrency.objects
+                .filter(user=self.user)
+                .select_related("currency")
+            )
+        }
+
+    def _resolve_primary_currency(self) -> str:
+        primary_currency = next(
+            (
+                user_currency.code
+                for user_currency in self._user_currencies_by_code.values()
+                if user_currency.is_primary
+            ),
+            "",
+        )
+        return primary_currency or DEFAULT_CURRENCY_CODE
+
+    def _get_default_currency_code(self) -> str:
+        default_currency = normalize_currency_code(
+            UserAppSettings.objects
+            .filter(user=self.user)
+            .values_list("default_currency", flat=True)
+            .first()
+            or ""
+        )
+
+        if not default_currency:
+            return self.primary_currency
+
+        user_currency = self._user_currencies_by_code.get(default_currency)
+
+        if user_currency is None or not user_currency.is_visible:
+            return self.primary_currency
+
+        return default_currency
+
+    def _validate_display_currency(
+        self,
+        currency: str,
+        *,
+        require_visible: bool,
+    ) -> str:
+        normalized_currency = normalize_currency_code(currency)
+
+        if not is_valid_currency_code(normalized_currency):
+            raise ValidationError(
+                {"currency": ["Валюта должна быть указана ISO-кодом из 3 латинских букв."]}
+            )
+
+        user_currency = self._user_currencies_by_code.get(normalized_currency)
+        if user_currency is None:
+            raise ValidationError({"currency": ["Валюта не добавлена в список валют пользователя."]})
+
+        if require_visible and not user_currency.is_visible:
+            raise ValidationError({"currency": ["Скрытую валюту нельзя выбрать для новых данных."]})
+
+        return normalized_currency
 
     def resolve_display_currency(
         self,
@@ -80,21 +150,19 @@ class CurrencyConversionService:
         requested_currency = normalize_currency_code(currency or "")
 
         if requested_currency:
-            return validate_user_currency_available(
-                self.user,
+            return self._validate_display_currency(
                 requested_currency,
-                field_name="currency",
                 require_visible=require_visible,
             )
 
-        default_currency = get_user_default_currency_code(self.user)
+        default_currency = self._get_default_currency_code()
         if default_currency:
-            user_currency = get_user_currency_by_code(self.user, default_currency)
+            user_currency = self._user_currencies_by_code.get(default_currency)
             if user_currency is not None and (user_currency.is_visible or not require_visible):
                 return default_currency
 
         primary_currency = self.primary_currency or DEFAULT_CURRENCY_CODE
-        user_currency = get_user_currency_by_code(self.user, primary_currency)
+        user_currency = self._user_currencies_by_code.get(primary_currency)
         if user_currency is not None and (user_currency.is_visible or not require_visible):
             return primary_currency
 
@@ -189,11 +257,16 @@ class CurrencyConversionService:
         if code == self.primary_currency:
             return Decimal("1.00000000")
 
-        user_currency = get_user_currency_by_code(self.user, code)
+        if code in self._rate_to_primary_cache:
+            return self._rate_to_primary_cache[code]
+
+        user_currency = self._user_currencies_by_code.get(code)
         if user_currency is None:
             raise ValidationError({"currency": ["Валюта не добавлена в список валют пользователя."]})
 
-        return normalize_decimal(user_currency.rate_to_primary)
+        rate_to_primary = normalize_decimal(user_currency.rate_to_primary)
+        self._rate_to_primary_cache[code] = rate_to_primary
+        return rate_to_primary
 
     def get_context(self) -> CurrencyConversionContext:
         using_cached_rates = bool(cache.get(RATE_FAILURE_CACHE_KEY))

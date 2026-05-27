@@ -5018,6 +5018,11 @@ paths:
       summary: Получить чек по QR-коду
       parameters:
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в ответе.
+      - in: query
         name: fetchProvider
         schema:
           type: boolean
@@ -6735,6 +6740,16 @@ paths:
           type: string
         description: ID категорий через запятую.
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в ответе.
+      - in: query
+        name: currencyCode
+        schema:
+          type: string
+        description: Frontend-friendly alias для currency.
+      - in: query
         name: ordering
         schema:
           type: string
@@ -7370,6 +7385,11 @@ paths:
           type: integer
         description: ID счёта.
       - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта операции, например accountCurrency=USD.
+      - in: query
         name: accountId
         schema:
           type: integer
@@ -7408,8 +7428,8 @@ paths:
         name: currency
         schema:
           type: string
-        description: Фильтр по ISO-коду добавленной валюты пользователя. Данные фильтруются
-          по валюте счёта.
+        description: Валюта отображения сумм в ответе. Если не передана, используется
+          валюта из настроек пользователя.
       - in: query
         name: currencyCode
         schema:
@@ -7507,6 +7527,11 @@ paths:
           type: string
         description: 'Фильтр по ID тегов через запятую. Например: tags=1,2. Операция
           попадает в результат, если содержит хотя бы один из переданных тегов.'
+      - in: query
+        name: transactionCurrency
+        schema:
+          type: string
+        description: Alias для accountCurrency.
       - in: query
         name: type
         schema:
@@ -7752,15 +7777,20 @@ paths:
     get:
       operationId: finance_transactions_export_retrieve
       description: Экспортирует операции текущего пользователя с учётом тех же фильтров,
-        которые используются в списке операций, включая фильтр по тегам и валюте.
-        Поддерживаются форматы CSV, XLSX и PDF. Для защиты от слишком тяжёлых выгрузок
-        действует лимит 5000 операций.
+        которые используются в списке операций, включая фильтр по тегам и исходной
+        валюте счёта. Поддерживаются форматы CSV, XLSX и PDF. Для защиты от слишком
+        тяжёлых выгрузок действует лимит 5000 операций.
       summary: Экспортировать список операций
       parameters:
       - in: query
         name: account
         schema:
           type: integer
+      - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта операции.
       - in: query
         name: accountId
         schema:
@@ -7793,10 +7823,12 @@ paths:
         name: currency
         schema:
           type: string
+        description: Валюта отображения. На экспорт сумм пока не влияет.
       - in: query
         name: currencyCode
         schema:
           type: string
+        description: Frontend-friendly alias для currency.
       - in: query
         name: dateFrom
         schema:
@@ -7861,6 +7893,11 @@ paths:
         schema:
           type: string
         description: ID тегов через запятую, например tags=1,2.
+      - in: query
+        name: transactionCurrency
+        schema:
+          type: string
+        description: Alias для accountCurrency.
       - in: query
         name: type
         schema:
@@ -11405,8 +11442,13 @@ components:
           items:
             $ref: '#/components/schemas/Transaction'
           readOnly: true
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - createdCount
+      - currencyContext
       - mode
       - receipt
       - transactions
@@ -16193,6 +16235,17 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Сумма чека
+        totalAmountRub:
+          type: number
+          format: double
+          readOnly: true
+        totalAmountDisplay:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
         fiscal_drive_number:
           type: string
           title: ФН
@@ -16220,6 +16273,9 @@ components:
       - id
       - items
       - receipt_datetime
+      - sourceCurrency
+      - totalAmountDisplay
+      - totalAmountRub
       - total_amount
       - transactionsCount
     ReceiptBriefStatusEnum:
@@ -16261,11 +16317,30 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Цена
+        priceRub:
+          type: number
+          format: double
+          readOnly: true
+        priceDisplay:
+          type: object
+          additionalProperties: {}
+          readOnly: true
         amount:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Сумма
+        amountRub:
+          type: number
+          format: double
+          readOnly: true
+        amountDisplay:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
         suggestedCategoryId:
           type: integer
           readOnly: true
@@ -16283,11 +16358,16 @@ components:
           type: string
           readOnly: true
       required:
+      - amountDisplay
+      - amountRub
       - id
       - line_number
       - mappingConfidence
       - mappingReason
       - name
+      - priceDisplay
+      - priceRub
+      - sourceCurrency
       - suggestedCategoryId
       - suggestedCategoryName
     ReceiptProviderErrorBrief:
@@ -16329,8 +16409,13 @@ components:
           - $ref: '#/components/schemas/ReceiptProviderErrorBrief'
           readOnly: true
           nullable: true
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - created
+      - currencyContext
       - isDuplicate
       - providerError
       - providerStatus
@@ -18124,10 +18209,28 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Сумма
+        amountRub:
+          type: number
+          readOnly: true
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         amount_abs:
           type: string
           readOnly: true
+        amountAbsDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         signed_amount:
+          type: string
+          readOnly: true
+        signedAmountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
           type: string
           readOnly: true
         description:
@@ -18173,6 +18276,9 @@ components:
       - account_currency
       - account_name
       - amount
+      - amountAbsDisplay
+      - amountDisplay
+      - amountRub
       - amount_abs
       - category
       - category_color
@@ -18185,7 +18291,9 @@ components:
       - operation_date
       - receiptId
       - receiptItemId
+      - signedAmountDisplay
       - signed_amount
+      - sourceCurrency
       - tags
       - type
       - updated_at
@@ -18207,15 +18315,37 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        unitPriceRub:
+          type: number
+          readOnly: true
+        unitPriceDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         sum_rub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        sumRub:
+          type: number
+          readOnly: true
+        sumDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
       required:
       - id
       - name
       - qty
+      - sourceCurrency
+      - sumDisplay
+      - sumRub
       - sum_rub
+      - unitPriceDisplay
+      - unitPriceRub
       - unit_price_rub
     TransactionLineItemRequest:
       type: object
@@ -18359,11 +18489,18 @@ components:
           maximum: 1000000000000
           minimum: 0.01
           exclusiveMaximum: true
+        amount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         currency:
           type: string
           title: Валюта
           pattern: ^[A-Z]{3}$
           maxLength: 3
+        sourceCurrency:
+          type: string
+          readOnly: true
         accountId:
           type: integer
         accountName:
@@ -18420,6 +18557,7 @@ components:
       required:
       - accountId
       - accountName
+      - amount
       - amountRub
       - categoryColor
       - categoryIcon
@@ -18432,6 +18570,7 @@ components:
       - kind
       - lastUsedAt
       - name
+      - sourceCurrency
       - tags
       - updatedAt
       - useCount
@@ -18454,7 +18593,13 @@ components:
         amountRub:
           type: number
           format: double
+        amount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         currency:
+          type: string
+        sourceCurrency:
           type: string
         categoryId:
           type: integer
@@ -18483,19 +18628,26 @@ components:
         operationDate:
           type: string
           format: date
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - accountId
       - accountName
+      - amount
       - amountRub
       - categoryColor
       - categoryIcon
       - categoryId
       - categoryName
       - currency
+      - currencyContext
       - description
       - kind
       - note
       - operationDate
+      - sourceCurrency
       - tagIds
       - tags
       - templateId
@@ -18532,7 +18684,12 @@ components:
           $ref: '#/components/schemas/TransactionTemplate'
         transaction:
           $ref: '#/components/schemas/Transaction'
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
+      - currencyContext
       - template
       - transaction
     TransactionTemplateCheckNameResponse:
@@ -18591,7 +18748,12 @@ components:
           $ref: '#/components/schemas/TransactionTemplateSummary'
         pagination:
           $ref: '#/components/schemas/TransactionTemplatePagination'
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
+      - currencyContext
       - items
       - pagination
       - summary

@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.finance.currencies.money import build_money_payload
 from apps.finance.models import Account, Category, Receipt, ReceiptItem, Transaction
 from apps.finance.receipts.transactions import (
     RECEIPT_TRANSACTION_MODE_BY_ITEMS,
@@ -11,6 +12,9 @@ from apps.finance.receipts.transactions import (
     ReceiptItemTransactionInput,
 )
 from apps.finance.transactions.serializers import TransactionSerializer
+
+
+RECEIPT_SOURCE_CURRENCY = "RUB"
 
 
 class ReceiptTransactionItemInputSerializer(serializers.Serializer):
@@ -193,6 +197,11 @@ class ReceiptItemBriefSerializer(serializers.ModelSerializer):
     suggestedCategoryName = serializers.CharField(source="suggested_category.name", read_only=True, allow_null=True)
     mappingConfidence = serializers.DecimalField(source="mapping_confidence", max_digits=4, decimal_places=2, read_only=True)
     mappingReason = serializers.CharField(source="mapping_reason", read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
+    priceRub = serializers.SerializerMethodField(read_only=True)
+    amountRub = serializers.SerializerMethodField(read_only=True)
+    priceDisplay = serializers.SerializerMethodField(read_only=True)
+    amountDisplay = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = ReceiptItem
@@ -202,17 +211,51 @@ class ReceiptItemBriefSerializer(serializers.ModelSerializer):
             "name",
             "quantity",
             "price",
+            "priceRub",
+            "priceDisplay",
             "amount",
+            "amountRub",
+            "amountDisplay",
+            "sourceCurrency",
             "suggestedCategoryId",
             "suggestedCategoryName",
             "mappingConfidence",
             "mappingReason",
         ]
 
+    def get_sourceCurrency(self, obj: ReceiptItem) -> str:
+        return RECEIPT_SOURCE_CURRENCY
+
+    def get_priceRub(self, obj: ReceiptItem) -> float:
+        return self._display_money(obj.price)["amount"]
+
+    def get_amountRub(self, obj: ReceiptItem) -> float:
+        return self._display_money(obj.amount)["amount"]
+
+    def get_priceDisplay(self, obj: ReceiptItem) -> dict:
+        return self._display_money(obj.price)
+
+    def get_amountDisplay(self, obj: ReceiptItem) -> dict:
+        return self._display_money(obj.amount)
+
+    def _display_money(self, value) -> dict:
+        converter = self.context.get("currency_converter")
+
+        if converter is None:
+            return build_money_payload(value, currency=RECEIPT_SOURCE_CURRENCY)
+
+        return converter.display_amount_payload(
+            value,
+            source_currency=RECEIPT_SOURCE_CURRENCY,
+        )
+
 
 class ReceiptBriefSerializer(serializers.ModelSerializer):
     items = ReceiptItemBriefSerializer(many=True, read_only=True)
     transactionsCount = serializers.SerializerMethodField(read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
+    totalAmountRub = serializers.SerializerMethodField(read_only=True)
+    totalAmountDisplay = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Receipt
@@ -223,6 +266,9 @@ class ReceiptBriefSerializer(serializers.ModelSerializer):
             "seller_inn",
             "receipt_datetime",
             "total_amount",
+            "totalAmountRub",
+            "totalAmountDisplay",
+            "sourceCurrency",
             "fiscal_drive_number",
             "fiscal_document_number",
             "fiscal_sign",
@@ -232,6 +278,26 @@ class ReceiptBriefSerializer(serializers.ModelSerializer):
 
     def get_transactionsCount(self, obj: Receipt) -> int:
         return obj.transactions.count()
+
+    def get_sourceCurrency(self, obj: Receipt) -> str:
+        return RECEIPT_SOURCE_CURRENCY
+
+    def get_totalAmountRub(self, obj: Receipt) -> float:
+        return self._display_money(obj.total_amount)["amount"]
+
+    def get_totalAmountDisplay(self, obj: Receipt) -> dict:
+        return self._display_money(obj.total_amount)
+
+    def _display_money(self, value) -> dict:
+        converter = self.context.get("currency_converter")
+
+        if converter is None:
+            return build_money_payload(value, currency=RECEIPT_SOURCE_CURRENCY)
+
+        return converter.display_amount_payload(
+            value,
+            source_currency=RECEIPT_SOURCE_CURRENCY,
+        )
 
 
 class ReceiptQRImportQuerySerializer(serializers.Serializer):
@@ -279,6 +345,7 @@ class ReceiptQRImportResponseSerializer(serializers.Serializer):
         read_only=True,
     )
     providerError = ReceiptProviderErrorBriefSerializer(read_only=True, allow_null=True)
+    currencyContext = serializers.DictField(read_only=True)
 
 
 def build_receipt_qr_import_response(
@@ -288,13 +355,17 @@ def build_receipt_qr_import_response(
     is_duplicate: bool,
     provider_status: str,
     provider_error: dict | None = None,
+    context: dict | None = None,
 ) -> dict:
+    context = context or {}
+    converter = context.get("currency_converter")
     return {
-        "receipt": ReceiptBriefSerializer(receipt).data,
+        "receipt": ReceiptBriefSerializer(receipt, context=context).data,
         "created": created,
         "isDuplicate": is_duplicate,
         "providerStatus": provider_status,
         "providerError": provider_error,
+        "currencyContext": converter.context_payload() if converter is not None else {},
     }
 
 
@@ -303,12 +374,22 @@ class CreateReceiptTransactionsResponseSerializer(serializers.Serializer):
     mode = serializers.CharField(read_only=True)
     createdCount = serializers.IntegerField(read_only=True)
     transactions = TransactionSerializer(many=True, read_only=True)
+    currencyContext = serializers.DictField(read_only=True)
 
 
-def build_receipt_transactions_response(*, receipt: Receipt, mode: str, transactions: tuple[Transaction, ...]) -> dict:
+def build_receipt_transactions_response(
+    *,
+    receipt: Receipt,
+    mode: str,
+    transactions: tuple[Transaction, ...],
+    context: dict | None = None,
+) -> dict:
+    context = context or {}
+    converter = context.get("currency_converter")
     return {
-        "receipt": ReceiptBriefSerializer(receipt).data,
+        "receipt": ReceiptBriefSerializer(receipt, context=context).data,
         "mode": mode,
         "createdCount": len(transactions),
-        "transactions": TransactionSerializer(transactions, many=True).data,
+        "transactions": TransactionSerializer(transactions, many=True, context=context).data,
+        "currencyContext": converter.context_payload() if converter is not None else {},
     }

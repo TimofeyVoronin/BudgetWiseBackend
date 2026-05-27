@@ -1,9 +1,11 @@
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
 from apps.finance.models import (
     Account,
     Category,
@@ -20,7 +22,26 @@ from apps.users.app_settings.formatting import get_user_app_today
 TEMPLATES_BASE_URL = "/api/v1/finance/transaction-templates/"
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceTransactionTemplatesAPITests(FinanceAPITestCase):
+    def ensure_usd_currency(self):
+        ensure_user_currencies(self.user)
+        usd_currency = get_user_currency_by_code(self.user, "USD")
+        usd_currency.is_visible = True
+        usd_currency.rate_to_primary = Decimal("100.00000000")
+        usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+        return usd_currency
+
+    def create_usd_account(self):
+        self.ensure_usd_currency()
+        return Account.objects.create(
+            user=self.user,
+            name="USD card",
+            initial_balance=Decimal("1000.00"),
+            balance=Decimal("1000.00"),
+            currency="USD",
+        )
+
     def create_tag(self, *, user=None, name="обед", is_visible=True):
         return Tag.objects.create(
             user=user or self.user,
@@ -45,16 +66,20 @@ class FinanceTransactionTemplatesAPITests(FinanceAPITestCase):
         last_used_at=None,
         is_default=False,
         tags=None,
+        currency=None,
     ):
         user = user or self.user
+        account = account or self.account
+        category = category or self.expense_category
+        currency = currency or account.currency
         template = TransactionTemplate.objects.create(
             user=user,
             name=name,
             kind=kind,
             amount=Decimal(amount),
-            currency="RUB",
-            account=account or self.account,
-            category=category or self.expense_category,
+            currency=currency,
+            account=account,
+            category=category,
             note=note,
             status=status,
             use_count=use_count,
@@ -312,6 +337,48 @@ class FinanceTransactionTemplatesAPITests(FinanceAPITestCase):
         restore_response = self.client.post(f"{TEMPLATES_BASE_URL}{template.id}/restore/")
         self.assertEqual(restore_response.status_code, status.HTTP_200_OK)
         self.assertEqual(restore_response.data["template"]["status"], TransactionTemplateStatus.ACTIVE)
+
+    def test_template_list_converts_amount_to_display_currency(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        template = self.create_template(
+            account=usd_account,
+            amount="10.00",
+            currency="USD",
+        )
+
+        response = self.client.get(
+            reverse("finance:transaction-template-list"),
+            data={"currency": "RUB"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(item for item in response.data["items"] if item["id"] == template.id)
+        self.assertEqual(row["currency"], "USD")
+        self.assertEqual(row["sourceCurrency"], "USD")
+        self.assertEqual(row["amountRub"], 1000.0)
+        self.assertEqual(row["amount"], {"amount": 1000.0, "currency": "RUB"})
+        self.assertEqual(response.data["currencyContext"]["code"], "RUB")
+
+    def test_template_apply_draft_converts_amount_to_display_currency(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        template = self.create_template(
+            account=usd_account,
+            amount="10.00",
+            currency="USD",
+        )
+
+        response = self.client.get(
+            f"{TEMPLATES_BASE_URL}{template.id}/apply-draft/",
+            data={"currency": "RUB"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["sourceCurrency"], "USD")
+        self.assertEqual(response.data["amountRub"], 1000.0)
+        self.assertEqual(response.data["amount"], {"amount": 1000.0, "currency": "RUB"})
+        self.assertEqual(response.data["currencyContext"]["code"], "RUB")
 
     def test_apply_template_creates_transaction_updates_balance_and_usage_stats(self):
         self.authenticate()

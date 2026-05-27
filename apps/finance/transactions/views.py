@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.http import HttpResponse
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -21,6 +21,7 @@ from apps.common.validation import (
     validate_choice_query_param,
     validate_ordering_fields,
 )
+from apps.finance.currencies.conversion import get_currency_conversion_service
 from apps.finance.currencies.services import validate_user_currency_available
 from apps.finance.transactions.exporters import (
     TRANSACTION_EXPORT_FORMATS,
@@ -31,7 +32,7 @@ from apps.finance.accounts.accounting import (
     delete_transaction_with_balance_update,
     update_transaction_with_balance_update,
 )
-from apps.finance.models import Transaction, TransactionType
+from apps.finance.models import Tag, Transaction, TransactionType
 from apps.finance.permissions import IsObjectOwner
 from apps.finance.tags.services import get_tag_ids_query_param
 from apps.finance.transactions.serializers import TransactionSerializer
@@ -172,6 +173,38 @@ def get_transaction_ordering_fields(query_params):
         "-id",
     ]
 
+
+def get_transaction_display_currency_query_param(query_params) -> str | None:
+    return get_first_query_value(
+        query_params,
+        "currency",
+        "currencyCode",
+        "currency_code",
+    )
+
+
+def get_transaction_source_currency_filter_query_param(query_params, user) -> str | None:
+    currency = get_first_query_value(
+        query_params,
+        "accountCurrency",
+        "account_currency",
+        "transactionCurrency",
+        "transaction_currency",
+        "sourceCurrency",
+        "source_currency",
+    )
+
+    if currency in (None, ""):
+        return None
+
+    return validate_user_currency_available(
+        user,
+        currency,
+        field_name="accountCurrency",
+        require_visible=False,
+    )
+
+
 def get_transaction_queryset_for_request(request):
     if not request.user.is_authenticated:
         return Transaction.objects.none()
@@ -180,7 +213,10 @@ def get_transaction_queryset_for_request(request):
         Transaction.objects
         .filter(user=request.user)
         .select_related("account", "category")
-        .prefetch_related("tags__group", "line_items")
+        .prefetch_related(
+            Prefetch("tags", queryset=Tag.objects.select_related("group")),
+            "line_items",
+        )
     )
 
     query_params = request.query_params
@@ -198,7 +234,10 @@ def get_transaction_queryset_for_request(request):
         "category_id",
     )
     transaction_type = get_transaction_type_query_param(query_params)
-    currency = get_first_query_value(query_params, "currency", "currencyCode", "currency_code")
+    account_currency = get_transaction_source_currency_filter_query_param(
+        query_params,
+        request.user,
+    )
     date_from = get_aliased_date_query_param(
         query_params,
         "date_from",
@@ -255,14 +294,8 @@ def get_transaction_queryset_for_request(request):
     if transaction_type:
         queryset = queryset.filter(type=transaction_type)
 
-    if currency:
-        currency = validate_user_currency_available(
-            request.user,
-            currency,
-            field_name="currency",
-            require_visible=False,
-        )
-        queryset = queryset.filter(account__currency=currency)
+    if account_currency:
+        queryset = queryset.filter(account__currency=account_currency)
 
     if date_from:
         queryset = queryset.filter(operation_date__gte=date_from)
@@ -323,7 +356,7 @@ class TransactionExportView(APIView):
         summary="Экспортировать список операций",
         description=(
             "Экспортирует операции текущего пользователя с учётом тех же фильтров, "
-            "которые используются в списке операций, включая фильтр по тегам и валюте. Поддерживаются форматы CSV, "
+            "которые используются в списке операций, включая фильтр по тегам и исходной валюте счёта. Поддерживаются форматы CSV, "
             "XLSX и PDF. Для защиты от слишком тяжёлых выгрузок действует лимит "
             f"{MAX_TRANSACTION_EXPORT_ROWS} операций."
         ),
@@ -344,8 +377,10 @@ class TransactionExportView(APIView):
             OpenApiParameter("accountId", OpenApiTypes.INT),
             OpenApiParameter("category", OpenApiTypes.INT),
             OpenApiParameter("categoryId", OpenApiTypes.INT),
-            OpenApiParameter("currency", OpenApiTypes.STR),
-            OpenApiParameter("currencyCode", OpenApiTypes.STR),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения. На экспорт сумм пока не влияет."),
+            OpenApiParameter("currencyCode", OpenApiTypes.STR, description="Frontend-friendly alias для currency."),
+            OpenApiParameter("accountCurrency", OpenApiTypes.STR, description="Фильтр по исходной валюте счёта операции."),
+            OpenApiParameter("transactionCurrency", OpenApiTypes.STR, description="Alias для accountCurrency."),
             OpenApiParameter("amount_min", OpenApiTypes.NUMBER),
             OpenApiParameter("amountMin", OpenApiTypes.NUMBER),
             OpenApiParameter("amount_max", OpenApiTypes.NUMBER),
@@ -465,12 +500,22 @@ class TransactionExportView(APIView):
             OpenApiParameter(
                 "currency",
                 OpenApiTypes.STR,
-                description="Фильтр по ISO-коду добавленной валюты пользователя. Данные фильтруются по валюте счёта.",
+                description="Валюта отображения сумм в ответе. Если не передана, используется валюта из настроек пользователя.",
             ),
             OpenApiParameter(
                 "currencyCode",
                 OpenApiTypes.STR,
                 description="Frontend-friendly alias для currency.",
+            ),
+            OpenApiParameter(
+                "accountCurrency",
+                OpenApiTypes.STR,
+                description="Фильтр по исходной валюте счёта операции, например accountCurrency=USD.",
+            ),
+            OpenApiParameter(
+                "transactionCurrency",
+                OpenApiTypes.STR,
+                description="Alias для accountCurrency.",
             ),
             OpenApiParameter(
                 "kind",
@@ -746,6 +791,30 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return get_transaction_queryset_for_request(self.request)
+
+    def get_currency_converter(self):
+        if not hasattr(self, "_currency_converter"):
+            self._currency_converter = get_currency_conversion_service(
+                self.request.user,
+                display_currency=get_transaction_display_currency_query_param(
+                    self.request.query_params,
+                ),
+            )
+
+        return self._currency_converter
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["currency_converter"] = self.get_currency_converter()
+        return context
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+
+        if isinstance(response.data, dict):
+            response.data["currencyContext"] = self.get_currency_converter().context_payload()
+
+        return response
 
     def perform_create(self, serializer):
         create_transaction_with_balance_update(serializer)

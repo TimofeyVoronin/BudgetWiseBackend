@@ -1,11 +1,12 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
 from apps.finance.models import (
     Account,
     Category,
@@ -103,6 +104,14 @@ class ReceiptTransactionCreationTests(TestCase):
             suggested_category=self.cafe,
             mapping_confidence=Decimal("0.85"),
         )
+
+    def ensure_usd_currency(self):
+        ensure_user_currencies(self.user)
+        usd_currency = get_user_currency_by_code(self.user, "USD")
+        usd_currency.is_visible = True
+        usd_currency.rate_to_primary = Decimal("100.00000000")
+        usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+        return usd_currency
 
     def test_create_single_transaction_from_receipt(self):
         result = create_transactions_from_receipt(
@@ -247,6 +256,7 @@ class ReceiptTransactionCreationTests(TestCase):
         self.assertEqual(context.exception.code, "account_not_found")
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class ReceiptTransactionAPITests(ReceiptTransactionCreationTests):
     def setUp(self):
         super().setUp()
@@ -279,6 +289,34 @@ class ReceiptTransactionAPITests(ReceiptTransactionCreationTests):
         self.assertEqual(len(response.data["transactions"][0]["line_items"]), 2)
         self.assertEqual(response.data["transactions"][0]["line_items"][0]["name"], "Молоко")
         self.assertEqual(response.data["transactions"][0]["line_items"][1]["name"], "Капучино")
+
+    def test_create_single_transaction_endpoint_converts_receipt_and_transaction_amounts(self):
+        self.authenticate()
+        self.ensure_usd_currency()
+
+        response = self.client.post(
+            f"{self.url}?currency=USD",
+            {
+                "accountId": self.account.id,
+                "mode": "single",
+                "categoryId": self.products.id,
+                "description": "Чек из Пятёрочки",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["currencyContext"]["code"], "USD")
+        self.assertEqual(
+            response.data["receipt"]["totalAmountDisplay"],
+            {"amount": 12.51, "currency": "USD"},
+        )
+        self.assertEqual(response.data["receipt"]["sourceCurrency"], "RUB")
+        self.assertEqual(
+            response.data["transactions"][0]["amountDisplay"],
+            {"amount": 12.51, "currency": "USD"},
+        )
+        self.assertEqual(response.data["transactions"][0]["sourceCurrency"], "RUB")
 
     def test_create_by_items_endpoint(self):
         self.authenticate()

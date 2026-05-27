@@ -174,11 +174,11 @@ class FinanceCurrencyIntegrationAPITests(FinanceAPITestCase):
 
         usd_response = self.client.get(
             reverse("finance:transaction-list"),
-            data={"currency": "USD"},
+            data={"accountCurrency": "USD"},
         )
         rub_response = self.client.get(
             reverse("finance:transaction-list"),
-            data={"currencyCode": "RUB"},
+            data={"accountCurrency": "RUB"},
         )
 
         self.assertEqual(usd_response.status_code, status.HTTP_200_OK)
