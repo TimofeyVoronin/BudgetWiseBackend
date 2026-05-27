@@ -36,6 +36,8 @@ TRANSACTION_EXPORT_COLUMNS = [
     "Счёт",
     "Теги",
     "Дата создания",
+    "Исходная сумма",
+    "Исходная валюта",
 ]
 
 TRANSACTION_EXPORT_FORMATS = {
@@ -56,9 +58,10 @@ def build_transaction_export(
     *,
     transactions,
     export_format: str,
+    currency_converter=None,
 ) -> TransactionExportResult:
     export_format = export_format.lower()
-    rows = _build_export_rows(transactions)
+    rows = _build_export_rows(transactions, currency_converter=currency_converter)
     filename = _build_filename(export_format)
 
     if export_format == "csv":
@@ -88,23 +91,37 @@ def build_transaction_export(
     raise ValueError(f"Unsupported export format: {export_format}")
 
 
-def _build_export_rows(transactions) -> list[dict[str, str]]:
-    return [
-        {
-            "Дата": transaction.operation_date.isoformat(),
-            "Тип": _get_transaction_type_label(transaction.type),
-            "Сумма": _get_signed_amount(transaction),
-            "Валюта": transaction.account.currency,
-            "Описание": transaction.description,
-            "Категория": transaction.category.name,
-            "Счёт": transaction.account.name,
-            "Теги": _get_transaction_tags_label(transaction),
-            "Дата создания": timezone.localtime(transaction.created_at).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-        }
-        for transaction in transactions
-    ]
+def _build_export_rows(transactions, *, currency_converter=None) -> list[dict[str, str]]:
+    rows = []
+
+    for transaction in transactions:
+        source_currency = _get_transaction_source_currency(transaction)
+        source_amount = _get_signed_amount_value(transaction)
+        display_amount, display_currency = _get_display_money(
+            source_amount,
+            source_currency=source_currency,
+            currency_converter=currency_converter,
+        )
+
+        rows.append(
+            {
+                "Дата": transaction.operation_date.isoformat(),
+                "Тип": _get_transaction_type_label(transaction.type),
+                "Сумма": _format_money_amount(display_amount),
+                "Валюта": display_currency,
+                "Описание": transaction.description,
+                "Категория": transaction.category.name,
+                "Счёт": transaction.account.name,
+                "Теги": _get_transaction_tags_label(transaction),
+                "Дата создания": timezone.localtime(transaction.created_at).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+                "Исходная сумма": _format_money_amount(source_amount),
+                "Исходная валюта": source_currency,
+            }
+        )
+
+    return rows
 
 
 
@@ -126,13 +143,33 @@ def _get_transaction_type_label(transaction_type: str) -> str:
     return transaction_type
 
 
-def _get_signed_amount(transaction) -> str:
+def _get_signed_amount_value(transaction) -> Decimal:
     amount = abs(transaction.amount)
 
     if transaction.type == TransactionType.EXPENSE:
         amount = -amount
 
-    return str(amount.quantize(Decimal("0.01")))
+    return amount
+
+
+def _get_display_money(amount, *, source_currency: str, currency_converter=None) -> tuple[Decimal, str]:
+    if currency_converter is None:
+        return Decimal(amount), source_currency
+
+    money = currency_converter.convert_to_display(
+        amount,
+        source_currency=source_currency,
+    )
+    return money.amount, money.currency
+
+
+def _get_transaction_source_currency(transaction) -> str:
+    account = getattr(transaction, "account", None)
+    return getattr(account, "currency", None) or "RUB"
+
+
+def _format_money_amount(value) -> str:
+    return str(Decimal(value).quantize(Decimal("0.01")))
 
 
 def _build_filename(export_format: str) -> str:
@@ -236,15 +273,17 @@ def _build_pdf(rows: list[dict[str, str]]) -> bytes:
         table_data,
         repeatRows=1,
         colWidths=[
-            24 * mm,
+            20 * mm,
+            15 * mm,
             18 * mm,
-            22 * mm,
-            16 * mm,
-            58 * mm,
-            34 * mm,
-            34 * mm,
-            42 * mm,
+            15 * mm,
+            44 * mm,
+            27 * mm,
+            27 * mm,
             33 * mm,
+            28 * mm,
+            25 * mm,
+            20 * mm,
         ],
     )
     table.setStyle(

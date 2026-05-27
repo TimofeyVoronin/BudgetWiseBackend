@@ -5,18 +5,43 @@ from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.db import connection
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
 from rest_framework import status
 
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
 from apps.finance.models import Account, Budget, Category, Transaction, TransactionType
 
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceTransactionExportAPITests(FinanceAPITestCase):
+    def setUp(self):
+            super().setUp()
+            ensure_user_currencies(self.user)
+
+    def ensure_usd_currency(self):
+            ensure_user_currencies(self.user)
+            usd_currency = get_user_currency_by_code(self.user, "USD")
+            usd_currency.is_visible = True
+            usd_currency.rate_to_primary = Decimal("100.00000000")
+            usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+            return usd_currency
+
+    def create_usd_account(self):
+            self.ensure_usd_currency()
+            return Account.objects.create(
+                user=self.user,
+                name="USD card",
+                initial_balance=Decimal("1000.00"),
+                balance=Decimal("1000.00"),
+                currency="USD",
+            )
+
     def test_transaction_export_requires_authentication(self):
             response = self.client.get(
                 reverse("finance:transaction-export"),
@@ -70,11 +95,102 @@ class FinanceTransactionExportAPITests(FinanceAPITestCase):
             self.assertEqual(rows[0]["Тип"], "Расход")
             self.assertEqual(rows[0]["Сумма"], "-1245.00")
             self.assertEqual(rows[0]["Валюта"], self.account.currency)
+            self.assertEqual(rows[0]["Исходная сумма"], "-1245.00")
+            self.assertEqual(rows[0]["Исходная валюта"], self.account.currency)
+            self.assertEqual(response["X-Currency-Code"], "RUB")
             self.assertEqual(rows[0]["Описание"], "Покупка продуктов для CSV")
             self.assertEqual(rows[0]["Категория"], self.expense_category.name)
             self.assertEqual(rows[0]["Счёт"], self.account.name)
 
             self.assertNotIn("Чужая операция CSV", decoded_content)
+
+    def test_transaction_export_converts_amounts_to_display_currency(self):
+            self.authenticate()
+            usd_account = self.create_usd_account()
+            rub_transaction = self.create_transaction(
+                account=self.account,
+                category=self.expense_category,
+                type=TransactionType.EXPENSE,
+                amount="1000.00",
+                description="RUB expense for export",
+                operation_date=self.today,
+            )
+            usd_transaction = self.create_transaction(
+                account=usd_account,
+                category=self.expense_category,
+                type=TransactionType.EXPENSE,
+                amount="10.00",
+                description="USD expense for export",
+                operation_date=self.today,
+            )
+
+            response = self.client.get(
+                reverse("finance:transaction-export"),
+                data={
+                    "format": "csv",
+                    "currency": "USD",
+                },
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response["X-Currency-Code"], "USD")
+            decoded_content = response.content.decode("utf-8-sig")
+            rows = list(csv.DictReader(StringIO(decoded_content)))
+            rows_by_description = {row["Описание"]: row for row in rows}
+
+            rub_row = rows_by_description["RUB expense for export"]
+            usd_row = rows_by_description["USD expense for export"]
+
+            self.assertEqual(rub_row["Сумма"], "-10.00")
+            self.assertEqual(rub_row["Валюта"], "USD")
+            self.assertEqual(rub_row["Исходная сумма"], "-1000.00")
+            self.assertEqual(rub_row["Исходная валюта"], "RUB")
+            self.assertEqual(usd_row["Сумма"], "-10.00")
+            self.assertEqual(usd_row["Валюта"], "USD")
+            self.assertEqual(usd_row["Исходная сумма"], "-10.00")
+            self.assertEqual(usd_row["Исходная валюта"], "USD")
+            self.assertIn(rub_transaction.description, rows_by_description)
+            self.assertIn(usd_transaction.description, rows_by_description)
+
+    def test_transaction_export_filters_by_source_currency_with_account_currency(self):
+            self.authenticate()
+            usd_account = self.create_usd_account()
+            usd_transaction = self.create_transaction(
+                account=usd_account,
+                category=self.expense_category,
+                type=TransactionType.EXPENSE,
+                amount="10.00",
+                description="Only USD source export",
+                operation_date=self.today,
+            )
+            self.create_transaction(
+                account=self.account,
+                category=self.expense_category,
+                type=TransactionType.EXPENSE,
+                amount="1000.00",
+                description="RUB source should be filtered out",
+                operation_date=self.today,
+            )
+
+            response = self.client.get(
+                reverse("finance:transaction-export"),
+                data={
+                    "format": "csv",
+                    "currency": "RUB",
+                    "accountCurrency": "USD",
+                },
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            decoded_content = response.content.decode("utf-8-sig")
+            rows = list(csv.DictReader(StringIO(decoded_content)))
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["Описание"], usd_transaction.description)
+            self.assertEqual(rows[0]["Сумма"], "-1000.00")
+            self.assertEqual(rows[0]["Валюта"], "RUB")
+            self.assertEqual(rows[0]["Исходная валюта"], "USD")
+            self.assertNotIn("RUB source should be filtered out", decoded_content)
 
     def test_transaction_export_xlsx_success(self):
             self.authenticate()

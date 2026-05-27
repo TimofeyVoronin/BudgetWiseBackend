@@ -377,7 +377,7 @@ class TransactionExportView(APIView):
             OpenApiParameter("accountId", OpenApiTypes.INT),
             OpenApiParameter("category", OpenApiTypes.INT),
             OpenApiParameter("categoryId", OpenApiTypes.INT),
-            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения. На экспорт сумм пока не влияет."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения для сумм в файле экспорта."),
             OpenApiParameter("currencyCode", OpenApiTypes.STR, description="Frontend-friendly alias для currency."),
             OpenApiParameter("accountCurrency", OpenApiTypes.STR, description="Фильтр по исходной валюте счёта операции."),
             OpenApiParameter("transactionCurrency", OpenApiTypes.STR, description="Alias для accountCurrency."),
@@ -425,15 +425,26 @@ class TransactionExportView(APIView):
                 }
             )
 
+        converter = get_currency_conversion_service(
+            user=request.user,
+            display_currency=get_transaction_display_currency_query_param(request.query_params),
+        )
+
         export_result = build_transaction_export(
             transactions=queryset,
             export_format=export_format,
+            currency_converter=converter,
         )
 
         response = HttpResponse(
             export_result.content,
             content_type=export_result.content_type,
         )
+        currency_context = converter.context_payload()
+        response["X-Currency-Code"] = currency_context["code"]
+        response["X-Currency-Primary-Code"] = currency_context["primaryCode"]
+        response["X-Currency-Source-Available"] = str(currency_context["sourceAvailable"]).lower()
+        response["X-Currency-Using-Cached-Rates"] = str(currency_context["usingCachedRates"]).lower()
         response["Content-Disposition"] = (
             f'attachment; filename="{export_result.filename}"'
         )
