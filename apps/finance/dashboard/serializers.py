@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.finance.currencies.money import MoneyAmountSerializer
 from apps.finance.transactions.serializers import TransactionSerializer
 
 
@@ -9,11 +10,23 @@ class DashboardPeriodSerializer(serializers.Serializer):
     date_to = serializers.DateField(read_only=True)
 
 
+class DashboardCurrencyContextSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    primaryCode = serializers.CharField(read_only=True)
+    sourceAvailable = serializers.BooleanField(read_only=True)
+    usingCachedRates = serializers.BooleanField(read_only=True)
+    warning = serializers.CharField(read_only=True, allow_blank=True)
+
+
 class DashboardTotalsSerializer(serializers.Serializer):
     accounts_balance = serializers.CharField(read_only=True)
+    accountsBalance = MoneyAmountSerializer(read_only=True)
     income = serializers.CharField(read_only=True)
+    incomeAmount = MoneyAmountSerializer(read_only=True)
     expense = serializers.CharField(read_only=True)
+    expenseAmount = MoneyAmountSerializer(read_only=True)
     net = serializers.CharField(read_only=True)
+    netAmount = MoneyAmountSerializer(read_only=True)
 
 
 class DashboardTopExpenseCategorySerializer(serializers.Serializer):
@@ -22,6 +35,7 @@ class DashboardTopExpenseCategorySerializer(serializers.Serializer):
     category_icon = serializers.CharField(read_only=True)
     category_color = serializers.CharField(read_only=True)
     total = serializers.CharField(read_only=True)
+    totalAmount = MoneyAmountSerializer(read_only=True)
 
 
 class DashboardReminderRowSerializer(serializers.Serializer):
@@ -43,6 +57,7 @@ class DashboardRemindersCardSerializer(serializers.Serializer):
 class DashboardSummarySerializer(serializers.Serializer):
     period = DashboardPeriodSerializer(read_only=True)
     currency = serializers.CharField(read_only=True)
+    currencyContext = DashboardCurrencyContextSerializer(read_only=True)
     totals = DashboardTotalsSerializer(read_only=True)
     recent_transactions = TransactionSerializer(many=True, read_only=True)
     top_expense_categories = DashboardTopExpenseCategorySerializer(
@@ -73,6 +88,9 @@ class BalanceCardSerializer(serializers.Serializer):
     title = serializers.CharField(read_only=True)
     headerIcon = serializers.CharField(read_only=True)
     amountRub = serializers.FloatField(read_only=True)
+    amount = MoneyAmountSerializer(read_only=True)
+    currency = serializers.CharField(read_only=True)
+    currencyContext = DashboardCurrencyContextSerializer(read_only=True)
     trendLabel = serializers.CharField(read_only=True)
 
 
@@ -80,12 +98,16 @@ class AccountsCardRowSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     name = serializers.CharField(read_only=True)
     amountRub = serializers.FloatField(read_only=True)
+    amount = MoneyAmountSerializer(read_only=True)
+    currency = serializers.CharField(read_only=True)
+    sourceCurrency = serializers.CharField(read_only=True)
     icon = serializers.CharField(read_only=True)
 
 
 class AccountsCardSerializer(serializers.Serializer):
     title = serializers.CharField(read_only=True)
     headerIcon = serializers.CharField(read_only=True)
+    currencyContext = DashboardCurrencyContextSerializer(read_only=True)
     rows = AccountsCardRowSerializer(many=True, read_only=True)
     footerLinkLabel = serializers.CharField(read_only=True)
 
@@ -94,13 +116,17 @@ class GoalsCardItemSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     name = serializers.CharField(read_only=True)
     targetRub = serializers.FloatField(read_only=True)
+    target = MoneyAmountSerializer(read_only=True)
     currentRub = serializers.FloatField(read_only=True)
+    current = MoneyAmountSerializer(read_only=True)
+    sourceCurrency = serializers.CharField(read_only=True)
     percent = serializers.FloatField(read_only=True)
 
 
 class GoalsCardSerializer(serializers.Serializer):
     title = serializers.CharField(read_only=True)
     headerIcon = serializers.CharField(read_only=True)
+    currencyContext = DashboardCurrencyContextSerializer(read_only=True)
     goals = GoalsCardItemSerializer(many=True, read_only=True)
 
 
@@ -114,6 +140,8 @@ class ExpenseDynamicsCardSerializer(serializers.Serializer):
     title = serializers.CharField(read_only=True)
     headerIcon = serializers.CharField(read_only=True)
     monthLabel = serializers.CharField(read_only=True)
+    currency = serializers.CharField(read_only=True)
+    currencyContext = DashboardCurrencyContextSerializer(read_only=True)
     legendIncome = serializers.CharField(read_only=True)
     legendExpenses = serializers.CharField(read_only=True)
     yAxisLabels = serializers.ListField(

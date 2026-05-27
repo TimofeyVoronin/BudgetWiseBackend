@@ -3,6 +3,7 @@ from decimal import Decimal
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
+from apps.finance.currencies.money import MoneyAmountSerializer, build_money_payload
 from apps.finance.currencies.services import (
     build_currency_select_options,
     get_user_default_currency_code,
@@ -95,6 +96,9 @@ class AccountSerializer(serializers.ModelSerializer):
     bankName = serializers.SerializerMethodField(read_only=True)
     balanceRub = serializers.SerializerMethodField(read_only=True)
     initialBalanceRub = serializers.SerializerMethodField(read_only=True)
+    displayBalance = serializers.SerializerMethodField(read_only=True)
+    displayInitialBalance = serializers.SerializerMethodField(read_only=True)
+    displayAvailableBalance = serializers.SerializerMethodField(read_only=True)
     isDefault = serializers.SerializerMethodField(read_only=True)
     operationsCount = serializers.SerializerMethodField(read_only=True)
 
@@ -113,6 +117,9 @@ class AccountSerializer(serializers.ModelSerializer):
             "initialBalanceRub",
             "balance",
             "balanceRub",
+            "displayBalance",
+            "displayInitialBalance",
+            "displayAvailableBalance",
             "blocked_amount",
             "credit_limit",
             "available_balance",
@@ -137,6 +144,9 @@ class AccountSerializer(serializers.ModelSerializer):
             "balance",
             "balanceRub",
             "initialBalanceRub",
+            "displayBalance",
+            "displayInitialBalance",
+            "displayAvailableBalance",
             "available_balance",
             "status",
             "isDefault",
@@ -200,11 +210,23 @@ class AccountSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_balanceRub(self, obj) -> str:
-        return self._format_money(obj.balance)
+        return self._format_money(self._display_money(obj, obj.balance)["amount"])
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_initialBalanceRub(self, obj) -> str:
-        return self._format_money(obj.initial_balance)
+        return self._format_money(self._display_money(obj, obj.initial_balance)["amount"])
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_displayBalance(self, obj) -> dict:
+        return self._display_money(obj, obj.balance)
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_displayInitialBalance(self, obj) -> dict:
+        return self._display_money(obj, obj.initial_balance)
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_displayAvailableBalance(self, obj) -> dict:
+        return self._display_money(obj, obj.available_balance)
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_isDefault(self, obj) -> bool:
@@ -336,8 +358,18 @@ class AccountSerializer(serializers.ModelSerializer):
 
         return super().update(instance, validated_data)
 
-    def _format_money(self, value: Decimal) -> str:
-        return str(value.quantize(Decimal("0.01")))
+    def _display_money(self, obj, value) -> dict:
+        converter = self.context.get("currency_converter")
+        if converter is None:
+            return build_money_payload(value, currency=obj.currency)
+
+        return converter.display_amount_payload(
+            value,
+            source_currency=obj.currency,
+        )
+
+    def _format_money(self, value) -> str:
+        return str(Decimal(str(value)).quantize(Decimal("0.01")))
 
 
 class AccountArchiveSerializer(serializers.Serializer):
@@ -348,14 +380,24 @@ class AccountArchiveSerializer(serializers.Serializer):
     )
 
 
+class AccountCurrencyContextSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    primaryCode = serializers.CharField(read_only=True)
+    sourceAvailable = serializers.BooleanField(read_only=True)
+    usingCachedRates = serializers.BooleanField(read_only=True)
+    warning = serializers.CharField(read_only=True, allow_blank=True)
+
+
 class AccountSummarySerializer(serializers.Serializer):
     total_balance = serializers.DecimalField(
         max_digits=14,
         decimal_places=2,
     )
+    totalBalance = MoneyAmountSerializer(read_only=True)
     active_count = serializers.IntegerField()
     archived_count = serializers.IntegerField()
     currency = serializers.CharField()
+    currencyContext = AccountCurrencyContextSerializer(read_only=True)
 
     totalBalanceRub = serializers.DecimalField(
         max_digits=14,
@@ -372,10 +414,12 @@ class AccountHistoryRowSerializer(serializers.Serializer):
         max_digits=14,
         decimal_places=2,
     )
+    amountDisplay = MoneyAmountSerializer(read_only=True)
     signed_amount = serializers.DecimalField(
         max_digits=14,
         decimal_places=2,
     )
+    signedAmountDisplay = MoneyAmountSerializer(read_only=True)
     type = serializers.CharField()
 
 

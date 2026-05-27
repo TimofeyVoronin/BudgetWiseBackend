@@ -106,7 +106,7 @@ class FinanceAccountsAPITests(FinanceAPITestCase):
         self.assertIn(self.cash_account.id, account_ids)
         self.assertNotIn(self.other_account.id, account_ids)
 
-    def test_account_list_filters_by_type_currency_and_search(self):
+    def test_account_list_filters_by_type_account_currency_and_search(self):
         self.authenticate()
 
         target_account = Account.objects.create(
@@ -132,7 +132,7 @@ class FinanceAccountsAPITests(FinanceAPITestCase):
             reverse("finance:account-list"),
             data={
                 "type": AccountType.SAVINGS,
-                "currency": "usd",
+                "accountCurrency": "usd",
                 "search": "копилка",
             },
         )
