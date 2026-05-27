@@ -13,6 +13,7 @@ from rest_framework.exceptions import (
     PermissionDenied,
     ValidationError,
 )
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.users.auth.email_confirmation import (
@@ -515,3 +516,102 @@ class LoginSerializer(serializers.Serializer):
             return "staff"
 
         return "user"
+
+LOGOUT_SUCCESS_MESSAGE = "Выход выполнен. Refresh token добавлен в blacklist."
+
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField(write_only=True, trim_whitespace=False)
+    detail = serializers.CharField(read_only=True)
+
+    default_error_messages = {
+        "invalid_token": "Недействительный refresh token.",
+    }
+
+    def validate_refresh(self, value):
+        try:
+            self.refresh_token = RefreshToken(value)
+        except TokenError:
+            raise serializers.ValidationError(
+                serializers.ErrorDetail(
+                    self.error_messages["invalid_token"],
+                    code="invalid_token",
+                )
+            )
+
+        return value
+
+    def save(self, **kwargs):
+        refresh_token = getattr(self, "refresh_token", None)
+
+        if refresh_token is None:
+            try:
+                refresh_token = RefreshToken(self.validated_data["refresh"])
+            except TokenError:
+                raise ValidationError(
+                    {
+                        "refresh": [
+                            serializers.ErrorDetail(
+                                self.error_messages["invalid_token"],
+                                code="invalid_token",
+                            )
+                        ]
+                    }
+                )
+
+        try:
+            refresh_token.blacklist()
+        except AttributeError:
+            logger.exception(
+                "JWT logout failed because token blacklist app is not available."
+            )
+            raise ValidationError(
+                {
+                    "refresh": [
+                        serializers.ErrorDetail(
+                            self.error_messages["invalid_token"],
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+        except TokenError:
+            raise ValidationError(
+                {
+                    "refresh": [
+                        serializers.ErrorDetail(
+                            self.error_messages["invalid_token"],
+                            code="invalid_token",
+                        )
+                    ]
+                }
+            )
+
+        request = self.context.get("request")
+
+        logger.info(
+            "User logged out. user_id=%s client_ip=%s",
+            getattr(getattr(request, "user", None), "id", None),
+            self._get_client_ip(request),
+        )
+
+        return {
+            "detail": LOGOUT_SUCCESS_MESSAGE,
+        }
+
+    def to_representation(self, instance):
+        return {
+            "detail": LOGOUT_SUCCESS_MESSAGE,
+        }
+
+    def _get_client_ip(self, request) -> str | None:
+        if request is None:
+            return None
+
+        forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+
+        return request.META.get("REMOTE_ADDR")
+

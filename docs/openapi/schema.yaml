@@ -137,6 +137,47 @@ paths:
                       is_active: true
                   summary: Успешный ответ
           description: ''
+  /api/v1/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      description: Завершает пользовательскую сессию на сервере. Принимает refresh
+        token и добавляет его в blacklist, после чего этот refresh token нельзя использовать
+        для обновления access token. Access token остаётся действительным до истечения
+        своего короткого срока жизни.
+      summary: Выйти из системы
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  refresh: jwt-refresh-token
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Logout'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Выход выполнен. Refresh token добавлен в blacklist.
+                  summary: Успешный ответ
+          description: ''
   /api/v1/auth/register/:
     post:
       operationId: auth_register_create
@@ -13189,6 +13230,23 @@ components:
       - last_name
       - role
       - username
+    Logout:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+    LogoutRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - refresh
     ModeEnum:
       enum:
       - single
