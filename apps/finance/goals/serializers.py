@@ -4,6 +4,7 @@ from django.utils import timezone
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
+from apps.finance.currencies.money import MoneyAmountSerializer, build_money_payload
 from apps.finance.currencies.services import (
     get_user_visible_currency_codes,
     validate_user_currency_available,
@@ -107,6 +108,9 @@ class GoalSerializer(serializers.ModelSerializer):
     statusLabel = serializers.SerializerMethodField(read_only=True)
     targetRub = serializers.SerializerMethodField(read_only=True)
     currentRub = serializers.SerializerMethodField(read_only=True)
+    target = serializers.SerializerMethodField(read_only=True)
+    current = serializers.SerializerMethodField(read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
     accountId = serializers.SerializerMethodField(read_only=True)
     accountName = serializers.SerializerMethodField(read_only=True)
     topupsCount = serializers.SerializerMethodField(read_only=True)
@@ -132,8 +136,11 @@ class GoalSerializer(serializers.ModelSerializer):
             "statusLabel",
             "target_amount",
             "targetRub",
+            "target",
             "current_amount",
             "currentRub",
+            "current",
+            "sourceCurrency",
             "percent",
             "deadline",
             "icon",
@@ -158,6 +165,9 @@ class GoalSerializer(serializers.ModelSerializer):
             "statusLabel",
             "current_amount",
             "currentRub",
+            "target",
+            "current",
+            "sourceCurrency",
             "percent",
             "topups_count",
             "topupsCount",
@@ -227,11 +237,23 @@ class GoalSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_targetRub(self, obj) -> str:
-        return self._format_decimal(obj.target_amount)
+        return self._format_decimal(self._display_money(obj, obj.target_amount)["amount"])
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_currentRub(self, obj) -> str:
-        return self._format_decimal(obj.current_amount)
+        return self._format_decimal(self._display_money(obj, obj.current_amount)["amount"])
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_target(self, obj) -> dict:
+        return self._display_money(obj, obj.target_amount)
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_current(self, obj) -> dict:
+        return self._display_money(obj, obj.current_amount)
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sourceCurrency(self, obj) -> str:
+        return self._source_currency(obj)
 
     @extend_schema_field(OpenApiTypes.INT)
     def get_accountId(self, obj) -> int | None:
@@ -247,6 +269,28 @@ class GoalSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.INT)
     def get_topupsCount(self, obj) -> int:
         return self.get_topups_count(obj)
+
+    def _source_currency(self, obj) -> str:
+        if obj.account_id and obj.account:
+            return obj.account.currency
+
+        converter = self.context.get("currency_converter")
+        if converter is not None:
+            return converter.primary_currency
+
+        return "RUB"
+
+    def _display_money(self, obj, value) -> dict:
+        source_currency = self._source_currency(obj)
+        converter = self.context.get("currency_converter")
+
+        if converter is None:
+            return build_money_payload(value, currency=source_currency)
+
+        return converter.display_amount_payload(
+            value,
+            source_currency=source_currency,
+        )
 
     def validate_name(self, value: str) -> str:
         name = value.strip()
@@ -379,8 +423,16 @@ class GoalSerializer(serializers.ModelSerializer):
 
         return super().create(validated_data)
 
-    def _format_decimal(self, value: Decimal) -> str:
-        return str(value.quantize(Decimal("0.01")))
+    def _format_decimal(self, value) -> str:
+        return str(Decimal(str(value)).quantize(Decimal("0.01")))
+
+
+class GoalCurrencyContextSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    primaryCode = serializers.CharField(read_only=True)
+    sourceAvailable = serializers.BooleanField(read_only=True)
+    usingCachedRates = serializers.BooleanField(read_only=True)
+    warning = serializers.CharField(read_only=True, allow_blank=True)
 
 
 class GoalSummarySerializer(serializers.Serializer):
@@ -392,8 +444,12 @@ class GoalSummarySerializer(serializers.Serializer):
         max_digits=14,
         decimal_places=2,
     )
+    totalCurrent = MoneyAmountSerializer(read_only=True)
+    totalTarget = MoneyAmountSerializer(read_only=True)
     active_count = serializers.IntegerField()
     completed_count = serializers.IntegerField()
+    currency = serializers.CharField(read_only=True)
+    currencyContext = GoalCurrencyContextSerializer(read_only=True)
 
     totalCurrentRub = serializers.DecimalField(
         max_digits=14,
@@ -433,6 +489,8 @@ class GoalContributionSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     amountRub = serializers.SerializerMethodField(read_only=True)
+    amountDisplay = serializers.SerializerMethodField(read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
     accountName = serializers.SerializerMethodField(read_only=True)
     operationId = serializers.SerializerMethodField(read_only=True)
 
@@ -443,6 +501,8 @@ class GoalContributionSerializer(serializers.ModelSerializer):
             "date",
             "amount",
             "amountRub",
+            "amountDisplay",
+            "sourceCurrency",
             "account",
             "account_name",
             "accountName",
@@ -456,7 +516,15 @@ class GoalContributionSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_amountRub(self, obj) -> str:
-        return str(obj.amount.quantize(Decimal("0.01")))
+        return str(Decimal(str(self._display_money(obj)["amount"])).quantize(Decimal("0.01")))
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_amountDisplay(self, obj) -> dict:
+        return self._display_money(obj)
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sourceCurrency(self, obj) -> str:
+        return self._source_currency(obj)
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_accountName(self, obj) -> str:
@@ -468,6 +536,31 @@ class GoalContributionSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.INT)
     def get_operationId(self, obj) -> int | None:
         return obj.transaction_id
+
+    def _source_currency(self, obj) -> str:
+        if obj.account_id and obj.account:
+            return obj.account.currency
+
+        if obj.goal_id and obj.goal and obj.goal.account_id and obj.goal.account:
+            return obj.goal.account.currency
+
+        converter = self.context.get("currency_converter")
+        if converter is not None:
+            return converter.primary_currency
+
+        return "RUB"
+
+    def _display_money(self, obj) -> dict:
+        source_currency = self._source_currency(obj)
+        converter = self.context.get("currency_converter")
+
+        if converter is None:
+            return build_money_payload(obj.amount, currency=source_currency)
+
+        return converter.display_amount_payload(
+            obj.amount,
+            source_currency=source_currency,
+        )
 
 
 class GoalDetailSerializer(serializers.Serializer):

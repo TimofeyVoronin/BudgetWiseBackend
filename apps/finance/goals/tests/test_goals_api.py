@@ -1,14 +1,17 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 
-from apps.finance.models import Goal, GoalCategory, GoalPriority, GoalStatus
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
+from apps.finance.models import Account, Goal, GoalCategory, GoalPriority, GoalStatus
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceGoalsAPITests(FinanceAPITestCase):
     def create_goal(
         self,
@@ -39,6 +42,21 @@ class FinanceGoalsAPITests(FinanceAPITestCase):
 
     def get_goal_ids(self, response):
         return [item["id"] for item in response.data["results"]]
+
+    def create_usd_account(self):
+        ensure_user_currencies(self.user)
+        usd_currency = get_user_currency_by_code(self.user, "USD")
+        usd_currency.is_visible = True
+        usd_currency.rate_to_primary = Decimal("100.00000000")
+        usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+
+        return Account.objects.create(
+            user=self.user,
+            name="USD card",
+            initial_balance=Decimal("1000.00"),
+            balance=Decimal("1000.00"),
+            currency="USD",
+        )
 
     def test_goal_list_requires_authentication(self):
         response = self.client.get(reverse("finance:goal-list"))
@@ -248,6 +266,58 @@ class FinanceGoalsAPITests(FinanceAPITestCase):
         self.assertEqual(response.data["totalTargetRub"], "300000.00")
         self.assertEqual(response.data["active_count"], 2)
         self.assertEqual(response.data["completed_count"], 1)
+
+
+    def test_goal_list_converts_amounts_to_display_currency(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        goal = self.create_goal(
+            account=usd_account,
+            target_amount="1000.00",
+            current_amount="250.00",
+        )
+
+        response = self.client.get(
+            reverse("finance:goal-list"),
+            data={"currency": "RUB"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(item for item in response.data["results"] if item["id"] == goal.id)
+        self.assertEqual(row["sourceCurrency"], "USD")
+        self.assertEqual(row["targetRub"], "100000.00")
+        self.assertEqual(row["currentRub"], "25000.00")
+        self.assertEqual(row["target"], {"amount": 100000.0, "currency": "RUB"})
+        self.assertEqual(row["current"], {"amount": 25000.0, "currency": "RUB"})
+
+    def test_goal_summary_converts_mixed_goal_currencies(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        self.create_goal(
+            account=usd_account,
+            name="USD goal",
+            target_amount="100.00",
+            current_amount="10.00",
+        )
+        self.create_goal(
+            account=self.account,
+            name="RUB goal",
+            target_amount="1000.00",
+            current_amount="500.00",
+        )
+
+        response = self.client.get(
+            reverse("finance:goal-summary"),
+            data={"currency": "RUB"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["totalCurrentRub"], "1500.00")
+        self.assertEqual(response.data["totalTargetRub"], "11000.00")
+        self.assertEqual(response.data["totalCurrent"], {"amount": 1500.0, "currency": "RUB"})
+        self.assertEqual(response.data["totalTarget"], {"amount": 11000.0, "currency": "RUB"})
+        self.assertEqual(response.data["currency"], "RUB")
+        self.assertEqual(response.data["currencyContext"]["code"], "RUB")
 
     def test_goal_meta_returns_form_options(self):
         self.authenticate()

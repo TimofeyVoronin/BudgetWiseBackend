@@ -1,10 +1,13 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
 from apps.finance.models import (
+    Account,
     Budget,
     BudgetCategoryGroup,
     BudgetKind,
@@ -15,6 +18,7 @@ from apps.finance.models import (
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceBudgetsAPITests(FinanceAPITestCase):
     def create_budget(
         self,
@@ -54,6 +58,24 @@ class FinanceBudgetsAPITests(FinanceAPITestCase):
 
     def get_budget_ids(self, response):
         return [item["id"] for item in response.data["items"]]
+
+    def ensure_usd_currency(self):
+        ensure_user_currencies(self.user)
+        usd_currency = get_user_currency_by_code(self.user, "USD")
+        usd_currency.is_visible = True
+        usd_currency.rate_to_primary = Decimal("100.00000000")
+        usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+        return usd_currency
+
+    def create_usd_account(self):
+        self.ensure_usd_currency()
+        return Account.objects.create(
+            user=self.user,
+            name="USD card",
+            initial_balance=Decimal("1000.00"),
+            balance=Decimal("1000.00"),
+            currency="USD",
+        )
 
     def test_budget_list_requires_authentication(self):
         response = self.client.get(reverse("finance:budget-list"))
@@ -501,6 +523,106 @@ class FinanceBudgetsAPITests(FinanceAPITestCase):
         self.assertFalse(response.data["ok"])
         self.assertIn("categoryName", response.data["fieldErrors"])
         self.assertIn("period", response.data["fieldErrors"])
+
+
+    def test_budget_list_converts_limit_and_spent_to_display_currency(self):
+        self.authenticate()
+        self.ensure_usd_currency()
+        budget = self.create_budget(
+            category=self.expense_category,
+            amount_limit="100.00",
+            currency="USD",
+        )
+        self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            amount="5000.00",
+            operation_date=budget.period_start + timedelta(days=1),
+        )
+
+        response = self.client.get(
+            reverse("finance:budget-list"),
+            data={"currency": "RUB"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(item for item in response.data["items"] if item["id"] == budget.id)
+        self.assertEqual(row["sourceCurrency"], "USD")
+        self.assertEqual(row["limitRub"], 10000.0)
+        self.assertEqual(row["spentRub"], 5000.0)
+        self.assertEqual(row["usagePercent"], 50.0)
+        self.assertEqual(row["limit"], {"amount": 10000.0, "currency": "RUB"})
+        self.assertEqual(row["spent"], {"amount": 5000.0, "currency": "RUB"})
+        self.assertEqual(response.data["currencyContext"]["code"], "RUB")
+
+    def test_budget_currency_query_is_display_currency_and_budget_currency_filters_source(self):
+        self.authenticate()
+        self.ensure_usd_currency()
+        rub_budget = self.create_budget(
+            category=self.expense_category,
+            currency="RUB",
+        )
+        usd_budget = self.create_budget(
+            category=self.transport_category,
+            currency="USD",
+        )
+
+        display_response = self.client.get(
+            reverse("finance:budget-list"),
+            data={"currency": "USD", "perPage": 20},
+        )
+        self.assertEqual(display_response.status_code, status.HTTP_200_OK)
+        self.assertIn(rub_budget.id, self.get_budget_ids(display_response))
+        self.assertIn(usd_budget.id, self.get_budget_ids(display_response))
+
+        filter_response = self.client.get(
+            reverse("finance:budget-list"),
+            data={"budgetCurrency": "USD", "perPage": 20},
+        )
+        self.assertEqual(filter_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.get_budget_ids(filter_response), [usd_budget.id])
+
+    def test_budget_detail_and_warnings_include_money_payloads(self):
+        self.authenticate()
+        self.ensure_usd_currency()
+        budget = self.create_budget(
+            category=self.expense_category,
+            amount_limit="100.00",
+            currency="USD",
+        )
+        transaction = self.create_transaction(
+            account=self.account,
+            category=self.expense_category,
+            amount="12000.00",
+            operation_date=budget.period_start + timedelta(days=1),
+        )
+
+        detail_response = self.client.get(
+            reverse("finance:budget-detail", kwargs={"pk": budget.id}),
+            data={"currency": "RUB"},
+        )
+
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail_response.data["stats"]["limit"], {"amount": 10000.0, "currency": "RUB"})
+        self.assertEqual(detail_response.data["stats"]["spent"], {"amount": 12000.0, "currency": "RUB"})
+        operation = next(
+            item for item in detail_response.data["operations"]
+            if item["id"] == str(transaction.id)
+        )
+        self.assertEqual(operation["amount"], {"amount": 12000.0, "currency": "RUB"})
+        self.assertEqual(operation["sourceCurrency"], "RUB")
+
+        warnings_response = self.client.get(
+            reverse("finance:budget-warnings"),
+            data={"currency": "RUB"},
+        )
+
+        self.assertEqual(warnings_response.status_code, status.HTTP_200_OK)
+        warning = warnings_response.data["items"][0]
+        self.assertEqual(warning["budgetId"], str(budget.id))
+        self.assertEqual(warning["limit"], {"amount": 10000.0, "currency": "RUB"})
+        self.assertEqual(warning["spent"], {"amount": 12000.0, "currency": "RUB"})
+        self.assertEqual(warnings_response.data["currencyContext"]["code"], "RUB")
 
     def test_budget_invalid_query_params_return_400(self):
         self.authenticate()
