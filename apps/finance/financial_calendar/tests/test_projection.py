@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
@@ -8,6 +9,7 @@ from apps.finance.models import PlannedStatus, PlannedTransaction, TransactionTy
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinancialCalendarProjectionTests(FinanceAPITestCase):
     def create_planned(
         self,

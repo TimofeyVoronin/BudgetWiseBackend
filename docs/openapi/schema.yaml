@@ -3151,8 +3151,8 @@ paths:
       description: 'Возвращает расширенную месячную сетку финансового календаря: ячейки
         дней, фактические операции, плановые операции, дневные дельты, фактический
         баланс для прошлых дней, прогнозный баланс и первый найденный кассовый разрыв.
-        Месяц в API передаётся в формате 1-12. Прогноз строится в валюте выбранных
-        счетов; автоматическая конвертация валют не выполняется.'
+        Месяц в API передаётся в формате 1-12. Суммы приводятся к валюте отображения
+        из параметра currency или из настроек пользователя.'
       summary: Получить финансовый календарь на месяц
       parameters:
       - in: query
@@ -3163,6 +3163,11 @@ paths:
             type: integer
         description: ID счетов. Можно передавать повторяющимся параметром или через
           запятую.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
       - in: query
         name: dateFrom
         schema:
@@ -3216,7 +3221,11 @@ paths:
                     todayIso: '2026-05-22'
                     todayLabel: 22.05.2026
                     openingBalanceRub: '227800.00'
+                    openingBalance:
+                      amount: 227800.0
+                      currency: RUB
                     openingBalanceLabel: 227 800,00 ₽
+                    currency: RUB
                     cells: []
                     events: []
                     dayForecasts: []
@@ -3240,6 +3249,11 @@ paths:
           items:
             type: integer
         description: ID счетов.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
       - in: query
         name: eventTypes
         schema:
@@ -3283,6 +3297,11 @@ paths:
           items:
             type: integer
         description: ID счетов.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
       - in: query
         name: dateFrom
         schema:
@@ -3399,6 +3418,11 @@ paths:
         description: ID счетов. Можно передавать повторяющимся параметром или через
           запятую.
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
+      - in: query
         name: dateFrom
         schema:
           type: string
@@ -3468,6 +3492,12 @@ paths:
         часовые пояса из настроек приложения и баланс активных счетов для стартового
         состояния формы.
       summary: Получить справочники финансового календаря
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
       tags:
       - finance-calendar
       security:
@@ -12337,6 +12367,30 @@ components:
       required:
       - endIso
       - startIso
+    FinancialCalendarCurrencyContext:
+      type: object
+      properties:
+        code:
+          type: string
+          description: ISO-код валюты отображения.
+        primaryCode:
+          type: string
+          description: Основная валюта пользователя.
+        sourceAvailable:
+          type: boolean
+          description: Доступен ли внешний источник курсов.
+        usingCachedRates:
+          type: boolean
+          description: Используются ли последние сохранённые курсы.
+        warning:
+          type: string
+          description: Предупреждение по курсам валют.
+      required:
+      - code
+      - primaryCode
+      - sourceAvailable
+      - usingCachedRates
+      - warning
     FinancialCalendarDayForecast:
       type: object
       properties:
@@ -12352,7 +12406,13 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           nullable: true
-          description: Фактический баланс на конец дня. Для будущих дней null.
+          description: Фактический баланс на конец дня в валюте отображения. Для будущих
+            дней null. Поле сохранено для совместимости.
+        actualBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          nullable: true
+          description: Фактический баланс на конец дня в выбранной валюте отображения.
         actualBalanceLabel:
           type: string
           nullable: true
@@ -12361,8 +12421,12 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Прогнозный баланс на конец дня с учётом фактических и плановых
-            событий.
+          description: Прогнозный баланс на конец дня в валюте отображения. Поле сохранено
+            для совместимости.
+        forecastBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Прогнозный баланс на конец дня в выбранной валюте отображения.
         forecastBalanceLabel:
           type: string
           description: Прогнозный баланс в пользовательском формате числа.
@@ -12370,7 +12434,12 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Суммарное изменение за день по фактическим и плановым событиям.
+          description: Суммарное изменение за день в валюте отображения. Поле сохранено
+            для совместимости.
+        totalDeltaDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Суммарное изменение за день в выбранной валюте отображения.
         totalDeltaLabel:
           type: string
           description: Изменение за день в пользовательском формате числа.
@@ -12421,6 +12490,13 @@ components:
           items:
             $ref: '#/components/schemas/FinancialCalendarEvent'
           description: События выбранного дня.
+        currency:
+          type: string
+          description: Валюта отображения дня.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
       required:
       - dayBalance
       - events
@@ -12465,11 +12541,19 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           nullable: true
-          description: Сумма в рублях. Доход положительный, расход отрицательный.
+          description: Сумма в валюте отображения. Доход положительный, расход отрицательный.
+            Поле сохранено для совместимости.
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Сумма события в выбранной валюте отображения.
         amountLabel:
           type: string
           nullable: true
           description: Сумма в пользовательском формате числа с символом валюты.
+        sourceCurrency:
+          type: string
+          description: Исходная валюта счёта события.
         accountId:
           type: integer
           description: ID счёта события.
@@ -12555,6 +12639,13 @@ components:
           items:
             $ref: '#/components/schemas/FinancialCalendarEvent'
           description: Список событий календаря.
+        currency:
+          type: string
+          description: Валюта отображения событий.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
       required:
       - items
     FinancialCalendarExportColumnsRequest:
@@ -12584,6 +12675,13 @@ components:
           items:
             $ref: '#/components/schemas/FinancialCalendarExportPreviewRow'
           description: Строки предварительного просмотра выгрузки.
+        currency:
+          type: string
+          description: Валюта отображения строк предварительного просмотра.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
       required:
       - rows
     FinancialCalendarExportPreviewRow:
@@ -12676,6 +12774,10 @@ components:
           minLength: 1
           description: IANA-часовой пояс. Если не передан, используется настройка
             пользователя.
+        currency:
+          type: string
+          minLength: 1
+          description: Валюта отображения сумм в экспорте.
       required:
       - month
       - year
@@ -12716,11 +12818,24 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Текущий остаток активных счетов пользователя.
+          description: Текущий остаток активных счетов пользователя в валюте отображения.
+            Поле сохранено для совместимости.
+        openingBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Текущий остаток активных счетов пользователя в выбранной валюте
+            отображения.
         openingBalanceLabel:
           type: string
           description: Текущий остаток активных счетов в пользовательском формате
             числа.
+        currency:
+          type: string
+          description: Валюта отображения справочников календаря.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
       required:
       - accounts
       - defaultTimezone
@@ -12756,8 +12871,12 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Прогнозный баланс на конец дня с учётом фактических и плановых
-            событий.
+          description: Прогнозный баланс на конец дня в валюте отображения. Поле сохранено
+            для совместимости.
+        forecastBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Прогнозный баланс на конец дня в выбранной валюте отображения.
         forecastBalanceLabel:
           type: string
           description: Прогнозный баланс в пользовательском формате числа.
@@ -12766,7 +12885,13 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           nullable: true
-          description: Фактический баланс на конец дня или null для будущих дней.
+          description: Фактический баланс на конец дня в валюте отображения или null
+            для будущих дней. Поле сохранено для совместимости.
+        actualBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          nullable: true
+          description: Фактический баланс на конец дня в выбранной валюте отображения.
         actualBalanceLabel:
           type: string
           nullable: true
@@ -12816,10 +12941,23 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Расчётный остаток активных счетов на начало диапазона календаря.
+          description: Расчётный остаток активных счетов на начало диапазона календаря
+            в валюте отображения. Поле сохранено для совместимости.
+        openingBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Расчётный остаток активных счетов на начало диапазона в выбранной
+            валюте отображения.
         openingBalanceLabel:
           type: string
           description: Остаток на начало диапазона в пользовательском формате числа.
+        currency:
+          type: string
+          description: Валюта отображения финансового календаря.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
         cells:
           type: array
           items:

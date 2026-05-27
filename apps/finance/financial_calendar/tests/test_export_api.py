@@ -2,14 +2,17 @@ import base64
 from datetime import date
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
-from apps.finance.models import PlannedStatus, PlannedTransaction, TransactionType
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
+from apps.finance.models import Account, PlannedStatus, PlannedTransaction, TransactionType
 from apps.finance.testing import FinanceAPITestCase
 from apps.users.models import AppDateFormat, AppNumberFormat, UserAppSettings
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinancialCalendarExportAPITests(FinanceAPITestCase):
     def create_planned(
         self,
@@ -33,6 +36,24 @@ class FinancialCalendarExportAPITests(FinanceAPITestCase):
             planned_date=planned_date or self.today,
             status=status,
             include_in_forecast=include_in_forecast,
+        )
+
+    def ensure_usd_currency(self):
+        ensure_user_currencies(self.user)
+        usd_currency = get_user_currency_by_code(self.user, "USD")
+        usd_currency.is_visible = True
+        usd_currency.rate_to_primary = Decimal("100.00000000")
+        usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+        return usd_currency
+
+    def create_usd_account(self, *, balance="100.00"):
+        self.ensure_usd_currency()
+        return Account.objects.create(
+            user=self.user,
+            name="USD card",
+            initial_balance=Decimal(balance),
+            balance=Decimal(balance),
+            currency="USD",
         )
 
     def test_export_preview_requires_authentication(self):
@@ -161,6 +182,38 @@ class FinancialCalendarExportAPITests(FinanceAPITestCase):
         self.assertIn("События", decoded_content)
         self.assertNotIn("Риск", decoded_content.splitlines()[0])
         self.assertIn("Подработка", decoded_content)
+
+    def test_export_uses_selected_display_currency_in_csv_headers(self):
+        self.authenticate()
+        selected_date = date(2026, 5, 15)
+        usd_account = self.create_usd_account(balance="100.00")
+        self.create_transaction(
+            account=usd_account,
+            type=TransactionType.EXPENSE,
+            category=self.expense_category,
+            amount="10.00",
+            description="USD expense",
+            operation_date=selected_date,
+        )
+
+        response = self.client.post(
+            reverse("finance:financial-calendar-export"),
+            data={
+                "year": 2026,
+                "month": 5,
+                "format": "csv",
+                "currency": "USD",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        encoded_content = response.data["downloadUrl"].split(",", 1)[1]
+        decoded_content = base64.b64decode(encoded_content).decode("utf-8-sig")
+        header = decoded_content.splitlines()[0]
+        self.assertIn("Факт $", header)
+        self.assertIn("Баланс $", header)
+        self.assertNotIn("Факт ₽", header)
 
     def test_export_supports_xlsx_and_rejects_invalid_format(self):
         self.authenticate()

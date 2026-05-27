@@ -6,9 +6,10 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Iterable
 
-from django.db.models import Sum
 from django.utils import timezone
 
+from apps.finance.currencies.conversion import CurrencyConversionService, get_currency_conversion_service
+from apps.finance.currencies.money import build_money_payload
 from apps.finance.financial_calendar.exporters import (
     FINANCIAL_CALENDAR_EXPORT_FORMATS,
     build_financial_calendar_download_url,
@@ -98,8 +99,13 @@ def build_financial_calendar_month(
     date_from: date | None = None,
     date_to: date | None = None,
     timezone_value: str | None = None,
+    display_currency: str | None = None,
 ) -> dict:
     formatting_context = build_app_formatting_context(user, timezone_value=timezone_value)
+    converter = build_financial_calendar_converter(
+        user=user,
+        display_currency=display_currency,
+    )
     query = build_financial_calendar_query(
         user=user,
         year=year,
@@ -118,6 +124,7 @@ def build_financial_calendar_month(
         account_ids=query.account_ids,
         event_types=query.event_types,
         formatting_context=formatting_context,
+        converter=converter,
     )
     projection = calculate_financial_calendar_projection(
         user=user,
@@ -126,6 +133,7 @@ def build_financial_calendar_month(
         account_ids=query.account_ids,
         events=events,
         formatting_context=formatting_context,
+        converter=converter,
     )
     mark_sharp_change_events(
         events=events,
@@ -138,6 +146,7 @@ def build_financial_calendar_month(
         events=events,
         formatting_context=formatting_context,
         user=user,
+        converter=converter,
     )
 
     today = timezone.localdate(timezone=formatting_context.timezone)
@@ -148,7 +157,15 @@ def build_financial_calendar_month(
         "todayIso": today.isoformat(),
         "todayLabel": format_app_date(today, formatting_context),
         "openingBalanceRub": format_money(projection.opening_balance),
-        "openingBalanceLabel": format_app_money(projection.opening_balance, formatting_context, user=user, currency_code="RUB"),
+        "openingBalance": build_display_money_payload(projection.opening_balance, converter),
+        "openingBalanceLabel": get_calendar_money_label(
+            projection.opening_balance,
+            formatting_context,
+            user,
+            currency_code=converter.display_currency,
+        ),
+        "currency": converter.display_currency,
+        "currencyContext": converter.context_payload(),
         "cells": cells,
         "events": events,
         "dayForecasts": projection.day_forecasts,
@@ -215,8 +232,32 @@ def get_context_today(context: AppSettingsFormattingContext) -> date:
     return timezone.localdate(timezone=context.timezone)
 
 
-def get_calendar_money_label(value: Decimal | None, context: AppSettingsFormattingContext, user) -> str | None:
-    return format_app_money(value, context, user=user, currency_code="RUB")
+def build_financial_calendar_converter(
+    *,
+    user,
+    display_currency: str | None = None,
+) -> CurrencyConversionService:
+    return get_currency_conversion_service(
+        user=user,
+        display_currency=display_currency,
+    )
+
+
+def build_display_money_payload(value: Decimal | None, converter: CurrencyConversionService) -> dict | None:
+    if value is None:
+        return None
+
+    return build_money_payload(value, currency=converter.display_currency)
+
+
+def get_calendar_money_label(
+    value: Decimal | None,
+    context: AppSettingsFormattingContext,
+    user,
+    *,
+    currency_code: str,
+) -> str | None:
+    return format_app_money(value, context, user=user, currency_code=currency_code)
 
 
 def get_financial_calendar_account_ids(user, account_ids: list[int] | None = None) -> list[int]:
@@ -238,23 +279,32 @@ def get_financial_calendar_account_ids(user, account_ids: list[int] | None = Non
     return list(queryset.order_by("id").values_list("id", flat=True))
 
 
-def get_accounts_opening_balance(user, account_ids: list[int]) -> Decimal:
+def get_accounts_opening_balance(
+    user,
+    account_ids: list[int],
+    *,
+    converter: CurrencyConversionService,
+) -> Decimal:
     """Return the current stored balance for selected accounts.
 
-    Account.balance is the current balance maintained by transaction services.
-    The financial calendar uses this value as the anchor point and derives
-    historical/future opening balances from confirmed and planned events.
+    Account.balance is stored in the account currency. The financial calendar
+    works in the selected display currency, so every account balance is
+    converted before summing.
     """
     if not account_ids:
         return Decimal("0.00")
 
-    value = (
-        Account.objects
-        .filter(user=user, id__in=account_ids, is_active=True, is_archived=False)
-        .aggregate(total=Sum("balance"))
-        .get("total")
+    accounts = Account.objects.filter(
+        user=user,
+        id__in=account_ids,
+        is_active=True,
+        is_archived=False,
     )
-    return value or Decimal("0.00")
+
+    return sum_converted_amounts(
+        converter=converter,
+        items=((account.balance, account.currency) for account in accounts),
+    )
 
 
 def get_actual_transactions_delta(
@@ -263,31 +313,29 @@ def get_actual_transactions_delta(
     account_ids: list[int],
     date_from: date,
     date_to: date,
+    converter: CurrencyConversionService,
 ) -> Decimal:
     if not account_ids or date_from > date_to:
         return Decimal("0.00")
 
-    queryset = Transaction.objects.filter(
-        user=user,
-        account_id__in=account_ids,
-        operation_date__gte=date_from,
-        operation_date__lte=date_to,
+    queryset = (
+        Transaction.objects
+        .filter(
+            user=user,
+            account_id__in=account_ids,
+            operation_date__gte=date_from,
+            operation_date__lte=date_to,
+        )
+        .select_related("account")
     )
-    income = (
-        queryset
-        .filter(type=TransactionType.INCOME)
-        .aggregate(total=Sum("amount"))
-        .get("total")
-        or Decimal("0.00")
+
+    return sum_converted_amounts(
+        converter=converter,
+        items=(
+            (get_signed_amount(transaction.type, transaction.amount), transaction.account.currency)
+            for transaction in queryset
+        ),
     )
-    expense = (
-        queryset
-        .filter(type=TransactionType.EXPENSE)
-        .aggregate(total=Sum("amount"))
-        .get("total")
-        or Decimal("0.00")
-    )
-    return income - expense
 
 
 def get_planned_transactions_delta(
@@ -296,33 +344,31 @@ def get_planned_transactions_delta(
     account_ids: list[int],
     date_from: date,
     date_to: date,
+    converter: CurrencyConversionService,
 ) -> Decimal:
     if not account_ids or date_from > date_to:
         return Decimal("0.00")
 
-    queryset = PlannedTransaction.objects.filter(
-        user=user,
-        account_id__in=account_ids,
-        planned_date__gte=date_from,
-        planned_date__lte=date_to,
-        include_in_forecast=True,
-        status__in=[PlannedStatus.PENDING, PlannedStatus.CONFIRMED],
+    queryset = (
+        PlannedTransaction.objects
+        .filter(
+            user=user,
+            account_id__in=account_ids,
+            planned_date__gte=date_from,
+            planned_date__lte=date_to,
+            include_in_forecast=True,
+            status__in=[PlannedStatus.PENDING, PlannedStatus.CONFIRMED],
+        )
+        .select_related("account")
     )
-    income = (
-        queryset
-        .filter(type=TransactionType.INCOME)
-        .aggregate(total=Sum("amount"))
-        .get("total")
-        or Decimal("0.00")
+
+    return sum_converted_amounts(
+        converter=converter,
+        items=(
+            (get_signed_amount(planned.type, planned.amount), planned.account.currency)
+            for planned in queryset
+        ),
     )
-    expense = (
-        queryset
-        .filter(type=TransactionType.EXPENSE)
-        .aggregate(total=Sum("amount"))
-        .get("total")
-        or Decimal("0.00")
-    )
-    return income - expense
 
 
 def calculate_projection_opening_balance(
@@ -331,8 +377,13 @@ def calculate_projection_opening_balance(
     account_ids: list[int],
     date_from: date,
     today: date,
+    converter: CurrencyConversionService,
 ) -> Decimal:
-    current_balance = get_accounts_opening_balance(user, account_ids)
+    current_balance = get_accounts_opening_balance(
+        user,
+        account_ids,
+        converter=converter,
+    )
 
     if date_from <= today:
         actual_delta = get_actual_transactions_delta(
@@ -340,6 +391,7 @@ def calculate_projection_opening_balance(
             account_ids=account_ids,
             date_from=date_from,
             date_to=today,
+            converter=converter,
         )
         return current_balance - actual_delta
 
@@ -348,6 +400,7 @@ def calculate_projection_opening_balance(
         account_ids=account_ids,
         date_from=today + timedelta(days=1),
         date_to=date_from - timedelta(days=1),
+        converter=converter,
     )
     return current_balance + planned_delta
 
@@ -360,12 +413,14 @@ def get_financial_calendar_events(
     account_ids: list[int],
     event_types: set[str] | None = None,
     formatting_context: AppSettingsFormattingContext | None = None,
+    converter: CurrencyConversionService | None = None,
 ) -> list[dict]:
     if not account_ids:
         return []
 
     event_types = event_types or FINANCIAL_CALENDAR_EVENT_TYPES
     formatting_context = formatting_context or get_default_financial_calendar_context(user)
+    converter = converter or build_financial_calendar_converter(user=user)
     events: list[dict] = []
 
     if FINANCIAL_CALENDAR_EVENT_INCOME in event_types or FINANCIAL_CALENDAR_EVENT_EXPENSE in event_types:
@@ -385,7 +440,7 @@ def get_financial_calendar_events(
             event_type = transaction.type
             if event_type not in event_types:
                 continue
-            events.append(transaction_to_calendar_event(transaction, formatting_context, user))
+            events.append(transaction_to_calendar_event(transaction, formatting_context, user, converter))
 
     if FINANCIAL_CALENDAR_EVENT_INCOME in event_types or FINANCIAL_CALENDAR_EVENT_EXPENSE in event_types:
         planned_queryset = (
@@ -406,7 +461,7 @@ def get_financial_calendar_events(
             event_type = planned.type
             if event_type not in event_types:
                 continue
-            events.append(planned_to_calendar_event(planned, formatting_context, user))
+            events.append(planned_to_calendar_event(planned, formatting_context, user, converter))
 
     events.sort(key=lambda item: (item["date"], item["status"], item["id"]))
     return events
@@ -416,8 +471,18 @@ def get_default_financial_calendar_context(user) -> AppSettingsFormattingContext
     return build_app_formatting_context(user)
 
 
-def transaction_to_calendar_event(transaction: Transaction, formatting_context: AppSettingsFormattingContext, user) -> dict:
+def transaction_to_calendar_event(
+    transaction: Transaction,
+    formatting_context: AppSettingsFormattingContext,
+    user,
+    converter: CurrencyConversionService,
+) -> dict:
     signed_amount = get_signed_amount(transaction.type, transaction.amount)
+    source_currency = transaction.account.currency
+    display_amount = converter.convert_to_display(
+        signed_amount,
+        source_currency=source_currency,
+    )
     title = transaction.description.strip() if transaction.description else transaction.category.name
 
     return {
@@ -429,8 +494,15 @@ def transaction_to_calendar_event(transaction: Transaction, formatting_context: 
         "type": transaction.type,
         "title": title,
         "subtitle": transaction.category.name,
-        "amountRub": format_money(signed_amount),
-        "amountLabel": get_calendar_money_label(signed_amount, formatting_context, user),
+        "amountRub": format_money(display_amount.amount),
+        "amountDisplay": display_amount.as_payload(),
+        "amountLabel": get_calendar_money_label(
+            display_amount.amount,
+            formatting_context,
+            user,
+            currency_code=display_amount.currency,
+        ),
+        "sourceCurrency": source_currency,
         "accountId": transaction.account_id,
         "accountName": transaction.account.name,
         "status": FINANCIAL_CALENDAR_STATUS_CONFIRMED,
@@ -438,8 +510,18 @@ def transaction_to_calendar_event(transaction: Transaction, formatting_context: 
     }
 
 
-def planned_to_calendar_event(planned: PlannedTransaction, formatting_context: AppSettingsFormattingContext, user) -> dict:
+def planned_to_calendar_event(
+    planned: PlannedTransaction,
+    formatting_context: AppSettingsFormattingContext,
+    user,
+    converter: CurrencyConversionService,
+) -> dict:
     signed_amount = get_signed_amount(planned.type, planned.amount)
+    source_currency = planned.account.currency
+    display_amount = converter.convert_to_display(
+        signed_amount,
+        source_currency=source_currency,
+    )
 
     return {
         "id": f"planned-{planned.id}",
@@ -450,8 +532,15 @@ def planned_to_calendar_event(planned: PlannedTransaction, formatting_context: A
         "type": planned.type,
         "title": planned.name,
         "subtitle": planned.category.name,
-        "amountRub": format_money(signed_amount),
-        "amountLabel": get_calendar_money_label(signed_amount, formatting_context, user),
+        "amountRub": format_money(display_amount.amount),
+        "amountDisplay": display_amount.as_payload(),
+        "amountLabel": get_calendar_money_label(
+            display_amount.amount,
+            formatting_context,
+            user,
+            currency_code=display_amount.currency,
+        ),
+        "sourceCurrency": source_currency,
         "accountId": planned.account_id,
         "accountName": planned.account.name,
         "status": FINANCIAL_CALENDAR_STATUS_PENDING,
@@ -467,14 +556,17 @@ def calculate_financial_calendar_projection(
     account_ids: list[int],
     events: list[dict],
     formatting_context: AppSettingsFormattingContext | None = None,
+    converter: CurrencyConversionService | None = None,
 ) -> FinancialCalendarProjection:
     formatting_context = formatting_context or get_default_financial_calendar_context(user)
+    converter = converter or build_financial_calendar_converter(user=user)
     today = get_context_today(formatting_context)
     opening_balance = calculate_projection_opening_balance(
         user=user,
         account_ids=account_ids,
         date_from=date_from,
         today=today,
+        converter=converter,
     )
     events_by_date: dict[str, list[dict]] = {}
 
@@ -513,11 +605,29 @@ def calculate_financial_calendar_projection(
                 "date": iso,
                 "dateLabel": format_app_date(current_date, formatting_context),
                 "actualBalanceRub": format_money(actual_balance_value) if actual_balance_value is not None else None,
-                "actualBalanceLabel": get_calendar_money_label(actual_balance_value, formatting_context, user),
+                "actualBalance": build_display_money_payload(actual_balance_value, converter),
+                "actualBalanceLabel": get_calendar_money_label(
+                    actual_balance_value,
+                    formatting_context,
+                    user,
+                    currency_code=converter.display_currency,
+                ),
                 "forecastBalanceRub": format_money(forecast_balance),
-                "forecastBalanceLabel": get_calendar_money_label(forecast_balance, formatting_context, user),
+                "forecastBalance": build_display_money_payload(forecast_balance, converter),
+                "forecastBalanceLabel": get_calendar_money_label(
+                    forecast_balance,
+                    formatting_context,
+                    user,
+                    currency_code=converter.display_currency,
+                ),
                 "totalDelta": format_money(total_delta),
-                "totalDeltaLabel": get_calendar_money_label(total_delta, formatting_context, user),
+                "totalDeltaDisplay": build_display_money_payload(total_delta, converter),
+                "totalDeltaLabel": get_calendar_money_label(
+                    total_delta,
+                    formatting_context,
+                    user,
+                    currency_code=converter.display_currency,
+                ),
                 "hasEvents": bool(day_events),
                 "riskLevel": get_calendar_risk_level(
                     opening_balance=opening_balance,
@@ -544,6 +654,7 @@ def calculate_financial_calendar_day_forecasts(
     account_ids: list[int],
     events: list[dict],
     formatting_context: AppSettingsFormattingContext | None = None,
+    converter: CurrencyConversionService | None = None,
 ) -> list[dict]:
     return calculate_financial_calendar_projection(
         user=user,
@@ -552,6 +663,7 @@ def calculate_financial_calendar_day_forecasts(
         account_ids=account_ids,
         events=events,
         formatting_context=formatting_context,
+        converter=converter,
     ).day_forecasts
 
 
@@ -560,6 +672,22 @@ def sum_event_amounts(events: Iterable[dict]) -> Decimal:
         (Decimal(str(event.get("amountRub") or "0.00")) for event in events),
         Decimal("0.00"),
     )
+
+
+def sum_converted_amounts(
+    *,
+    converter: CurrencyConversionService,
+    items: Iterable[tuple[Decimal, str]],
+) -> Decimal:
+    total = Decimal("0.00")
+
+    for amount, source_currency in items:
+        total += converter.convert_to_display(
+            amount,
+            source_currency=source_currency,
+        ).amount
+
+    return total.quantize(Decimal("0.01"))
 
 
 def mark_sharp_change_events(*, events: list[dict], opening_balance: Decimal) -> None:
@@ -577,6 +705,7 @@ def build_financial_calendar_cells(
     events: list[dict],
     formatting_context: AppSettingsFormattingContext,
     user,
+    converter: CurrencyConversionService,
 ) -> list[dict]:
     forecasts_by_date = {item["date"]: item for item in day_forecasts}
     events_by_date: dict[str, list[dict]] = {}
@@ -597,8 +726,10 @@ def build_financial_calendar_cells(
                 "isSaturday": current_date.weekday() == 5,
                 "isSunday": current_date.weekday() == 6,
                 "forecastBalanceRub": forecast["forecastBalanceRub"],
+                "forecastBalance": forecast["forecastBalance"],
                 "forecastBalanceLabel": forecast["forecastBalanceLabel"],
                 "actualBalanceRub": forecast["actualBalanceRub"],
+                "actualBalance": forecast["actualBalance"],
                 "actualBalanceLabel": forecast["actualBalanceLabel"],
                 "riskLevel": forecast["riskLevel"],
                 "events": events_by_date.get(iso, []),
@@ -614,8 +745,13 @@ def get_financial_calendar_day(
     account_ids: list[int] | None = None,
     event_types: Iterable[str] | None = None,
     timezone_value: str | None = None,
+    display_currency: str | None = None,
 ) -> dict:
     formatting_context = build_app_formatting_context(user, timezone_value=timezone_value)
+    converter = build_financial_calendar_converter(
+        user=user,
+        display_currency=display_currency,
+    )
     resolved_account_ids = get_financial_calendar_account_ids(user, account_ids)
     resolved_event_types = set(event_types or FINANCIAL_CALENDAR_EVENT_TYPES)
     events = get_financial_calendar_events(
@@ -625,6 +761,7 @@ def get_financial_calendar_day(
         account_ids=resolved_account_ids,
         event_types=resolved_event_types,
         formatting_context=formatting_context,
+        converter=converter,
     )
     projection = calculate_financial_calendar_projection(
         user=user,
@@ -633,6 +770,7 @@ def get_financial_calendar_day(
         account_ids=resolved_account_ids,
         events=events,
         formatting_context=formatting_context,
+        converter=converter,
     )
     mark_sharp_change_events(
         events=events,
@@ -644,17 +782,26 @@ def get_financial_calendar_day(
         "dateLabel": format_app_date(iso, formatting_context),
         "dayBalance": projection.day_forecasts[0] if projection.day_forecasts else None,
         "events": events,
+        "currency": converter.display_currency,
+        "currencyContext": converter.context_payload(),
     }
 
 
-def get_financial_calendar_meta(user) -> dict:
+def get_financial_calendar_meta(user, *, display_currency: str | None = None) -> dict:
     formatting_context = build_app_formatting_context(user)
+    converter = build_financial_calendar_converter(
+        user=user,
+        display_currency=display_currency,
+    )
     accounts = Account.objects.filter(
         user=user,
         is_active=True,
         is_archived=False,
     ).order_by("name")
-    opening_balance = accounts.aggregate(total=Sum("balance")).get("total") or Decimal("0.00")
+    opening_balance = sum_converted_amounts(
+        converter=converter,
+        items=((account.balance, account.currency) for account in accounts),
+    )
 
     return {
         "accounts": [
@@ -695,7 +842,15 @@ def get_financial_calendar_meta(user) -> dict:
         "timezones": FINANCIAL_CALENDAR_TIMEZONES,
         "defaultTimezone": formatting_context.timezone_name,
         "openingBalanceRub": format_money(opening_balance),
-        "openingBalanceLabel": get_calendar_money_label(opening_balance, formatting_context, user),
+        "openingBalance": build_display_money_payload(opening_balance, converter),
+        "openingBalanceLabel": get_calendar_money_label(
+            opening_balance,
+            formatting_context,
+            user,
+            currency_code=converter.display_currency,
+        ),
+        "currency": converter.display_currency,
+        "currencyContext": converter.context_payload(),
     }
 
 
@@ -709,6 +864,7 @@ def build_financial_calendar_export_preview(
     date_from: date | None = None,
     date_to: date | None = None,
     timezone_value: str | None = None,
+    display_currency: str | None = None,
 ) -> dict:
     export_date_from, export_date_to = resolve_financial_calendar_export_period(
         year=year,
@@ -725,12 +881,17 @@ def build_financial_calendar_export_preview(
         date_from=export_date_from,
         date_to=export_date_to,
         timezone_value=timezone_value,
+        display_currency=display_currency,
     )
     rows = build_financial_calendar_export_rows(
         day_forecasts=month_data["dayForecasts"],
         events=month_data["events"],
     )
-    return {"rows": rows}
+    return {
+        "rows": rows,
+        "currency": month_data["currency"],
+        "currencyContext": month_data["currencyContext"],
+    }
 
 
 def build_financial_calendar_export_response(
@@ -745,6 +906,7 @@ def build_financial_calendar_export_response(
     date_from: date | None = None,
     date_to: date | None = None,
     timezone_value: str | None = None,
+    display_currency: str | None = None,
 ) -> dict:
     normalized_format = normalize_financial_calendar_export_format(export_format)
     if normalized_format not in FINANCIAL_CALENDAR_EXPORT_FORMATS:
@@ -760,6 +922,7 @@ def build_financial_calendar_export_response(
         date_from=date_from,
         date_to=date_to,
         timezone_value=timezone_value,
+        display_currency=display_currency,
     )
     export_result = build_financial_calendar_export_file(
         rows=preview["rows"],
@@ -767,6 +930,7 @@ def build_financial_calendar_export_response(
         columns=normalized_columns,
         year=year,
         month=month,
+        currency_code=preview.get("currency") or "RUB",
     )
     return {
         "downloadUrl": build_financial_calendar_download_url(export_result),
