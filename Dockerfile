@@ -26,4 +26,4 @@ USER app
 
 EXPOSE 10000
 
-CMD sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-10000} --workers ${GUNICORN_WORKERS:-2} --timeout ${GUNICORN_TIMEOUT:-120}"
+CMD sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn --no-control-socket config.wsgi:application --bind 0.0.0.0:${PORT:-10000} --workers ${GUNICORN_WORKERS:-2} --timeout ${GUNICORN_TIMEOUT:-120}"
