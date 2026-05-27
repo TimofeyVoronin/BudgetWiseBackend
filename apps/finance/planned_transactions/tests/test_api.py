@@ -1,10 +1,13 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
 from apps.finance.models import (
+    Account,
     PlannedStatus,
     PlannedTransaction,
     Transaction,
@@ -13,6 +16,7 @@ from apps.finance.models import (
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinancePlannedTransactionsAPITests(FinanceAPITestCase):
     def create_planned(
         self,
@@ -48,6 +52,24 @@ class FinancePlannedTransactionsAPITests(FinanceAPITestCase):
     def get_planned_ids(self, response):
         return [item["id"] for item in response.data["results"]]
 
+    def ensure_usd_currency(self):
+        ensure_user_currencies(self.user)
+        usd_currency = get_user_currency_by_code(self.user, "USD")
+        usd_currency.is_visible = True
+        usd_currency.rate_to_primary = Decimal("100.00000000")
+        usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+        return usd_currency
+
+    def create_usd_account(self):
+        self.ensure_usd_currency()
+        return Account.objects.create(
+            user=self.user,
+            name="USD card",
+            initial_balance=Decimal("1000.00"),
+            balance=Decimal("1000.00"),
+            currency="USD",
+        )
+
     def test_planned_transactions_list_requires_authentication(self):
         response = self.client.get(reverse("finance:planned-transaction-list"))
 
@@ -69,6 +91,65 @@ class FinancePlannedTransactionsAPITests(FinanceAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(self.get_planned_ids(response), [own_planned.id])
+
+    def test_planned_list_converts_amount_to_display_currency(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        planned = self.create_planned(
+            account=usd_account,
+            category=self.expense_category,
+            name="USD plan",
+            amount="10.00",
+        )
+
+        response = self.client.get(
+            reverse("finance:planned-transaction-list"),
+            data={"currency": "RUB", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(item for item in response.data["results"] if item["id"] == planned.id)
+        self.assertEqual(row["sourceCurrency"], "USD")
+        self.assertEqual(row["amountRub"], "1000.00")
+        self.assertEqual(row["amountDisplay"], {"amount": 1000.0, "currency": "RUB"})
+        self.assertEqual(row["amountAbsDisplay"], {"amount": 1000.0, "currency": "RUB"})
+        self.assertEqual(row["signedAmountDisplay"], {"amount": -1000.0, "currency": "RUB"})
+        self.assertEqual(response.data["currencyContext"]["code"], "RUB")
+
+    def test_planned_currency_query_is_display_currency_and_account_currency_filters_source(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        rub_planned = self.create_planned(
+            account=self.account,
+            category=self.expense_category,
+            name="RUB plan",
+            amount="100.00",
+        )
+        usd_planned = self.create_planned(
+            account=usd_account,
+            category=self.expense_category,
+            name="USD plan",
+            amount="5.00",
+        )
+
+        display_response = self.client.get(
+            reverse("finance:planned-transaction-list"),
+            data={"currency": "USD", "page_size": 20},
+        )
+
+        self.assertEqual(display_response.status_code, status.HTTP_200_OK)
+        display_ids = self.get_planned_ids(display_response)
+        self.assertIn(rub_planned.id, display_ids)
+        self.assertIn(usd_planned.id, display_ids)
+        self.assertEqual(display_response.data["currencyContext"]["code"], "USD")
+
+        source_filter_response = self.client.get(
+            reverse("finance:planned-transaction-list"),
+            data={"accountCurrency": "USD", "page_size": 20},
+        )
+
+        self.assertEqual(source_filter_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.get_planned_ids(source_filter_response), [usd_planned.id])
 
     def test_planned_transaction_crud_flow(self):
         self.authenticate()

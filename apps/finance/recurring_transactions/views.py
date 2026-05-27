@@ -15,6 +15,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common.pagination import StandardResultsSetPagination
+from apps.finance.currencies.conversion import get_currency_conversion_service
+from apps.finance.currencies.services import validate_user_currency_available
 from apps.finance.models import (
     Account,
     Category,
@@ -164,6 +166,37 @@ def parse_bool_query_param(query_params, *names) -> bool | None:
     )
 
 
+def get_recurring_display_currency_query_param(query_params) -> str | None:
+    return get_first_query_value(
+        query_params,
+        "currency",
+        "currencyCode",
+        "currency_code",
+    )
+
+
+def get_recurring_source_currency_filter_query_param(query_params, user) -> str | None:
+    currency = get_first_query_value(
+        query_params,
+        "accountCurrency",
+        "account_currency",
+        "recurringCurrency",
+        "recurring_currency",
+        "sourceCurrency",
+        "source_currency",
+    )
+
+    if currency in (None, ""):
+        return None
+
+    return validate_user_currency_available(
+        user,
+        currency,
+        field_name="accountCurrency",
+        require_visible=False,
+    )
+
+
 @extend_schema_view(
     list=extend_schema(
         tags=["finance-recurring-transactions"],
@@ -184,6 +217,10 @@ def parse_bool_query_param(query_params, *names) -> bool | None:
             OpenApiParameter("amountMin", OpenApiTypes.NUMBER, description="Минимальная сумма."),
             OpenApiParameter("amountMax", OpenApiTypes.NUMBER, description="Максимальная сумма."),
             OpenApiParameter("onlyWithErrors", OpenApiTypes.BOOL, description="Только операции с ошибками."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм в ответе."),
+            OpenApiParameter("currencyCode", OpenApiTypes.STR, description="Alias для currency."),
+            OpenApiParameter("accountCurrency", OpenApiTypes.STR, description="Фильтр по исходной валюте счёта регулярной операции."),
+            OpenApiParameter("recurringCurrency", OpenApiTypes.STR, description="Alias для accountCurrency."),
         ],
         responses={200: RecurringTransactionSerializer(many=True)},
     ),
@@ -244,6 +281,30 @@ class RecurringTransactionViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
     lookup_value_regex = r"\d+"
 
+    def get_currency_converter(self):
+        if not hasattr(self, "_currency_converter"):
+            self._currency_converter = get_currency_conversion_service(
+                user=self.request.user,
+                display_currency=get_recurring_display_currency_query_param(
+                    self.request.query_params,
+                ),
+            )
+
+        return self._currency_converter
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["currency_converter"] = self.get_currency_converter()
+        return context
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+
+        if isinstance(response.data, dict):
+            response.data["currencyContext"] = self.get_currency_converter().context_payload()
+
+        return response
+
     def get_queryset(self):
         if not self.request.user.is_authenticated:
             return RecurringTransaction.objects.none()
@@ -291,6 +352,10 @@ class RecurringTransactionViewSet(viewsets.ModelViewSet):
         )
         accounts = parse_multi_int_query_param(query_params, "accounts")
         categories = parse_multi_int_query_param(query_params, "categories")
+        account_currency = get_recurring_source_currency_filter_query_param(
+            query_params,
+            self.request.user,
+        )
         amount_min = parse_decimal_query_param(query_params, "amountMin", "amount_min")
         amount_max = parse_decimal_query_param(query_params, "amountMax", "amount_max")
         only_with_errors = parse_bool_query_param(
@@ -317,6 +382,9 @@ class RecurringTransactionViewSet(viewsets.ModelViewSet):
 
         if categories:
             queryset = queryset.filter(category_id__in=categories)
+
+        if account_currency:
+            queryset = queryset.filter(account__currency=account_currency)
 
         if amount_min is not None:
             queryset = queryset.filter(amount__gte=amount_min)
@@ -430,6 +498,7 @@ class RecurringTransactionViewSet(viewsets.ModelViewSet):
         parameters=[
             OpenApiParameter("limit", OpenApiTypes.INT, description="Количество записей, максимум 100."),
             OpenApiParameter("offset", OpenApiTypes.INT, description="Смещение."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм в истории списаний."),
         ],
         responses={200: OpenApiTypes.OBJECT},
     )
@@ -467,13 +536,25 @@ class RecurringTransactionViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        queryset = recurring.charges.order_by("-charged_at", "-id")[offset:offset + limit]
-        serializer = RecurringTransactionChargeSerializer(queryset, many=True)
+        queryset = (
+            recurring.charges
+            .select_related(
+                "recurring_transaction__account",
+                "transaction__account",
+            )
+            .order_by("-charged_at", "-id")
+        )[offset:offset + limit]
+        serializer = RecurringTransactionChargeSerializer(
+            queryset,
+            many=True,
+            context=self.get_serializer_context(),
+        )
 
         return Response(
             {
                 "recurringId": recurring.id,
                 "items": serializer.data,
+                "currencyContext": self.get_currency_converter().context_payload(),
             }
         )
 

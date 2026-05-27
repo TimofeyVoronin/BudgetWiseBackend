@@ -4389,6 +4389,11 @@ paths:
       summary: Получить список планируемых операций
       parameters:
       - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта планируемой операции.
+      - in: query
         name: accounts
         schema:
           type: string
@@ -4408,6 +4413,16 @@ paths:
         schema:
           type: string
         description: ID категорий через запятую.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в ответе.
+      - in: query
+        name: currencyCode
+        schema:
+          type: string
+        description: Alias для currency.
       - in: query
         name: dateFrom
         schema:
@@ -4435,6 +4450,11 @@ paths:
         schema:
           type: integer
         description: Размер страницы.
+      - in: query
+        name: plannedCurrency
+        schema:
+          type: string
+        description: Alias для accountCurrency.
       - in: query
         name: search
         schema:
@@ -4757,6 +4777,11 @@ paths:
       summary: Получить календарь планируемых операций
       parameters:
       - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта планируемой операции.
+      - in: query
         name: accounts
         schema:
           type: string
@@ -4766,6 +4791,11 @@ paths:
         schema:
           type: string
         description: ID категорий через запятую.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в календаре.
       - in: query
         name: month
         schema:
@@ -4831,6 +4861,16 @@ paths:
       operationId: finance_planned_transactions_forecast_retrieve
       summary: Получить прогноз баланса с учётом планируемых операций
       parameters:
+      - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта планируемой операции.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в прогнозе.
       - in: query
         name: dateFrom
         schema:
@@ -5086,6 +5126,11 @@ paths:
       summary: Получить список регулярных операций
       parameters:
       - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта регулярной операции.
+      - in: query
         name: accounts
         schema:
           type: string
@@ -5106,6 +5151,16 @@ paths:
           type: string
         description: ID категорий через запятую.
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в ответе.
+      - in: query
+        name: currencyCode
+        schema:
+          type: string
+        description: Alias для currency.
+      - in: query
         name: frequencies
         schema:
           type: string
@@ -5125,6 +5180,11 @@ paths:
         schema:
           type: integer
         description: Размер страницы.
+      - in: query
+        name: recurringCurrency
+        schema:
+          type: string
+        description: Alias для accountCurrency.
       - in: query
         name: search
         schema:
@@ -5303,6 +5363,11 @@ paths:
       operationId: finance_recurring_transactions_charge_history_retrieve
       summary: Получить историю списаний по регулярной операции
       parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в истории списаний.
       - in: path
         name: id
         schema:
@@ -15509,6 +15574,10 @@ components:
           type: string
         tone:
           $ref: '#/components/schemas/ToneEnum'
+        amountDisplay:
+          $ref: '#/components/schemas/MoneyAmount'
+        sourceCurrency:
+          type: string
       required:
       - id
       - label
@@ -15546,8 +15615,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlannedCalendarDayCell'
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - cells
+      - currencyContext
       - month
       - year
     PlannedForecastChartPoint:
@@ -15601,7 +15675,14 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        totalPlannedExpenses:
+          $ref: '#/components/schemas/MoneyAmount'
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
+      - currencyContext
       - defaultTimeRange
       - legendWithPlans
       - legendWithPlansValue
@@ -15609,6 +15690,7 @@ components:
       - legendWithoutPlansValue
       - points
       - timeRanges
+      - totalPlannedExpenses
       - totalPlannedExpensesLabel
       - totalPlannedExpensesRub
       - yAxisLabels
@@ -15668,12 +15750,16 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        planned_month:
+          $ref: '#/components/schemas/MoneyAmount'
         to_confirm_count:
           type: integer
         forecast_delta_rub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        forecast_delta:
+          $ref: '#/components/schemas/MoneyAmount'
         forecast_delta_label:
           type: string
         plannedMonthLabel:
@@ -15682,19 +15768,32 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        plannedMonth:
+          $ref: '#/components/schemas/MoneyAmount'
         toConfirmCount:
           type: integer
         forecastDeltaRub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        forecastDelta:
+          $ref: '#/components/schemas/MoneyAmount'
         forecastDeltaLabel:
           type: string
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
+      - currencyContext
+      - forecastDelta
       - forecastDeltaRub
+      - forecast_delta
       - forecast_delta_rub
+      - plannedMonth
       - plannedMonthLabel
       - plannedMonthRub
+      - planned_month
       - planned_month_label
       - planned_month_rub
       - toConfirmCount
@@ -15721,6 +15820,21 @@ components:
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Сумма
         amountRub:
+          type: string
+          readOnly: true
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        amountAbsDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        signedAmountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
           type: string
           readOnly: true
         category:
@@ -15837,6 +15951,8 @@ components:
       - accountId
       - accountName
       - amount
+      - amountAbsDisplay
+      - amountDisplay
       - amountRub
       - category
       - categoryColor
@@ -15860,6 +15976,8 @@ components:
       - operationId
       - plannedDate
       - planned_date
+      - signedAmountDisplay
+      - sourceCurrency
       - statusLabel
       - updated_at
     PlannedTransactionRequest:
@@ -16682,6 +16800,21 @@ components:
         amountRub:
           type: string
           readOnly: true
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        amountAbsDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        signedAmountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
         category:
           type: integer
           title: Категория
@@ -16836,6 +16969,8 @@ components:
       - accountId
       - accountName
       - amount
+      - amountAbsDisplay
+      - amountDisplay
       - amountRub
       - category
       - categoryColor
@@ -16860,6 +16995,8 @@ components:
       - name
       - nextChargeDate
       - next_charge_date
+      - signedAmountDisplay
+      - sourceCurrency
       - startDate
       - start_date
       - statusLabel

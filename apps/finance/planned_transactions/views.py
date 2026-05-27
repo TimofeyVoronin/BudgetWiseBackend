@@ -20,6 +20,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common.pagination import StandardResultsSetPagination
+from apps.finance.currencies.conversion import get_currency_conversion_service
+from apps.finance.currencies.services import validate_user_currency_available
 from apps.finance.models import (
     Account,
     Category,
@@ -208,6 +210,37 @@ def parse_date_query_param(query_params, *names) -> date | None:
         ) from exc
 
 
+def get_planned_display_currency_query_param(query_params) -> str | None:
+    return get_first_query_value(
+        query_params,
+        "currency",
+        "currencyCode",
+        "currency_code",
+    )
+
+
+def get_planned_source_currency_filter_query_param(query_params, user) -> str | None:
+    currency = get_first_query_value(
+        query_params,
+        "accountCurrency",
+        "account_currency",
+        "plannedCurrency",
+        "planned_currency",
+        "sourceCurrency",
+        "source_currency",
+    )
+
+    if currency in (None, ""):
+        return None
+
+    return validate_user_currency_available(
+        user,
+        currency,
+        field_name="accountCurrency",
+        require_visible=False,
+    )
+
+
 def get_month_range(value: date) -> tuple[date, date]:
     start = date(value.year, value.month, 1)
     end = date(
@@ -218,8 +251,8 @@ def get_month_range(value: date) -> tuple[date, date]:
     return start, end
 
 
-def format_money(value: Decimal) -> str:
-    return f"{value.quantize(Decimal('0.01'))} ₽"
+def format_money(value: Decimal, currency: str = "RUB") -> str:
+    return f"{value.quantize(Decimal('0.01'))} {currency}"
 
 
 @extend_schema_view(
@@ -245,6 +278,10 @@ def format_money(value: Decimal) -> str:
             OpenApiParameter("amountMin", OpenApiTypes.NUMBER, description="Минимальная сумма."),
             OpenApiParameter("amountMax", OpenApiTypes.NUMBER, description="Максимальная сумма."),
             OpenApiParameter("onlyDuplicates", OpenApiTypes.BOOL, description="Только возможные дубликаты."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм в ответе."),
+            OpenApiParameter("currencyCode", OpenApiTypes.STR, description="Alias для currency."),
+            OpenApiParameter("accountCurrency", OpenApiTypes.STR, description="Фильтр по исходной валюте счёта планируемой операции."),
+            OpenApiParameter("plannedCurrency", OpenApiTypes.STR, description="Alias для accountCurrency."),
         ],
         responses={200: PlannedTransactionSerializer(many=True)},
     ),
@@ -299,6 +336,30 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
     lookup_value_regex = r"\d+"
 
+    def get_currency_converter(self):
+        if not hasattr(self, "_currency_converter"):
+            self._currency_converter = get_currency_conversion_service(
+                user=self.request.user,
+                display_currency=get_planned_display_currency_query_param(
+                    self.request.query_params,
+                ),
+            )
+
+        return self._currency_converter
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["currency_converter"] = self.get_currency_converter()
+        return context
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+
+        if isinstance(response.data, dict):
+            response.data["currencyContext"] = self.get_currency_converter().context_payload()
+
+        return response
+
     def get_queryset(self):
         if not self.request.user.is_authenticated:
             return PlannedTransaction.objects.none()
@@ -343,6 +404,10 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
             "statuses",
             allowed_values=set(PlannedStatus.values),
         )
+        account_currency = get_planned_source_currency_filter_query_param(
+            query_params,
+            self.request.user,
+        )
         amount_min = parse_decimal_query_param(query_params, "amountMin", "amount_min")
         amount_max = parse_decimal_query_param(query_params, "amountMax", "amount_max")
         only_duplicates = parse_bool_query_param(
@@ -384,6 +449,9 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
 
         if statuses:
             queryset = queryset.filter(status__in=statuses)
+
+        if account_currency:
+            queryset = queryset.filter(account__currency=account_currency)
 
         if amount_min is not None:
             queryset = queryset.filter(amount__gte=amount_min)
@@ -585,52 +653,84 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=["get"], url_path="summary")
     def summary(self, request):
+        converter = self.get_currency_converter()
         today = timezone.localdate()
         month_start, month_end = get_month_range(today)
-        month_queryset = PlannedTransaction.objects.filter(
-            user=request.user,
-            planned_date__gte=month_start,
-            planned_date__lte=month_end,
-            status__in=[
-                PlannedStatus.PENDING,
-                PlannedStatus.CONFIRMED,
-                PlannedStatus.CONVERTED,
-            ],
+        month_queryset = (
+            PlannedTransaction.objects
+            .filter(
+                user=request.user,
+                planned_date__gte=month_start,
+                planned_date__lte=month_end,
+                status__in=[
+                    PlannedStatus.PENDING,
+                    PlannedStatus.CONFIRMED,
+                    PlannedStatus.CONVERTED,
+                ],
+            )
+            .select_related("account")
         )
-        forecast_queryset = PlannedTransaction.objects.filter(
-            user=request.user,
-            include_in_forecast=True,
-            status__in=[
-                PlannedStatus.PENDING,
-                PlannedStatus.CONFIRMED,
-            ],
+        forecast_queryset = (
+            PlannedTransaction.objects
+            .filter(
+                user=request.user,
+                include_in_forecast=True,
+                status__in=[
+                    PlannedStatus.PENDING,
+                    PlannedStatus.CONFIRMED,
+                ],
+            )
+            .select_related("account")
         )
-        planned_month_total = (
-            month_queryset.aggregate(value=Sum("amount"))["value"]
-            or Decimal("0.00")
-        )
-        forecast_delta = sum(
-            (planned.forecast_delta for planned in forecast_queryset),
+        planned_month_total = sum(
+            (
+                Decimal(str(converter.display_amount_payload(
+                    planned.amount,
+                    source_currency=planned.account.currency,
+                )["amount"]))
+                for planned in month_queryset
+            ),
             Decimal("0.00"),
         )
-        forecast_delta_label = format_money(forecast_delta)
+        forecast_delta = sum(
+            (
+                Decimal(str(converter.display_amount_payload(
+                    planned.forecast_delta,
+                    source_currency=planned.account.currency,
+                )["amount"]))
+                for planned in forecast_queryset
+            ),
+            Decimal("0.00"),
+        )
+        planned_month_payload = {
+            "amount": float(planned_month_total.quantize(Decimal("0.01"))),
+            "currency": converter.display_currency,
+        }
+        forecast_delta_payload = {
+            "amount": float(forecast_delta.quantize(Decimal("0.01"))),
+            "currency": converter.display_currency,
+        }
+        forecast_delta_label = format_money(forecast_delta, converter.display_currency)
+        to_confirm_count = PlannedTransaction.objects.filter(
+            user=request.user,
+            status=PlannedStatus.PENDING,
+        ).count()
         payload = {
             "planned_month_label": f"Запланировано на {MONTH_LABELS_RU[today.month]}",
             "planned_month_rub": planned_month_total,
-            "to_confirm_count": PlannedTransaction.objects.filter(
-                user=request.user,
-                status=PlannedStatus.PENDING,
-            ).count(),
+            "planned_month": planned_month_payload,
+            "to_confirm_count": to_confirm_count,
             "forecast_delta_rub": forecast_delta,
+            "forecast_delta": forecast_delta_payload,
             "forecast_delta_label": forecast_delta_label,
             "plannedMonthLabel": f"Запланировано на {MONTH_LABELS_RU[today.month]}",
             "plannedMonthRub": planned_month_total,
-            "toConfirmCount": PlannedTransaction.objects.filter(
-                user=request.user,
-                status=PlannedStatus.PENDING,
-            ).count(),
+            "plannedMonth": planned_month_payload,
+            "toConfirmCount": to_confirm_count,
             "forecastDeltaRub": forecast_delta,
+            "forecastDelta": forecast_delta_payload,
             "forecastDeltaLabel": forecast_delta_label,
+            "currencyContext": converter.context_payload(),
         }
         serializer = PlannedSummarySerializer(payload)
 
@@ -760,6 +860,8 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
             OpenApiParameter("statuses", OpenApiTypes.STR, description="Статусы через запятую."),
             OpenApiParameter("categories", OpenApiTypes.STR, description="ID категорий через запятую."),
             OpenApiParameter("accounts", OpenApiTypes.STR, description="ID счетов через запятую."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм в календаре."),
+            OpenApiParameter("accountCurrency", OpenApiTypes.STR, description="Фильтр по исходной валюте счёта планируемой операции."),
         ],
         responses={200: PlannedCalendarResponseSerializer},
     )
@@ -804,25 +906,33 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
             plans_by_date.setdefault(planned.planned_date, []).append(planned)
 
         today = timezone.localdate()
+        converter = self.get_currency_converter()
         cells = []
         current_date = grid_start
 
         while current_date <= grid_end:
             badges = []
             for planned in plans_by_date.get(current_date, [])[:3]:
+                amount_payload = converter.display_amount_payload(
+                    planned.amount,
+                    source_currency=planned.account.currency,
+                )
+                amount_value = Decimal(str(amount_payload["amount"]))
+                amount_prefix = "+" if planned.type == TransactionType.INCOME else "-"
                 badges.append(
                     {
                         "id": str(planned.id),
                         "label": (
-                            f"+{planned.amount.quantize(Decimal('0.01'))} ₽"
-                            if planned.type == TransactionType.INCOME
-                            else f"-{planned.amount.quantize(Decimal('0.01'))} ₽"
+                            f"{amount_prefix}{amount_value.quantize(Decimal('0.01'))} "
+                            f"{amount_payload['currency']}"
                         ),
                         "tone": (
                             "income"
                             if planned.type == TransactionType.INCOME
                             else "expense"
                         ),
+                        "amountDisplay": amount_payload,
+                        "sourceCurrency": planned.account.currency,
                     }
                 )
 
@@ -842,6 +952,7 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
                 "year": year,
                 "month": month,
                 "cells": cells,
+                "currencyContext": converter.context_payload(),
             }
         )
 
@@ -855,11 +966,14 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
             OpenApiParameter("includePlanned", OpenApiTypes.BOOL, description="Учитывать плановые операции."),
             OpenApiParameter("dateFrom", OpenApiTypes.DATE, description="Дата начала периода."),
             OpenApiParameter("dateTo", OpenApiTypes.DATE, description="Дата конца периода."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм в прогнозе."),
+            OpenApiParameter("accountCurrency", OpenApiTypes.STR, description="Фильтр по исходной валюте счёта планируемой операции."),
         ],
         responses={200: PlannedForecastResponseSerializer},
     )
     @action(detail=False, methods=["get"], url_path="forecast")
     def forecast(self, request):
+        converter = self.get_currency_converter()
         today = timezone.localdate()
         time_range = request.query_params.get("timeRange") or DEFAULT_PLANNED_FORECAST_TIME_RANGE
 
@@ -895,42 +1009,67 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        current_balance = (
-            Account.objects.filter(
-                user=request.user,
-                is_active=True,
-                is_archived=False,
-            ).aggregate(value=Sum("balance"))["value"]
-            or Decimal("0.00")
+        account_currency = get_planned_source_currency_filter_query_param(
+            request.query_params,
+            request.user,
         )
-        planned_queryset = PlannedTransaction.objects.filter(
+        accounts_queryset = Account.objects.filter(
             user=request.user,
-            include_in_forecast=True,
-            planned_date__gte=date_from,
-            planned_date__lte=date_to,
-            status__in=[
-                PlannedStatus.PENDING,
-                PlannedStatus.CONFIRMED,
-            ],
-        ).order_by("planned_date", "id")
-        total_planned_expenses = (
-            planned_queryset
-            .filter(type=TransactionType.EXPENSE)
-            .aggregate(value=Sum("amount"))["value"]
-            or Decimal("0.00")
+            is_active=True,
+            is_archived=False,
         )
+        planned_queryset = (
+            PlannedTransaction.objects
+            .filter(
+                user=request.user,
+                include_in_forecast=True,
+                planned_date__gte=date_from,
+                planned_date__lte=date_to,
+                status__in=[
+                    PlannedStatus.PENDING,
+                    PlannedStatus.CONFIRMED,
+                ],
+            )
+            .select_related("account")
+            .order_by("planned_date", "id")
+        )
+
+        if account_currency:
+            accounts_queryset = accounts_queryset.filter(currency=account_currency)
+            planned_queryset = planned_queryset.filter(account__currency=account_currency)
+
+        current_balance = sum(
+            (
+                Decimal(str(converter.display_amount_payload(
+                    account.balance,
+                    source_currency=account.currency,
+                )["amount"]))
+                for account in accounts_queryset
+            ),
+            Decimal("0.00"),
+        )
+        total_planned_expenses = Decimal("0.00")
         planned_by_date: dict[date, Decimal] = {}
         expenses_by_date: dict[date, Decimal] = {}
 
         for planned in planned_queryset:
+            converted_delta = Decimal(str(converter.display_amount_payload(
+                planned.forecast_delta,
+                source_currency=planned.account.currency,
+            )["amount"]))
             planned_by_date[planned.planned_date] = (
                 planned_by_date.get(planned.planned_date, Decimal("0.00"))
-                + planned.forecast_delta
+                + converted_delta
             )
             if planned.type == TransactionType.EXPENSE:
+                converted_expense = Decimal(str(converter.display_amount_payload(
+                    planned.amount,
+                    source_currency=planned.account.currency,
+                )["amount"]))
+                total_planned_expenses += converted_expense
                 expenses_by_date[planned.planned_date] = (
                     expenses_by_date.get(planned.planned_date, Decimal("0.00"))
-                    + planned.amount
+                    + converted_expense
                 )
 
         points = []
@@ -964,9 +1103,14 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
             }
 
             if point_date in expenses_by_date:
+                expense_amount = expenses_by_date[point_date]
                 point["markerExpense"] = {
                     "label": point_date.strftime("%d.%m"),
-                    "amountRub": str(expenses_by_date[point_date].quantize(Decimal("0.01"))),
+                    "amountRub": str(expense_amount.quantize(Decimal("0.01"))),
+                    "amountDisplay": {
+                        "amount": float(expense_amount.quantize(Decimal("0.01"))),
+                        "currency": converter.display_currency,
+                    },
                 }
 
             points.append(point)
@@ -974,15 +1118,20 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
         response_serializer = PlannedForecastResponseSerializer(
             {
                 "legendWithPlans": "С учётом планов",
-                "legendWithPlansValue": format_money(running_with_plans),
+                "legendWithPlansValue": format_money(running_with_plans, converter.display_currency),
                 "legendWithoutPlans": "Без планов",
-                "legendWithoutPlansValue": format_money(running_without_plans),
-                "yAxisLabels": self.build_axis_labels(min_value, max_value),
+                "legendWithoutPlansValue": format_money(running_without_plans, converter.display_currency),
+                "yAxisLabels": self.build_axis_labels(min_value, max_value, converter.display_currency),
                 "points": points,
                 "timeRanges": PLANNED_FORECAST_TIME_RANGES,
                 "defaultTimeRange": DEFAULT_PLANNED_FORECAST_TIME_RANGE,
                 "totalPlannedExpensesLabel": "Итого плановых расходов",
                 "totalPlannedExpensesRub": total_planned_expenses,
+                "totalPlannedExpenses": {
+                    "amount": float(total_planned_expenses.quantize(Decimal("0.01"))),
+                    "currency": converter.display_currency,
+                },
+                "currencyContext": converter.context_payload(),
             }
         )
 
@@ -1037,10 +1186,10 @@ class PlannedTransactionViewSet(viewsets.ModelViewSet):
         percent = (value - min_value) / (max_value - min_value) * Decimal("100")
         return percent.quantize(Decimal("0.01"))
 
-    def build_axis_labels(self, min_value: Decimal, max_value: Decimal) -> list[str]:
+    def build_axis_labels(self, min_value: Decimal, max_value: Decimal, currency: str = "RUB") -> list[str]:
         middle = (min_value + max_value) / Decimal("2")
         return [
-            format_money(max_value),
-            format_money(middle),
-            format_money(min_value),
+            format_money(max_value, currency),
+            format_money(middle, currency),
+            format_money(min_value, currency),
         ]
