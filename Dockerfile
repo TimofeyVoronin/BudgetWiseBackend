@@ -19,7 +19,7 @@ RUN python -m pip install --upgrade pip \
 
 COPY . .
 
-RUN mkdir -p /app/logs /app/staticfiles /app/media \
+RUN mkdir -p /app/logs /app/staticfiles /app/media /app/celerybeat-schedule \
     && chown -R app:app /app
 
 USER app

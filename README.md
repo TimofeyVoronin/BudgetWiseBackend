@@ -70,6 +70,8 @@ MVP проекта включает серверную часть со след�
 - Django 5.2
 - Django REST Framework
 - PostgreSQL
+- Redis
+- Celery
 - Simple JWT
 - drf-spectacular
 - django-cors-headers
@@ -118,6 +120,43 @@ BudgetWiseBackend/
 ├── requirements.txt
 ├── .env.example
 └── README.md
+```
+
+## Фоновые задачи
+
+Для фоновых задач используется Celery с Redis. Локально `docker-compose.yml` поднимает отдельные сервисы:
+
+```text
+redis
+celery_worker
+celery_beat
+```
+
+Celery Beat запускает по расписанию:
+
+- конвертацию планируемых операций;
+- выполнение регулярных операций;
+- обновление курсов валют.
+
+Проверка worker-процесса:
+
+```bash
+docker compose exec celery_worker celery -A config inspect ping
+```
+
+Логи фоновых сервисов:
+
+```bash
+docker compose logs -f celery_worker
+docker compose logs -f celery_beat
+docker compose logs -f redis
+```
+
+Management-команды для ручного запуска остаются доступными:
+
+```bash
+docker compose exec backend python manage.py convert_planned_transactions
+docker compose exec backend python manage.py run_recurring_transactions
 ```
 
 ## Окружения проекта

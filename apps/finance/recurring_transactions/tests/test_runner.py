@@ -71,6 +71,7 @@ class FinanceRecurringTransactionsRunnerTests(FinanceAPITestCase):
 
         summary = run_due_recurring_transactions(run_date=date(2026, 5, 20))
 
+        self.assertEqual(summary.processed_count, 1)
         self.assertEqual(summary.created_count, 1)
         self.assertEqual(summary.failed_count, 0)
 

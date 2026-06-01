@@ -4,6 +4,9 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 
+OPTIONAL_DEPENDENCY_STATUSES = {"ok", "skipped"}
+
+
 class HealthCheckTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -29,13 +32,13 @@ class HealthCheckTests(TestCase):
         self.assertIn("alias", checks["database"]["details"])
 
         self.assertIn("redis", checks)
-        self.assertEqual(checks["redis"]["status"], "skipped")
+        self.assertIn(checks["redis"]["status"], OPTIONAL_DEPENDENCY_STATUSES)
         self.assertFalse(checks["redis"]["required"])
         self.assertIn("latency_ms", checks["redis"])
         self.assertIn("details", checks["redis"])
 
         self.assertIn("celery", checks)
-        self.assertEqual(checks["celery"]["status"], "skipped")
+        self.assertIn(checks["celery"]["status"], OPTIONAL_DEPENDENCY_STATUSES)
         self.assertFalse(checks["celery"]["required"])
         self.assertIn("latency_ms", checks["celery"])
         self.assertIn("details", checks["celery"])

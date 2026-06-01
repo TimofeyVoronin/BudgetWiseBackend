@@ -26,3 +26,5 @@ htmlcov/
 
 Dockerfile
 docker-compose.yml
+celerybeat-schedule/
+celerybeat-schedule*

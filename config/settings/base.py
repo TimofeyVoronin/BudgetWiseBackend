@@ -1,5 +1,7 @@
 import os
 from datetime import timedelta
+
+from celery.schedules import crontab
 from pathlib import Path
 
 import environ
@@ -269,6 +271,72 @@ TIME_ZONE = "Europe/Moscow"
 USE_I18N = True
 
 USE_TZ = True
+
+
+REDIS_URL = env("REDIS_URL", default="")
+REDIS_HEALTH_URL = env("REDIS_HEALTH_URL", default=REDIS_URL)
+REDIS_HEALTH_ENABLED = env.bool(
+    "REDIS_HEALTH_ENABLED",
+    default=bool(REDIS_HEALTH_URL),
+)
+REDIS_HEALTH_REQUIRED = env.bool(
+    "REDIS_HEALTH_REQUIRED",
+    default=False,
+)
+REDIS_HEALTH_TIMEOUT_SECONDS = env.float(
+    "REDIS_HEALTH_TIMEOUT_SECONDS",
+    default=1.0,
+)
+
+CELERY_BROKER_URL = env(
+    "CELERY_BROKER_URL",
+    default=REDIS_URL or "redis://localhost:6379/0",
+)
+CELERY_RESULT_BACKEND = env(
+    "CELERY_RESULT_BACKEND",
+    default=REDIS_URL or CELERY_BROKER_URL,
+)
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = env.int("CELERY_TASK_TIME_LIMIT", default=30 * 60)
+CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_TASK_SOFT_TIME_LIMIT", default=25 * 60)
+CELERY_WORKER_PREFETCH_MULTIPLIER = env.int("CELERY_WORKER_PREFETCH_MULTIPLIER", default=1)
+CELERY_TASK_ACKS_LATE = env.bool("CELERY_TASK_ACKS_LATE", default=True)
+CELERY_TASK_REJECT_ON_WORKER_LOST = env.bool(
+    "CELERY_TASK_REJECT_ON_WORKER_LOST",
+    default=True,
+)
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = env("CELERY_TIMEZONE", default=TIME_ZONE)
+CELERY_ENABLE_UTC = USE_TZ
+CELERY_HEALTH_ENABLED = env.bool(
+    "CELERY_HEALTH_ENABLED",
+    default=bool(os.environ.get("CELERY_BROKER_URL") or REDIS_URL),
+)
+CELERY_HEALTH_REQUIRED = env.bool(
+    "CELERY_HEALTH_REQUIRED",
+    default=False,
+)
+CELERY_HEALTH_TIMEOUT_SECONDS = env.float(
+    "CELERY_HEALTH_TIMEOUT_SECONDS",
+    default=1.0,
+)
+CELERY_BEAT_SCHEDULE = {
+    "finance-convert-due-planned-transactions-daily": {
+        "task": "apps.finance.convert_due_planned_transactions",
+        "schedule": crontab(minute=5, hour=0),
+    },
+    "finance-run-due-recurring-transactions-daily": {
+        "task": "apps.finance.run_due_recurring_transactions",
+        "schedule": crontab(minute=10, hour=0),
+    },
+    "finance-refresh-currency-rates-hourly": {
+        "task": "apps.finance.refresh_currency_rates",
+        "schedule": crontab(minute=0),
+    },
+}
 
 
 STATIC_URL = "/static/"

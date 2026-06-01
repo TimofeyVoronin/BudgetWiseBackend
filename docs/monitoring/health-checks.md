@@ -14,7 +14,8 @@ Endpoint публичный и не требует JWT.
 
 - проверить, что backend отвечает;
 - проверить доступность PostgreSQL;
-- показать состояние будущих зависимостей: Redis, Celery, external services;
+- проверить Redis, если включён `REDIS_HEALTH_ENABLED`;
+- проверить Celery worker, если включён `CELERY_HEALTH_ENABLED`;
 - использовать endpoint в Docker, мониторинге и ручной диагностике.
 
 ## Формат ответа
@@ -36,19 +37,21 @@ Endpoint публичный и не требует JWT.
       }
     },
     "redis": {
-      "status": "skipped",
+      "status": "ok",
       "required": false,
-      "latency_ms": null,
+      "latency_ms": 1.31,
       "details": {
-        "reason": "Redis is not configured yet."
+        "url": "redis://redis:6379/0"
       }
     },
     "celery": {
-      "status": "skipped",
+      "status": "ok",
       "required": false,
-      "latency_ms": null,
+      "latency_ms": 8.42,
       "details": {
-        "reason": "Celery health-check is not configured yet."
+        "brokerUrl": "redis://redis:6379/0",
+        "workersOnline": 1,
+        "workers": ["celery@worker"]
       }
     },
     "external_services": {
@@ -63,13 +66,15 @@ Endpoint публичный и не требует JWT.
 }
 ```
 
+Если Redis или Celery health-check выключен, соответствующая проверка вернёт `skipped`.
+
 ## Статусы проверки
 
 | Статус | Описание |
 |---|---|
 | `ok` | Проверка успешно пройдена |
 | `error` | Проверка завершилась ошибкой |
-| `skipped` | Проверка не выполняется, потому что зависимость пока не настроена |
+| `skipped` | Проверка не выполняется, потому что зависимость отключена или не настроена |
 
 ## Общий статус
 
@@ -78,21 +83,18 @@ Endpoint публичный и не требует JWT.
 | `ok` | `200` | Все обязательные проверки успешны |
 | `degraded` | `503` | Минимум одна обязательная проверка завершилась ошибкой |
 
-На текущем этапе обязательная проверка:
+Обязательная проверка по умолчанию:
 
 ```text
 database
 ```
 
-Необязательные проверки:
+Redis и Celery по умолчанию необязательные. Это сделано, чтобы backend мог продолжать отвечать даже при временной недоступности фоновой очереди. Если нужно сделать их обязательными, включаются переменные:
 
-```text
-redis
-celery
-external_services
+```env
+REDIS_HEALTH_REQUIRED=True
+CELERY_HEALTH_REQUIRED=True
 ```
-
-Они помечены как `skipped`, потому что соответствующие зависимости пока не подключены в текущем scope.
 
 ## Проверка PostgreSQL
 
@@ -102,15 +104,34 @@ Backend проверяет соединение с PostgreSQL через про�
 SELECT 1
 ```
 
-В ответе отображаются:
+## Проверка Redis
 
-| Поле | Описание |
-|---|---|
-| `status` | Результат проверки |
-| `required` | Является ли зависимость обязательной |
-| `latency_ms` | Время проверки в миллисекундах |
-| `details.alias` | Alias базы данных Django |
-| `details.vendor` | Используемый backend базы данных |
+Redis проверяется командой `PING` через URL из переменных:
+
+```env
+REDIS_HEALTH_URL=redis://redis:6379/0
+REDIS_URL=redis://redis:6379/0
+```
+
+Проверка включается так:
+
+```env
+REDIS_HEALTH_ENABLED=True
+```
+
+## Проверка Celery
+
+Celery проверяется через ping worker-процессов. Для локального Docker Compose worker запускается сервисом:
+
+```text
+celery_worker
+```
+
+Проверка включается так:
+
+```env
+CELERY_HEALTH_ENABLED=True
+```
 
 ## Проверка вручную
 
@@ -118,7 +139,7 @@ SELECT 1
 curl http://127.0.0.1:8000/health/
 ```
 
-Ожидаемый результат при работающей базе данных:
+Ожидаемый результат при работающих обязательных зависимостях:
 
 ```text
 HTTP 200
@@ -142,15 +163,4 @@ Endpoint можно использовать для проверки состо�
 curl -f http://127.0.0.1:8000/health/
 ```
 
-Если PostgreSQL недоступен, endpoint должен вернуть `503`, и health-check должен считаться неуспешным.
-
-## План расширения
-
-В будущих задачах можно добавить реальные проверки:
-
-- Redis;
-- Celery worker;
-- Celery Beat;
-- внешнего API чеков;
-- email-провайдера;
-- object storage для media/static файлов, если появится.
+Если PostgreSQL недоступен, endpoint вернёт `503`. Если Redis или Celery недоступны, общий статус станет `degraded` только при включённых `REDIS_HEALTH_REQUIRED=True` или `CELERY_HEALTH_REQUIRED=True`.
