@@ -24,6 +24,7 @@ from apps.finance.budgets.services import (
     budget_duplicate_exists,
     get_budget_usage,
 )
+from apps.finance.currencies.conversion import get_currency_conversion_service
 from apps.finance.budgets.serializers import (
     BudgetDetailSerializer,
     BudgetListResponseSerializer,
@@ -235,7 +236,8 @@ def normalize_budget_group_values(values: list[str]) -> list[str]:
             OpenApiParameter("usageStatuses", OpenApiTypes.STR, description="Статусы использования через запятую: normal, warning, exceeded."),
             OpenApiParameter("kinds", OpenApiTypes.STR, description="Типы бюджетов через запятую: expense, income."),
             OpenApiParameter("onlyAtRisk", OpenApiTypes.BOOL, description="Только бюджеты со статусом warning или exceeded."),
-            OpenApiParameter("currency", OpenApiTypes.STR, description="Фильтр по ISO-коду добавленной валюты пользователя."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм. Если не передана, используется валюта из настроек пользователя."),
+            OpenApiParameter("budgetCurrency", OpenApiTypes.STR, description="Фильтр по исходной валюте бюджета."),
         ],
         responses={200: BudgetListResponseSerializer},
     ),
@@ -312,6 +314,20 @@ class BudgetViewSet(viewsets.ModelViewSet):
         "options",
     ]
 
+    def get_currency_converter(self):
+        if not hasattr(self, "_currency_converter"):
+            self._currency_converter = get_currency_conversion_service(
+                user=self.request.user,
+                display_currency=self.request.query_params.get("currency"),
+            )
+
+        return self._currency_converter
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["currency_converter"] = self.get_currency_converter()
+        return context
+
     def get_queryset(self):
         if not self.request.user.is_authenticated:
             return Budget.objects.none()
@@ -324,11 +340,12 @@ class BudgetViewSet(viewsets.ModelViewSet):
         )
 
     def list(self, request, *args, **kwargs):
+        converter = self.get_currency_converter()
         queryset = self.apply_db_filters(self.get_queryset())
         budgets = list(queryset)
-        budgets = self.apply_usage_filters(budgets)
+        budgets = self.apply_usage_filters(budgets, converter=converter)
 
-        summary = build_budget_list_summary(budgets)
+        summary = build_budget_list_summary(budgets, converter=converter)
         page_number = get_positive_int_query_param(
             request.query_params,
             "page",
@@ -361,11 +378,13 @@ class BudgetViewSet(viewsets.ModelViewSet):
                     "totalItems": paginator.count,
                     "totalPages": paginator.num_pages,
                 },
+                "currencyContext": converter.context_payload(),
             }
         )
 
     def retrieve(self, request, *args, **kwargs):
         budget = self.get_object()
+        converter = self.get_currency_converter()
 
         return Response(
             {
@@ -373,9 +392,10 @@ class BudgetViewSet(viewsets.ModelViewSet):
                     budget,
                     context=self.get_serializer_context(),
                 ).data,
-                "stats": build_budget_detail_stats(budget),
-                "chart": build_budget_chart(budget),
-                "operations": build_budget_operations(budget),
+                "stats": build_budget_detail_stats(budget, converter=converter),
+                "chart": build_budget_chart(budget, converter=converter),
+                "operations": build_budget_operations(budget, converter=converter),
+                "currencyContext": converter.context_payload(),
             }
         )
 
@@ -427,16 +447,22 @@ class BudgetViewSet(viewsets.ModelViewSet):
             allowed_values=set(BudgetKind.values),
         )
         search = query_params.get("search")
-        currency = query_params.get("currency")
+        budget_currency = get_first_query_value(
+            query_params,
+            "budgetCurrency",
+            "budget_currency",
+            "sourceCurrency",
+            "source_currency",
+        )
 
-        if currency:
-            currency = validate_user_currency_available(
+        if budget_currency:
+            budget_currency = validate_user_currency_available(
                 self.request.user,
-                currency,
-                field_name="currency",
+                budget_currency,
+                field_name="budgetCurrency",
                 require_visible=False,
             )
-            queryset = queryset.filter(currency=currency)
+            queryset = queryset.filter(currency=budget_currency)
 
         if period_types:
             queryset = queryset.filter(period_type__in=period_types)
@@ -473,7 +499,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-    def apply_usage_filters(self, budgets: list[Budget]) -> list[Budget]:
+    def apply_usage_filters(self, budgets: list[Budget], *, converter=None) -> list[Budget]:
         query_params = self.request.query_params
         usage_statuses = parse_multi_value_query_param(
             query_params,
@@ -492,7 +518,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
         filtered_budgets = []
 
         for budget in budgets:
-            usage_status = get_budget_usage(budget).usage_status
+            usage_status = get_budget_usage(budget, converter=converter).usage_status
 
             if usage_statuses and usage_status not in usage_statuses:
                 continue
@@ -546,22 +572,24 @@ class BudgetViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=["get"], url_path="warnings")
     def warnings(self, request):
+        converter = self.get_currency_converter()
         queryset = self.apply_db_filters(self.get_queryset())
         warning_items = []
 
         for budget in queryset:
-            usage = get_budget_usage(budget)
+            usage = get_budget_usage(budget, converter=converter)
 
             if usage.usage_status in {
                 BudgetUsageStatus.WARNING,
                 BudgetUsageStatus.EXCEEDED,
             }:
-                warning_items.append(build_budget_warning_item(budget))
+                warning_items.append(build_budget_warning_item(budget, converter=converter))
 
         return Response(
             {
                 "items": warning_items,
                 "attentionCount": len(warning_items),
+                "currencyContext": converter.context_payload(),
             }
         )
 

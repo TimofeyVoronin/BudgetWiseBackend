@@ -1,6 +1,6 @@
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
@@ -9,6 +9,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from apps.users.auth.serializers import (
     ForgotPasswordSerializer,
     LoginSerializer,
+    LogoutSerializer,
     RegisterSerializer,
     ResetPasswordSerializer,
     VerifyEmailSerializer,
@@ -263,6 +264,49 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
 
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = LogoutSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Выйти из системы",
+        description=(
+            "Завершает пользовательскую сессию на сервере. "
+            "Принимает refresh token и добавляет его в blacklist, "
+            "после чего этот refresh token нельзя использовать для обновления access token. "
+            "Access token остаётся действительным до истечения своего короткого срока жизни."
+        ),
+        request=LogoutSerializer,
+        responses={200: LogoutSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={
+                    "refresh": "jwt-refresh-token",
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "detail": "Выход выполнен. Refresh token добавлен в blacklist.",
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class BudgetWiseTokenRefreshView(TokenRefreshView):

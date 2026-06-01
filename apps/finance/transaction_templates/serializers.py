@@ -7,6 +7,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
 
+from apps.finance.currencies.money import MoneyAmountSerializer, build_money_payload
 from apps.finance.currencies.services import (
     get_user_default_currency_code,
     get_user_visible_currency_codes,
@@ -40,6 +41,8 @@ class TransactionTemplateSerializer(serializers.ModelSerializer):
         min_value=Decimal("0.01"),
         coerce_to_string=False,
     )
+    amount = serializers.SerializerMethodField(read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
     accountId = serializers.PrimaryKeyRelatedField(
         source="account",
         queryset=Account.objects.none(),
@@ -79,7 +82,9 @@ class TransactionTemplateSerializer(serializers.ModelSerializer):
             "name",
             "kind",
             "amountRub",
+            "amount",
             "currency",
+            "sourceCurrency",
             "accountId",
             "accountName",
             "categoryId",
@@ -100,6 +105,8 @@ class TransactionTemplateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "amount",
+            "sourceCurrency",
             "accountName",
             "categoryName",
             "categoryIcon",
@@ -173,12 +180,31 @@ class TransactionTemplateSerializer(serializers.ModelSerializer):
         data["id"] = instance.pk
         data["accountId"] = instance.account_id
         data["categoryId"] = instance.category_id
-        data["amountRub"] = float(instance.amount)
+        data["amountRub"] = self._display_money(instance)["amount"]
         data["isDefault"] = instance.is_default
         data["useCount"] = instance.use_count
         data["icon"] = instance.icon
         data["iconTone"] = instance.icon_tone
         return data
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_amount(self, obj: TransactionTemplate) -> dict:
+        return self._display_money(obj)
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sourceCurrency(self, obj: TransactionTemplate) -> str:
+        return obj.currency
+
+    def _display_money(self, obj: TransactionTemplate) -> dict:
+        converter = self.context.get("currency_converter")
+
+        if converter is None:
+            return build_money_payload(obj.amount, currency=obj.currency)
+
+        return converter.display_amount_payload(
+            obj.amount,
+            source_currency=obj.currency,
+        )
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_iconTone(self, obj: TransactionTemplate) -> str:
@@ -383,6 +409,7 @@ class TransactionTemplateListResponseSerializer(serializers.Serializer):
     items = TransactionTemplateSerializer(many=True)
     summary = TransactionTemplateSummarySerializer()
     pagination = TransactionTemplatePaginationSerializer()
+    currencyContext = serializers.DictField(read_only=True)
 
 
 class TransactionTemplateDeleteResponseSerializer(serializers.Serializer):
@@ -399,7 +426,9 @@ class TransactionTemplateApplyDraftSerializer(serializers.Serializer):
     templateName = serializers.CharField()
     kind = serializers.ChoiceField(choices=TransactionType.choices)
     amountRub = serializers.FloatField()
+    amount = MoneyAmountSerializer(read_only=True)
     currency = serializers.CharField()
+    sourceCurrency = serializers.CharField()
     categoryId = serializers.IntegerField()
     categoryName = serializers.CharField()
     categoryIcon = serializers.CharField()
@@ -411,6 +440,7 @@ class TransactionTemplateApplyDraftSerializer(serializers.Serializer):
     note = serializers.CharField(allow_blank=True)
     description = serializers.CharField(allow_blank=True)
     operationDate = serializers.DateField()
+    currencyContext = serializers.DictField(read_only=True)
 
 
 class TransactionTemplateApplySerializer(serializers.Serializer):
@@ -535,6 +565,7 @@ class TransactionTemplateApplySerializer(serializers.Serializer):
 class TransactionTemplateApplyResponseSerializer(serializers.Serializer):
     template = TransactionTemplateSerializer()
     transaction = TransactionSerializer()
+    currencyContext = serializers.DictField(read_only=True)
 
 
 class TransactionTemplateCheckNameResponseSerializer(serializers.Serializer):
@@ -592,13 +623,24 @@ class TransactionTemplateMetaResponseSerializer(serializers.Serializer):
     sortOptions = TransactionTemplateKindOptionSerializer(many=True)
 
 
-def build_apply_draft_payload(template: TransactionTemplate) -> dict:
+def build_apply_draft_payload(
+    template: TransactionTemplate,
+    *,
+    converter=None,
+) -> dict:
+    amount_payload = (
+        converter.display_amount_payload(template.amount, source_currency=template.currency)
+        if converter is not None
+        else build_money_payload(template.amount, currency=template.currency)
+    )
     return {
         "templateId": template.pk,
         "templateName": template.name,
         "kind": template.kind,
-        "amountRub": float(template.amount),
+        "amountRub": amount_payload["amount"],
+        "amount": amount_payload,
         "currency": template.currency,
+        "sourceCurrency": template.currency,
         "categoryId": template.category_id,
         "categoryName": template.category.name,
         "categoryIcon": template.category.icon,
@@ -610,6 +652,7 @@ def build_apply_draft_payload(template: TransactionTemplate) -> dict:
         "note": template.note or "",
         "description": template.note or template.name,
         "operationDate": get_user_app_today(template.user),
+        "currencyContext": converter.context_payload() if converter is not None else {},
     }
 
 

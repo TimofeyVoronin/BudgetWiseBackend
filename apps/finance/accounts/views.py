@@ -27,6 +27,7 @@ from apps.finance.accounts.serializers import (
     AccountSummarySerializer,
     get_account_meta_payload,
 )
+from apps.finance.currencies.conversion import get_currency_conversion_service
 from apps.finance.currencies.services import (
     get_user_default_currency_code,
     validate_user_currency_available,
@@ -46,14 +47,45 @@ ACCOUNT_STATUS_VALUES = {
 }
 
 
+
+def get_account_display_currency_query_param(query_params, user) -> str:
+    currency = query_params.get("currency")
+
+    if currency in (None, ""):
+        return get_user_default_currency_code(user)
+
+    return validate_user_currency_available(
+        user,
+        currency,
+        field_name="currency",
+        require_visible=True,
+    )
+
+
+def get_account_currency_filter_query_param(query_params, user) -> str | None:
+    currency = query_params.get("accountCurrency") or query_params.get("account_currency")
+
+    if currency in (None, ""):
+        return None
+
+    return validate_user_currency_available(
+        user,
+        currency,
+        field_name="accountCurrency",
+        require_visible=False,
+    )
+
+
 @extend_schema_view(
     list=extend_schema(
         tags=["finance-accounts"],
         summary="Получить список счетов",
         description=(
             "Возвращает счета текущего пользователя с пагинацией, поиском "
-            "и фильтрацией по статусу, типу и валюте. Архивные счета не удаляются "
-            "из системы и могут быть показаны через status=archived."
+            "и фильтрацией по статусу и типу. Параметр currency задаёт "
+            "валюту отображения балансов, а accountCurrency фильтрует счета "
+            "по исходной валюте счёта. Архивные счета не удаляются из системы "
+            "и могут быть показаны через status=archived."
         ),
         parameters=[
             OpenApiParameter(
@@ -81,7 +113,12 @@ ACCOUNT_STATUS_VALUES = {
             OpenApiParameter(
                 "currency",
                 OpenApiTypes.STR,
-                description="ISO-код валюты, например RUB.",
+                description="ISO-код валюты отображения балансов, например EUR. Не фильтрует список счетов.",
+            ),
+            OpenApiParameter(
+                "accountCurrency",
+                OpenApiTypes.STR,
+                description="ISO-код исходной валюты счёта для фильтрации списка, например RUB.",
             ),
             OpenApiParameter(
                 "search",
@@ -244,7 +281,10 @@ class AccountViewSet(viewsets.ModelViewSet):
             )
 
         account_type = query_params.get("type")
-        currency = query_params.get("currency")
+        account_currency = get_account_currency_filter_query_param(
+            query_params,
+            self.request.user,
+        )
         search = query_params.get("search")
 
         if status_value == ACCOUNT_STATUS_ACTIVE:
@@ -261,14 +301,8 @@ class AccountViewSet(viewsets.ModelViewSet):
             )
             queryset = queryset.filter(type=account_type)
 
-        if currency:
-            currency = validate_user_currency_available(
-                self.request.user,
-                currency,
-                field_name="currency",
-                require_visible=False,
-            )
-            queryset = queryset.filter(currency=currency)
+        if account_currency:
+            queryset = queryset.filter(currency=account_currency)
 
         if search:
             search_value = search.strip()
@@ -289,6 +323,20 @@ class AccountViewSet(viewsets.ModelViewSet):
                 )
 
         return queryset.order_by("-is_default", "is_archived", "name", "id")
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+
+        if self.request and self.request.user.is_authenticated:
+            context["currency_converter"] = get_currency_conversion_service(
+                user=self.request.user,
+                display_currency=get_account_display_currency_query_param(
+                    self.request.query_params,
+                    self.request.user,
+                ),
+            )
+
+        return context
 
     def perform_create(self, serializer):
         serializer.save()
@@ -312,8 +360,9 @@ class AccountViewSet(viewsets.ModelViewSet):
         summary="Получить сводку по счетам",
         description=(
             "Возвращает общий баланс активных неархивных счетов текущего пользователя, "
-            "количество активных счетов и количество счетов в архиве. По умолчанию "
-            "используется валюта по умолчанию из настроек приложения."
+            "количество активных счетов и количество счетов в архиве. Балансы "
+            "счетов разных валют пересчитываются в валюту отображения. По умолчанию "
+            "используется валюта из настроек приложения."
         ),
         parameters=[
             OpenApiParameter(
@@ -343,29 +392,26 @@ class AccountViewSet(viewsets.ModelViewSet):
         url_path="summary",
     )
     def summary(self, request):
-        currency = request.query_params.get("currency")
-        if currency in (None, ""):
-            currency = get_user_default_currency_code(request.user)
-        else:
-            currency = validate_user_currency_available(
+        converter = get_currency_conversion_service(
+            user=request.user,
+            display_currency=get_account_display_currency_query_param(
+                request.query_params,
                 request.user,
-                currency,
-                field_name="currency",
-                require_visible=False,
-            )
-
-        total_balance = (
-            Account.objects
-            .filter(
-                user=request.user,
-                currency=currency,
-                is_active=True,
-                is_archived=False,
-            )
-            .aggregate(total=Sum("balance"))
-            .get("total")
-            or Decimal("0.00")
+            ),
         )
+
+        accounts = Account.objects.filter(
+            user=request.user,
+            is_active=True,
+            is_archived=False,
+        )
+        total_balance = Decimal("0.00")
+        for account in accounts:
+            total_balance += converter.convert_to_display(
+                account.balance,
+                source_currency=account.currency,
+            ).amount
+
         active_count = Account.objects.filter(
             user=request.user,
             is_active=True,
@@ -376,12 +422,19 @@ class AccountViewSet(viewsets.ModelViewSet):
             is_archived=True,
         ).count()
 
+        total_balance_payload = converter.amount_payload(
+            total_balance,
+            source_currency=converter.display_currency,
+            target_currency=converter.display_currency,
+        )
         data = {
             "total_balance": total_balance,
+            "totalBalance": total_balance_payload,
             "totalBalanceRub": total_balance,
             "active_count": active_count,
             "archived_count": archived_count,
-            "currency": currency,
+            "currency": converter.display_currency,
+            "currencyContext": converter.context_payload(),
         }
 
         serializer = AccountSummarySerializer(data)
@@ -510,7 +563,7 @@ class AccountViewSet(viewsets.ModelViewSet):
                 user=request.user,
                 account=account,
             )
-            .select_related("category")
+            .select_related("category", "account")
             .order_by("-operation_date", "-created_at", "-id")
         )
 
@@ -518,20 +571,27 @@ class AccountViewSet(viewsets.ModelViewSet):
 
         if page is not None:
             data = [
-                self._build_history_row(transaction)
+                self._build_history_row(transaction, request=request)
                 for transaction in page
             ]
             serializer = AccountHistoryRowSerializer(data, many=True)
             return self.get_paginated_response(serializer.data)
 
         data = [
-            self._build_history_row(transaction)
+            self._build_history_row(transaction, request=request)
             for transaction in queryset
         ]
         serializer = AccountHistoryRowSerializer(data, many=True)
         return Response(serializer.data)
 
-    def _build_history_row(self, transaction: Transaction) -> dict:
+    def _build_history_row(self, transaction: Transaction, *, request) -> dict:
+        converter = get_currency_conversion_service(
+            user=request.user,
+            display_currency=get_account_display_currency_query_param(
+                request.query_params,
+                request.user,
+            ),
+        )
         amount = abs(transaction.amount)
 
         if transaction.type == TransactionType.EXPENSE:
@@ -545,6 +605,14 @@ class AccountViewSet(viewsets.ModelViewSet):
             "description": transaction.description,
             "category_name": transaction.category.name,
             "amount": amount,
+            "amountDisplay": converter.display_amount_payload(
+                amount,
+                source_currency=transaction.account.currency,
+            ),
             "signed_amount": signed_amount,
+            "signedAmountDisplay": converter.display_amount_payload(
+                signed_amount,
+                source_currency=transaction.account.currency,
+            ),
             "type": transaction.type,
         }

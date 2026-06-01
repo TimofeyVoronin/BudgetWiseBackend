@@ -1,10 +1,13 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
 from apps.finance.models import (
+    Account,
     RecurringChargeStatus,
     RecurringFrequency,
     RecurringStatus,
@@ -15,7 +18,26 @@ from apps.finance.models import (
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceRecurringTransactionsAPITests(FinanceAPITestCase):
+    def ensure_usd_currency(self):
+        ensure_user_currencies(self.user)
+        usd_currency = get_user_currency_by_code(self.user, "USD")
+        usd_currency.is_visible = True
+        usd_currency.rate_to_primary = Decimal("100.00000000")
+        usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+        return usd_currency
+
+    def create_usd_account(self):
+        self.ensure_usd_currency()
+        return Account.objects.create(
+            user=self.user,
+            name="USD card",
+            initial_balance=Decimal("1000.00"),
+            balance=Decimal("1000.00"),
+            currency="USD",
+        )
+
     def create_recurring(
         self,
         *,
@@ -79,6 +101,101 @@ class FinanceRecurringTransactionsAPITests(FinanceAPITestCase):
         recurring_ids = [item["id"] for item in response.data["results"]]
         self.assertIn(own_recurring.id, recurring_ids)
         self.assertEqual(len(recurring_ids), 1)
+
+    def test_recurring_list_converts_amount_to_display_currency(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        recurring = self.create_recurring(
+            account=usd_account,
+            category=self.expense_category,
+            name="USD subscription",
+            amount="10.00",
+        )
+
+        response = self.client.get(
+            reverse("finance:recurring-transaction-list"),
+            data={"currency": "RUB", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(item for item in response.data["results"] if item["id"] == recurring.id)
+        self.assertEqual(row["sourceCurrency"], "USD")
+        self.assertEqual(row["amountRub"], "1000.00")
+        self.assertEqual(row["amountDisplay"], {"amount": 1000.0, "currency": "RUB"})
+        self.assertEqual(row["amountAbsDisplay"], {"amount": 1000.0, "currency": "RUB"})
+        self.assertEqual(row["signedAmountDisplay"], {"amount": -1000.0, "currency": "RUB"})
+        self.assertEqual(response.data["currencyContext"]["code"], "RUB")
+
+    def test_recurring_currency_query_is_display_currency_and_account_currency_filters_source(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        rub_recurring = self.create_recurring(
+            account=self.account,
+            category=self.expense_category,
+            name="RUB subscription",
+            amount="100.00",
+        )
+        usd_recurring = self.create_recurring(
+            account=usd_account,
+            category=self.expense_category,
+            name="USD subscription",
+            amount="5.00",
+        )
+
+        display_response = self.client.get(
+            reverse("finance:recurring-transaction-list"),
+            data={"currency": "USD", "page_size": 20},
+        )
+
+        self.assertEqual(display_response.status_code, status.HTTP_200_OK)
+        display_ids = [item["id"] for item in display_response.data["results"]]
+        self.assertIn(rub_recurring.id, display_ids)
+        self.assertIn(usd_recurring.id, display_ids)
+        self.assertEqual(display_response.data["currencyContext"]["code"], "USD")
+
+        source_filter_response = self.client.get(
+            reverse("finance:recurring-transaction-list"),
+            data={"accountCurrency": "USD", "page_size": 20},
+        )
+
+        self.assertEqual(source_filter_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [item["id"] for item in source_filter_response.data["results"]],
+            [usd_recurring.id],
+        )
+
+    def test_recurring_charge_history_converts_amount_to_display_currency(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        recurring = self.create_recurring(
+            account=usd_account,
+            category=self.expense_category,
+            amount="10.00",
+        )
+        RecurringTransactionCharge.objects.create(
+            user=self.user,
+            recurring_transaction=recurring,
+            scheduled_date=self.today,
+            amount=Decimal("10.00"),
+            status=RecurringChargeStatus.SUCCESS,
+        )
+
+        response = self.client.get(
+            reverse(
+                "finance:recurring-transaction-charge-history",
+                kwargs={"pk": recurring.id},
+            ),
+            data={"currency": "RUB"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["currencyContext"]["code"], "RUB")
+        self.assertEqual(response.data["items"][0]["sourceCurrency"], "USD")
+        self.assertEqual(response.data["items"][0]["amountRub"], "1000.00")
+        self.assertEqual(
+            response.data["items"][0]["amountDisplay"],
+            {"amount": 1000.0, "currency": "RUB"},
+        )
 
     def test_recurring_crud_flow(self):
         self.authenticate()

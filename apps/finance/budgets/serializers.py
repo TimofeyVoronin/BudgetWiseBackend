@@ -17,6 +17,7 @@ from apps.finance.budgets.services import (
     get_period_label,
     percent_to_number,
 )
+from apps.finance.currencies.money import MoneyAmountSerializer, build_money_payload
 from apps.finance.currencies.services import (
     build_currency_select_options,
     get_user_default_currency_code,
@@ -83,6 +84,9 @@ class BudgetSerializer(serializers.ModelSerializer):
         coerce_to_string=False,
     )
     spentRub = serializers.SerializerMethodField(read_only=True)
+    limit = serializers.SerializerMethodField(read_only=True)
+    spent = serializers.SerializerMethodField(read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
     currency = serializers.CharField(max_length=3, required=False)
     kind = serializers.ChoiceField(
         choices=BudgetKind.choices,
@@ -114,6 +118,9 @@ class BudgetSerializer(serializers.ModelSerializer):
             "periodEnd",
             "limitRub",
             "spentRub",
+            "limit",
+            "spent",
+            "sourceCurrency",
             "currency",
             "kind",
             "kindLabel",
@@ -135,6 +142,9 @@ class BudgetSerializer(serializers.ModelSerializer):
             "periodTypeLabel",
             "periodLabel",
             "spentRub",
+            "limit",
+            "spent",
+            "sourceCurrency",
             "kindLabel",
             "usageStatus",
             "usageStatusLabel",
@@ -185,12 +195,17 @@ class BudgetSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        usage = get_budget_usage(instance)
+        usage = self._budget_usage(instance)
+        limit = self._display_money(instance, instance.amount_limit)
+        spent = self._display_money(instance, usage.spent_amount)
 
         data["id"] = instance.pk
         data["categoryId"] = instance.category_id
-        data["limitRub"] = decimal_to_number(instance.amount_limit)
-        data["spentRub"] = decimal_to_number(usage.spent_amount)
+        data["limitRub"] = decimal_to_number(limit["amount"])
+        data["spentRub"] = decimal_to_number(spent["amount"])
+        data["limit"] = limit
+        data["spent"] = spent
+        data["sourceCurrency"] = instance.currency
         data["usagePercent"] = percent_to_number(usage.usage_percent)
 
         return data
@@ -201,20 +216,49 @@ class BudgetSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.NUMBER)
     def get_spentRub(self, obj: Budget) -> float:
-        return decimal_to_number(get_budget_usage(obj).spent_amount)
+        return decimal_to_number(self._display_money(obj, self._budget_usage(obj).spent_amount)["amount"])
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_limit(self, obj: Budget) -> dict:
+        return self._display_money(obj, obj.amount_limit)
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_spent(self, obj: Budget) -> dict:
+        return self._display_money(obj, self._budget_usage(obj).spent_amount)
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sourceCurrency(self, obj: Budget) -> str:
+        return obj.currency
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_usageStatus(self, obj: Budget) -> str:
-        return get_budget_usage(obj).usage_status
+        return self._budget_usage(obj).usage_status
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_usageStatusLabel(self, obj: Budget) -> str:
-        usage_status = get_budget_usage(obj).usage_status
+        usage_status = self._budget_usage(obj).usage_status
         return BudgetUsageStatus(usage_status).label
 
     @extend_schema_field(OpenApiTypes.NUMBER)
     def get_usagePercent(self, obj: Budget) -> float:
-        return percent_to_number(get_budget_usage(obj).usage_percent)
+        return percent_to_number(self._budget_usage(obj).usage_percent)
+
+    def _currency_converter(self):
+        return self.context.get("currency_converter")
+
+    def _budget_usage(self, obj: Budget):
+        return get_budget_usage(obj, converter=self._currency_converter())
+
+    def _display_money(self, obj: Budget, value) -> dict:
+        converter = self._currency_converter()
+
+        if converter is None:
+            return build_money_payload(value, currency=obj.currency)
+
+        return converter.display_amount_payload(
+            value,
+            source_currency=obj.currency,
+        )
 
     def validate_category(self, category: Category) -> Category:
         request = self.context.get("request")
@@ -316,12 +360,26 @@ class BudgetSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+class BudgetCurrencyContextSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    primaryCode = serializers.CharField(read_only=True)
+    sourceAvailable = serializers.BooleanField(read_only=True)
+    usingCachedRates = serializers.BooleanField(read_only=True)
+    warning = serializers.CharField(read_only=True, allow_blank=True)
+
+
 class BudgetDetailStatsSerializer(serializers.Serializer):
     limitRub = serializers.FloatField()
     spentRub = serializers.FloatField()
     remainingRub = serializers.FloatField()
     avgDailyRub = serializers.FloatField()
     forecastRub = serializers.FloatField()
+    limit = MoneyAmountSerializer()
+    spent = MoneyAmountSerializer()
+    remaining = MoneyAmountSerializer()
+    avgDaily = MoneyAmountSerializer()
+    forecast = MoneyAmountSerializer()
+    currency = serializers.CharField()
     forecastWithinLimit = serializers.BooleanField()
 
 
@@ -337,6 +395,8 @@ class BudgetOperationRowSerializer(serializers.Serializer):
     subtitle = serializers.CharField()
     dateLabel = serializers.CharField()
     amountRub = serializers.FloatField()
+    amount = MoneyAmountSerializer()
+    sourceCurrency = serializers.CharField()
     icon = serializers.CharField()
 
 
@@ -345,6 +405,7 @@ class BudgetDetailSerializer(serializers.Serializer):
     stats = BudgetDetailStatsSerializer()
     chart = BudgetChartPointSerializer(many=True)
     operations = BudgetOperationRowSerializer(many=True)
+    currencyContext = BudgetCurrencyContextSerializer()
 
 
 class BudgetListSummarySerializer(serializers.Serializer):
@@ -364,6 +425,7 @@ class BudgetListResponseSerializer(serializers.Serializer):
     items = BudgetSerializer(many=True)
     summary = BudgetListSummarySerializer()
     pagination = BudgetListPaginationSerializer()
+    currencyContext = BudgetCurrencyContextSerializer()
 
 
 class CheckBudgetDuplicateSerializer(serializers.Serializer):
@@ -408,12 +470,17 @@ class BudgetWarningItemSerializer(serializers.Serializer):
     spentRub = serializers.FloatField()
     limitRub = serializers.FloatField()
     remainingRub = serializers.FloatField()
+    spent = MoneyAmountSerializer()
+    limit = MoneyAmountSerializer()
+    remaining = MoneyAmountSerializer()
+    sourceCurrency = serializers.CharField()
     message = serializers.CharField(required=False)
 
 
 class BudgetWarningsResponseSerializer(serializers.Serializer):
     items = BudgetWarningItemSerializer(many=True)
     attentionCount = serializers.IntegerField()
+    currencyContext = BudgetCurrencyContextSerializer()
 
 
 class DeleteBudgetResponseSerializer(serializers.Serializer):

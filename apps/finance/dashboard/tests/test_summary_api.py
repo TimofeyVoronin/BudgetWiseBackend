@@ -6,19 +6,27 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import connection
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
 from rest_framework import status
 
+from apps.finance.currencies.services import get_user_currency_by_code
 from apps.finance.models import Account, Budget, Category, Transaction, TransactionType
 from apps.users.app_settings.formatting import get_user_app_today
 
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceDashboardAPITests(FinanceAPITestCase):
+    def set_rate(self, code: str, value: str):
+        user_currency = get_user_currency_by_code(self.user, code)
+        user_currency.rate_to_primary = Decimal(value)
+        user_currency.save(update_fields=["rate_to_primary", "updated_at"])
+
     def test_dashboard_summary_requires_authentication(self):
             response = self.client.get(reverse("finance:dashboard-summary"))
 
@@ -207,8 +215,9 @@ class FinanceDashboardAPITests(FinanceAPITestCase):
             )
             self.assertEqual(year_response.data["period"]["date_to"], str(expected_today))
 
-    def test_dashboard_summary_filters_by_currency(self):
+    def test_dashboard_summary_converts_totals_to_display_currency(self):
             self.authenticate()
+            self.set_rate("USD", "100.00000000")
 
             usd_account = Account.objects.create(
                 user=self.user,
@@ -261,10 +270,26 @@ class FinanceDashboardAPITests(FinanceAPITestCase):
 
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data["currency"], "USD")
-            self.assertEqual(response.data["totals"]["accounts_balance"], "100.00")
-            self.assertEqual(response.data["totals"]["income"], "300.00")
+            self.assertEqual(response.data["totals"]["accounts_balance"], "230.00")
+            self.assertEqual(
+                response.data["totals"]["accountsBalance"],
+                {"amount": 230.0, "currency": "USD"},
+            )
+            self.assertEqual(response.data["totals"]["income"], "800.00")
+            self.assertEqual(
+                response.data["totals"]["incomeAmount"],
+                {"amount": 800.0, "currency": "USD"},
+            )
             self.assertEqual(response.data["totals"]["expense"], "75.00")
-            self.assertEqual(response.data["totals"]["net"], "225.00")
+            self.assertEqual(
+                response.data["totals"]["expenseAmount"],
+                {"amount": 75.0, "currency": "USD"},
+            )
+            self.assertEqual(response.data["totals"]["net"], "725.00")
+            self.assertEqual(
+                response.data["totals"]["netAmount"],
+                {"amount": 725.0, "currency": "USD"},
+            )
 
             descriptions = [
                 item["description"]
@@ -273,7 +298,7 @@ class FinanceDashboardAPITests(FinanceAPITestCase):
 
             self.assertIn("USD income transaction", descriptions)
             self.assertIn("USD expense transaction", descriptions)
-            self.assertNotIn("RUB income transaction", descriptions)
+            self.assertIn("RUB income transaction", descriptions)
 
     def test_dashboard_summary_limit_controls_recent_transactions(self):
             self.authenticate()

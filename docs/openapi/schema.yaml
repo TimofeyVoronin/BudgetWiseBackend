@@ -137,6 +137,47 @@ paths:
                       is_active: true
                   summary: Успешный ответ
           description: ''
+  /api/v1/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      description: Завершает пользовательскую сессию на сервере. Принимает refresh
+        token и добавляет его в blacklist, после чего этот refresh token нельзя использовать
+        для обновления access token. Access token остаётся действительным до истечения
+        своего короткого срока жизни.
+      summary: Выйти из системы
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  refresh: jwt-refresh-token
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Logout'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Выход выполнен. Refresh token добавлен в blacklist.
+                  summary: Успешный ответ
+          description: ''
   /api/v1/auth/register/:
     post:
       operationId: auth_register_create
@@ -314,15 +355,23 @@ paths:
     get:
       operationId: finance_accounts_list
       description: Возвращает счета текущего пользователя с пагинацией, поиском и
-        фильтрацией по статусу, типу и валюте. Архивные счета не удаляются из системы
-        и могут быть показаны через status=archived.
+        фильтрацией по статусу и типу. Параметр currency задаёт валюту отображения
+        балансов, а accountCurrency фильтрует счета по исходной валюте счёта. Архивные
+        счета не удаляются из системы и могут быть показаны через status=archived.
       summary: Получить список счетов
       parameters:
+      - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: ISO-код исходной валюты счёта для фильтрации списка, например
+          RUB.
       - in: query
         name: currency
         schema:
           type: string
-        description: ISO-код валюты, например RUB.
+        description: ISO-код валюты отображения балансов, например EUR. Не фильтрует
+          список счетов.
       - in: query
         name: page
         schema:
@@ -700,8 +749,9 @@ paths:
     get:
       operationId: finance_accounts_summary_retrieve
       description: Возвращает общий баланс активных неархивных счетов текущего пользователя,
-        количество активных счетов и количество счетов в архиве. По умолчанию используется
-        валюта по умолчанию из настроек приложения.
+        количество активных счетов и количество счетов в архиве. Балансы счетов разных
+        валют пересчитываются в валюту отображения. По умолчанию используется валюта
+        из настроек приложения.
       summary: Получить сводку по счетам
       parameters:
       - in: query
@@ -1100,6 +1150,11 @@ paths:
       summary: Получить список бюджетов
       parameters:
       - in: query
+        name: budgetCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте бюджета.
+      - in: query
         name: categories
         schema:
           type: string
@@ -1113,7 +1168,8 @@ paths:
         name: currency
         schema:
           type: string
-        description: Фильтр по ISO-коду добавленной валюты пользователя.
+        description: Валюта отображения сумм. Если не передана, используется валюта
+          из настроек пользователя.
       - in: query
         name: kinds
         schema:
@@ -2765,8 +2821,9 @@ paths:
     get:
       operationId: finance_dashboard_accounts_summary_retrieve
       description: Возвращает превью активных неархивных счетов пользователя для dashboard.
-        Параметр currency фильтрует счета по валюте. Параметр period принимается для
-        единого frontend-контракта, но на список счетов не влияет.
+        Параметр currency задаёт валюту отображения, балансы счетов пересчитываются
+        в неё. Параметр period принимается для единого frontend-контракта, но на список
+        счетов не влияет.
       summary: Получить карточку счетов
       parameters:
       - in: query
@@ -2807,8 +2864,9 @@ paths:
     get:
       operationId: finance_dashboard_balance_summary_retrieve
       description: Возвращает данные карточки текущего баланса для главной страницы.
-        Параметр period задаёт период для расчёта тренда, currency фильтрует счета
-        и операции по валюте счёта. Конвертация валют не выполняется.
+        Параметр period задаёт период для расчёта тренда, currency задаёт валюту отображения.
+        Счета и операции разных валют приводятся к выбранной валюте через единый сервис
+        конвертации.
       summary: Получить карточку текущего баланса
       parameters:
       - in: query
@@ -2898,9 +2956,9 @@ paths:
     get:
       operationId: finance_dashboard_goals_summary_retrieve
       description: Возвращает список активных целей для карточки на главной странице.
-        Если цель привязана к счёту, она попадает в ответ только для валюты этого
-        счёта. Цели без счёта показываются только для валюты по умолчанию из настроек
-        приложения. Конвертация валют не выполняется.
+        Цели возвращаются в валюте отображения. Если цель привязана к счёту, её суммы
+        пересчитываются из валюты счёта; цели без счёта считаются в основной валюте
+        пользователя.
       summary: Получить карточку целей
       parameters:
       - in: query
@@ -2986,9 +3044,9 @@ paths:
         name: currency
         schema:
           type: string
-        description: ISO-код добавленной валюты пользователя. Если параметр не передан,
-          используется валюта по умолчанию из настроек приложения. Конвертация валют
-          не выполняется, данные фильтруются по валюте счёта.
+        description: ISO-код валюты отображения. Если параметр не передан, используется
+          валюта по умолчанию из настроек приложения. Суммы пересчитываются backend-ом
+          по актуальным курсам.
       - in: query
         name: date_from
         schema:
@@ -3093,8 +3151,8 @@ paths:
       description: 'Возвращает расширенную месячную сетку финансового календаря: ячейки
         дней, фактические операции, плановые операции, дневные дельты, фактический
         баланс для прошлых дней, прогнозный баланс и первый найденный кассовый разрыв.
-        Месяц в API передаётся в формате 1-12. Прогноз строится в валюте выбранных
-        счетов; автоматическая конвертация валют не выполняется.'
+        Месяц в API передаётся в формате 1-12. Суммы приводятся к валюте отображения
+        из параметра currency или из настроек пользователя.'
       summary: Получить финансовый календарь на месяц
       parameters:
       - in: query
@@ -3105,6 +3163,11 @@ paths:
             type: integer
         description: ID счетов. Можно передавать повторяющимся параметром или через
           запятую.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
       - in: query
         name: dateFrom
         schema:
@@ -3158,7 +3221,11 @@ paths:
                     todayIso: '2026-05-22'
                     todayLabel: 22.05.2026
                     openingBalanceRub: '227800.00'
+                    openingBalance:
+                      amount: 227800.0
+                      currency: RUB
                     openingBalanceLabel: 227 800,00 ₽
+                    currency: RUB
                     cells: []
                     events: []
                     dayForecasts: []
@@ -3182,6 +3249,11 @@ paths:
           items:
             type: integer
         description: ID счетов.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
       - in: query
         name: eventTypes
         schema:
@@ -3225,6 +3297,11 @@ paths:
           items:
             type: integer
         description: ID счетов.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
       - in: query
         name: dateFrom
         schema:
@@ -3341,6 +3418,11 @@ paths:
         description: ID счетов. Можно передавать повторяющимся параметром или через
           запятую.
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
+      - in: query
         name: dateFrom
         schema:
           type: string
@@ -3410,6 +3492,12 @@ paths:
         часовые пояса из настроек приложения и баланс активных счетов для стартового
         состояния формы.
       summary: Получить справочники финансового календаря
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм, например RUB, USD или EUR.
       tags:
       - finance-calendar
       security:
@@ -3429,6 +3517,12 @@ paths:
         активные цели.
       summary: Получить список целей
       parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм. Если не передана, используется валюта
+          из настроек пользователя.
       - in: query
         name: page
         schema:
@@ -4325,6 +4419,11 @@ paths:
       summary: Получить список планируемых операций
       parameters:
       - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта планируемой операции.
+      - in: query
         name: accounts
         schema:
           type: string
@@ -4344,6 +4443,16 @@ paths:
         schema:
           type: string
         description: ID категорий через запятую.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в ответе.
+      - in: query
+        name: currencyCode
+        schema:
+          type: string
+        description: Alias для currency.
       - in: query
         name: dateFrom
         schema:
@@ -4371,6 +4480,11 @@ paths:
         schema:
           type: integer
         description: Размер страницы.
+      - in: query
+        name: plannedCurrency
+        schema:
+          type: string
+        description: Alias для accountCurrency.
       - in: query
         name: search
         schema:
@@ -4693,6 +4807,11 @@ paths:
       summary: Получить календарь планируемых операций
       parameters:
       - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта планируемой операции.
+      - in: query
         name: accounts
         schema:
           type: string
@@ -4702,6 +4821,11 @@ paths:
         schema:
           type: string
         description: ID категорий через запятую.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в календаре.
       - in: query
         name: month
         schema:
@@ -4767,6 +4891,16 @@ paths:
       operationId: finance_planned_transactions_forecast_retrieve
       summary: Получить прогноз баланса с учётом планируемых операций
       parameters:
+      - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта планируемой операции.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в прогнозе.
       - in: query
         name: dateFrom
         schema:
@@ -4954,6 +5088,11 @@ paths:
       summary: Получить чек по QR-коду
       parameters:
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в ответе.
+      - in: query
         name: fetchProvider
         schema:
           type: boolean
@@ -5017,6 +5156,11 @@ paths:
       summary: Получить список регулярных операций
       parameters:
       - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта регулярной операции.
+      - in: query
         name: accounts
         schema:
           type: string
@@ -5037,6 +5181,16 @@ paths:
           type: string
         description: ID категорий через запятую.
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в ответе.
+      - in: query
+        name: currencyCode
+        schema:
+          type: string
+        description: Alias для currency.
+      - in: query
         name: frequencies
         schema:
           type: string
@@ -5056,6 +5210,11 @@ paths:
         schema:
           type: integer
         description: Размер страницы.
+      - in: query
+        name: recurringCurrency
+        schema:
+          type: string
+        description: Alias для accountCurrency.
       - in: query
         name: search
         schema:
@@ -5234,6 +5393,11 @@ paths:
       operationId: finance_recurring_transactions_charge_history_retrieve
       summary: Получить историю списаний по регулярной операции
       parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в истории списаний.
       - in: path
         name: id
         schema:
@@ -6671,6 +6835,16 @@ paths:
           type: string
         description: ID категорий через запятую.
       - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм в ответе.
+      - in: query
+        name: currencyCode
+        schema:
+          type: string
+        description: Frontend-friendly alias для currency.
+      - in: query
         name: ordering
         schema:
           type: string
@@ -7306,6 +7480,11 @@ paths:
           type: integer
         description: ID счёта.
       - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта операции, например accountCurrency=USD.
+      - in: query
         name: accountId
         schema:
           type: integer
@@ -7344,8 +7523,8 @@ paths:
         name: currency
         schema:
           type: string
-        description: Фильтр по ISO-коду добавленной валюты пользователя. Данные фильтруются
-          по валюте счёта.
+        description: Валюта отображения сумм в ответе. Если не передана, используется
+          валюта из настроек пользователя.
       - in: query
         name: currencyCode
         schema:
@@ -7443,6 +7622,11 @@ paths:
           type: string
         description: 'Фильтр по ID тегов через запятую. Например: tags=1,2. Операция
           попадает в результат, если содержит хотя бы один из переданных тегов.'
+      - in: query
+        name: transactionCurrency
+        schema:
+          type: string
+        description: Alias для accountCurrency.
       - in: query
         name: type
         schema:
@@ -7688,15 +7872,20 @@ paths:
     get:
       operationId: finance_transactions_export_retrieve
       description: Экспортирует операции текущего пользователя с учётом тех же фильтров,
-        которые используются в списке операций, включая фильтр по тегам и валюте.
-        Поддерживаются форматы CSV, XLSX и PDF. Для защиты от слишком тяжёлых выгрузок
-        действует лимит 5000 операций.
+        которые используются в списке операций, включая фильтр по тегам и исходной
+        валюте счёта. Поддерживаются форматы CSV, XLSX и PDF. Для защиты от слишком
+        тяжёлых выгрузок действует лимит 5000 операций.
       summary: Экспортировать список операций
       parameters:
       - in: query
         name: account
         schema:
           type: integer
+      - in: query
+        name: accountCurrency
+        schema:
+          type: string
+        description: Фильтр по исходной валюте счёта операции.
       - in: query
         name: accountId
         schema:
@@ -7729,10 +7918,12 @@ paths:
         name: currency
         schema:
           type: string
+        description: Валюта отображения для сумм в файле экспорта.
       - in: query
         name: currencyCode
         schema:
           type: string
+        description: Frontend-friendly alias для currency.
       - in: query
         name: dateFrom
         schema:
@@ -7797,6 +7988,11 @@ paths:
         schema:
           type: string
         description: ID тегов через запятую, например tags=1,2.
+      - in: query
+        name: transactionCurrency
+        schema:
+          type: string
+        description: Alias для accountCurrency.
       - in: query
         name: type
         schema:
@@ -8888,6 +9084,18 @@ components:
         balanceRub:
           type: string
           readOnly: true
+        displayBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        displayInitialBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        displayAvailableBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         blocked_amount:
           type: string
           format: decimal
@@ -8950,6 +9158,9 @@ components:
       - balanceRub
       - bankName
       - created_at
+      - displayAvailableBalance
+      - displayBalance
+      - displayInitialBalance
       - id
       - initialBalanceRub
       - isDefault
@@ -8970,6 +9181,30 @@ components:
       required:
       - title
       - value
+    AccountCurrencyContext:
+      type: object
+      properties:
+        code:
+          type: string
+          readOnly: true
+        primaryCode:
+          type: string
+          readOnly: true
+        sourceAvailable:
+          type: boolean
+          readOnly: true
+        usingCachedRates:
+          type: boolean
+          readOnly: true
+        warning:
+          type: string
+          readOnly: true
+      required:
+      - code
+      - primaryCode
+      - sourceAvailable
+      - usingCachedRates
+      - warning
     AccountCurrencyOption:
       type: object
       properties:
@@ -9002,18 +9237,28 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         signed_amount:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        signedAmountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         type:
           type: string
       required:
       - amount
+      - amountDisplay
       - category_name
       - date
       - description
       - id
+      - signedAmountDisplay
       - signed_amount
       - type
     AccountMeta:
@@ -9108,12 +9353,20 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        totalBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         active_count:
           type: integer
         archived_count:
           type: integer
         currency:
           type: string
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/AccountCurrencyContext'
+          readOnly: true
         totalBalanceRub:
           type: string
           format: decimal
@@ -9122,6 +9375,8 @@ components:
       - active_count
       - archived_count
       - currency
+      - currencyContext
+      - totalBalance
       - totalBalanceRub
       - total_balance
     AccountTypeEnum:
@@ -9162,6 +9417,10 @@ components:
         headerIcon:
           type: string
           readOnly: true
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/DashboardCurrencyContext'
+          readOnly: true
         rows:
           type: array
           items:
@@ -9171,6 +9430,7 @@ components:
           type: string
           readOnly: true
       required:
+      - currencyContext
       - footerLinkLabel
       - headerIcon
       - rows
@@ -9188,14 +9448,27 @@ components:
           type: number
           format: double
           readOnly: true
+        amount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
         icon:
           type: string
           readOnly: true
       required:
+      - amount
       - amountRub
+      - currency
       - icon
       - id
       - name
+      - sourceCurrency
     ActionEnum:
       enum:
       - create
@@ -9497,11 +9770,25 @@ components:
           type: number
           format: double
           readOnly: true
+        amount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/DashboardCurrencyContext'
+          readOnly: true
         trendLabel:
           type: string
           readOnly: true
       required:
+      - amount
       - amountRub
+      - currency
+      - currencyContext
       - headerIcon
       - title
       - trendLabel
@@ -9554,6 +9841,17 @@ components:
         spentRub:
           type: number
           readOnly: true
+        limit:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        spent:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
         currency:
           type: string
           maxLength: 3
@@ -9601,11 +9899,14 @@ components:
       - created_at
       - id
       - kindLabel
+      - limit
       - limitRub
       - periodEnd
       - periodLabel
       - periodStart
       - periodTypeLabel
+      - sourceCurrency
+      - spent
       - spentRub
       - updated_at
       - usagePercent
@@ -9636,6 +9937,30 @@ components:
       - factPct
       - forecastPct
       - label
+    BudgetCurrencyContext:
+      type: object
+      properties:
+        code:
+          type: string
+          readOnly: true
+        primaryCode:
+          type: string
+          readOnly: true
+        sourceAvailable:
+          type: boolean
+          readOnly: true
+        usingCachedRates:
+          type: boolean
+          readOnly: true
+        warning:
+          type: string
+          readOnly: true
+      required:
+      - code
+      - primaryCode
+      - sourceAvailable
+      - usingCachedRates
+      - warning
     BudgetDetail:
       type: object
       properties:
@@ -9651,9 +9976,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BudgetOperationRow'
+        currencyContext:
+          $ref: '#/components/schemas/BudgetCurrencyContext'
       required:
       - budget
       - chart
+      - currencyContext
       - operations
       - stats
     BudgetDetailStats:
@@ -9674,14 +10002,32 @@ components:
         forecastRub:
           type: number
           format: double
+        limit:
+          $ref: '#/components/schemas/MoneyAmount'
+        spent:
+          $ref: '#/components/schemas/MoneyAmount'
+        remaining:
+          $ref: '#/components/schemas/MoneyAmount'
+        avgDaily:
+          $ref: '#/components/schemas/MoneyAmount'
+        forecast:
+          $ref: '#/components/schemas/MoneyAmount'
+        currency:
+          type: string
         forecastWithinLimit:
           type: boolean
       required:
+      - avgDaily
       - avgDailyRub
+      - currency
+      - forecast
       - forecastRub
       - forecastWithinLimit
+      - limit
       - limitRub
+      - remaining
       - remainingRub
+      - spent
       - spentRub
     BudgetKindEnum:
       enum:
@@ -9718,7 +10064,10 @@ components:
           $ref: '#/components/schemas/BudgetListSummary'
         pagination:
           $ref: '#/components/schemas/BudgetListPagination'
+        currencyContext:
+          $ref: '#/components/schemas/BudgetCurrencyContext'
       required:
+      - currencyContext
       - items
       - pagination
       - summary
@@ -10246,13 +10595,19 @@ components:
         amountRub:
           type: number
           format: double
+        amount:
+          $ref: '#/components/schemas/MoneyAmount'
+        sourceCurrency:
+          type: string
         icon:
           type: string
       required:
+      - amount
       - amountRub
       - dateLabel
       - icon
       - id
+      - sourceCurrency
       - subtitle
       - title
     BudgetOption:
@@ -10367,15 +10722,27 @@ components:
         remainingRub:
           type: number
           format: double
+        spent:
+          $ref: '#/components/schemas/MoneyAmount'
+        limit:
+          $ref: '#/components/schemas/MoneyAmount'
+        remaining:
+          $ref: '#/components/schemas/MoneyAmount'
+        sourceCurrency:
+          type: string
         message:
           type: string
       required:
       - budgetId
       - categoryName
+      - limit
       - limitRub
       - percent
       - periodLabel
+      - remaining
       - remainingRub
+      - sourceCurrency
+      - spent
       - spentRub
       - status
     BudgetWarningsResponse:
@@ -10387,8 +10754,11 @@ components:
             $ref: '#/components/schemas/BudgetWarningItem'
         attentionCount:
           type: integer
+        currencyContext:
+          $ref: '#/components/schemas/BudgetCurrencyContext'
       required:
       - attentionCount
+      - currencyContext
       - items
     BudgetsListMeta:
       type: object
@@ -11167,8 +11537,13 @@ components:
           items:
             $ref: '#/components/schemas/Transaction'
           readOnly: true
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - createdCount
+      - currencyContext
       - mode
       - receipt
       - transactions
@@ -11485,6 +11860,30 @@ components:
       - is_active
       - role
       - username
+    DashboardCurrencyContext:
+      type: object
+      properties:
+        code:
+          type: string
+          readOnly: true
+        primaryCode:
+          type: string
+          readOnly: true
+        sourceAvailable:
+          type: boolean
+          readOnly: true
+        usingCachedRates:
+          type: boolean
+          readOnly: true
+        warning:
+          type: string
+          readOnly: true
+      required:
+      - code
+      - primaryCode
+      - sourceAvailable
+      - usingCachedRates
+      - warning
     DashboardCurrencyOption:
       type: object
       properties:
@@ -11587,6 +11986,10 @@ components:
         currency:
           type: string
           readOnly: true
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/DashboardCurrencyContext'
+          readOnly: true
         totals:
           allOf:
           - $ref: '#/components/schemas/DashboardTotals'
@@ -11607,6 +12010,7 @@ components:
           readOnly: true
       required:
       - currency
+      - currencyContext
       - period
       - recent_transactions
       - reminders
@@ -11630,32 +12034,57 @@ components:
         total:
           type: string
           readOnly: true
+        totalAmount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
       required:
       - category
       - category_color
       - category_icon
       - category_name
       - total
+      - totalAmount
     DashboardTotals:
       type: object
       properties:
         accounts_balance:
           type: string
           readOnly: true
+        accountsBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         income:
           type: string
+          readOnly: true
+        incomeAmount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
           readOnly: true
         expense:
           type: string
           readOnly: true
+        expenseAmount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         net:
           type: string
           readOnly: true
+        netAmount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
       required:
+      - accountsBalance
       - accounts_balance
       - expense
+      - expenseAmount
       - income
+      - incomeAmount
       - net
+      - netAmount
     DeleteBudgetResponse:
       type: object
       properties:
@@ -11851,6 +12280,13 @@ components:
         monthLabel:
           type: string
           readOnly: true
+        currency:
+          type: string
+          readOnly: true
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/DashboardCurrencyContext'
+          readOnly: true
         legendIncome:
           type: string
           readOnly: true
@@ -11868,6 +12304,8 @@ components:
             $ref: '#/components/schemas/ExpenseDynamicsWeek'
           readOnly: true
       required:
+      - currency
+      - currencyContext
       - headerIcon
       - legendExpenses
       - legendIncome
@@ -11929,6 +12367,30 @@ components:
       required:
       - endIso
       - startIso
+    FinancialCalendarCurrencyContext:
+      type: object
+      properties:
+        code:
+          type: string
+          description: ISO-код валюты отображения.
+        primaryCode:
+          type: string
+          description: Основная валюта пользователя.
+        sourceAvailable:
+          type: boolean
+          description: Доступен ли внешний источник курсов.
+        usingCachedRates:
+          type: boolean
+          description: Используются ли последние сохранённые курсы.
+        warning:
+          type: string
+          description: Предупреждение по курсам валют.
+      required:
+      - code
+      - primaryCode
+      - sourceAvailable
+      - usingCachedRates
+      - warning
     FinancialCalendarDayForecast:
       type: object
       properties:
@@ -11944,7 +12406,13 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           nullable: true
-          description: Фактический баланс на конец дня. Для будущих дней null.
+          description: Фактический баланс на конец дня в валюте отображения. Для будущих
+            дней null. Поле сохранено для совместимости.
+        actualBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          nullable: true
+          description: Фактический баланс на конец дня в выбранной валюте отображения.
         actualBalanceLabel:
           type: string
           nullable: true
@@ -11953,8 +12421,12 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Прогнозный баланс на конец дня с учётом фактических и плановых
-            событий.
+          description: Прогнозный баланс на конец дня в валюте отображения. Поле сохранено
+            для совместимости.
+        forecastBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Прогнозный баланс на конец дня в выбранной валюте отображения.
         forecastBalanceLabel:
           type: string
           description: Прогнозный баланс в пользовательском формате числа.
@@ -11962,7 +12434,12 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Суммарное изменение за день по фактическим и плановым событиям.
+          description: Суммарное изменение за день в валюте отображения. Поле сохранено
+            для совместимости.
+        totalDeltaDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Суммарное изменение за день в выбранной валюте отображения.
         totalDeltaLabel:
           type: string
           description: Изменение за день в пользовательском формате числа.
@@ -12013,6 +12490,13 @@ components:
           items:
             $ref: '#/components/schemas/FinancialCalendarEvent'
           description: События выбранного дня.
+        currency:
+          type: string
+          description: Валюта отображения дня.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
       required:
       - dayBalance
       - events
@@ -12057,11 +12541,19 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           nullable: true
-          description: Сумма в рублях. Доход положительный, расход отрицательный.
+          description: Сумма в валюте отображения. Доход положительный, расход отрицательный.
+            Поле сохранено для совместимости.
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Сумма события в выбранной валюте отображения.
         amountLabel:
           type: string
           nullable: true
           description: Сумма в пользовательском формате числа с символом валюты.
+        sourceCurrency:
+          type: string
+          description: Исходная валюта счёта события.
         accountId:
           type: integer
           description: ID счёта события.
@@ -12147,6 +12639,13 @@ components:
           items:
             $ref: '#/components/schemas/FinancialCalendarEvent'
           description: Список событий календаря.
+        currency:
+          type: string
+          description: Валюта отображения событий.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
       required:
       - items
     FinancialCalendarExportColumnsRequest:
@@ -12176,6 +12675,13 @@ components:
           items:
             $ref: '#/components/schemas/FinancialCalendarExportPreviewRow'
           description: Строки предварительного просмотра выгрузки.
+        currency:
+          type: string
+          description: Валюта отображения строк предварительного просмотра.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
       required:
       - rows
     FinancialCalendarExportPreviewRow:
@@ -12268,6 +12774,10 @@ components:
           minLength: 1
           description: IANA-часовой пояс. Если не передан, используется настройка
             пользователя.
+        currency:
+          type: string
+          minLength: 1
+          description: Валюта отображения сумм в экспорте.
       required:
       - month
       - year
@@ -12308,11 +12818,24 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Текущий остаток активных счетов пользователя.
+          description: Текущий остаток активных счетов пользователя в валюте отображения.
+            Поле сохранено для совместимости.
+        openingBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Текущий остаток активных счетов пользователя в выбранной валюте
+            отображения.
         openingBalanceLabel:
           type: string
           description: Текущий остаток активных счетов в пользовательском формате
             числа.
+        currency:
+          type: string
+          description: Валюта отображения справочников календаря.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
       required:
       - accounts
       - defaultTimezone
@@ -12348,8 +12871,12 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Прогнозный баланс на конец дня с учётом фактических и плановых
-            событий.
+          description: Прогнозный баланс на конец дня в валюте отображения. Поле сохранено
+            для совместимости.
+        forecastBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Прогнозный баланс на конец дня в выбранной валюте отображения.
         forecastBalanceLabel:
           type: string
           description: Прогнозный баланс в пользовательском формате числа.
@@ -12358,7 +12885,13 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           nullable: true
-          description: Фактический баланс на конец дня или null для будущих дней.
+          description: Фактический баланс на конец дня в валюте отображения или null
+            для будущих дней. Поле сохранено для совместимости.
+        actualBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          nullable: true
+          description: Фактический баланс на конец дня в выбранной валюте отображения.
         actualBalanceLabel:
           type: string
           nullable: true
@@ -12408,10 +12941,23 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
-          description: Расчётный остаток активных счетов на начало диапазона календаря.
+          description: Расчётный остаток активных счетов на начало диапазона календаря
+            в валюте отображения. Поле сохранено для совместимости.
+        openingBalance:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          description: Расчётный остаток активных счетов на начало диапазона в выбранной
+            валюте отображения.
         openingBalanceLabel:
           type: string
           description: Остаток на начало диапазона в пользовательском формате числа.
+        currency:
+          type: string
+          description: Валюта отображения финансового календаря.
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/FinancialCalendarCurrencyContext'
+          description: Контекст валюты отображения и состояния курсов.
         cells:
           type: array
           items:
@@ -12559,6 +13105,10 @@ components:
         targetRub:
           type: string
           readOnly: true
+        target:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         current_amount:
           type: string
           format: decimal
@@ -12566,6 +13116,13 @@ components:
           readOnly: true
           title: Текущая сумма
         currentRub:
+          type: string
+          readOnly: true
+        current:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
           type: string
           readOnly: true
         percent:
@@ -12612,6 +13169,7 @@ components:
       - categoryLabel
       - category_label
       - created_at
+      - current
       - currentRub
       - current_amount
       - id
@@ -12619,8 +13177,10 @@ components:
       - percent
       - priorityLabel
       - priority_label
+      - sourceCurrency
       - statusLabel
       - status_label
+      - target
       - targetRub
       - target_amount
       - topupsCount
@@ -12672,6 +13232,13 @@ components:
         amountRub:
           type: string
           readOnly: true
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
         account:
           type: integer
           readOnly: true
@@ -12711,14 +13278,40 @@ components:
       - accountName
       - account_name
       - amount
+      - amountDisplay
       - amountRub
       - comment
       - created_at
       - date
       - id
       - operationId
+      - sourceCurrency
       - transaction
       - updated_at
+    GoalCurrencyContext:
+      type: object
+      properties:
+        code:
+          type: string
+          readOnly: true
+        primaryCode:
+          type: string
+          readOnly: true
+        sourceAvailable:
+          type: boolean
+          readOnly: true
+        usingCachedRates:
+          type: boolean
+          readOnly: true
+        warning:
+          type: string
+          readOnly: true
+      required:
+      - code
+      - primaryCode
+      - sourceAvailable
+      - usingCachedRates
+      - warning
     GoalDetail:
       type: object
       properties:
@@ -12854,10 +13447,25 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        totalCurrent:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        totalTarget:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         active_count:
           type: integer
         completed_count:
           type: integer
+        currency:
+          type: string
+          readOnly: true
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/GoalCurrencyContext'
+          readOnly: true
         totalCurrentRub:
           type: string
           format: decimal
@@ -12869,7 +13477,11 @@ components:
       required:
       - active_count
       - completed_count
+      - currency
+      - currencyContext
+      - totalCurrent
       - totalCurrentRub
+      - totalTarget
       - totalTargetRub
       - total_current
       - total_target
@@ -12900,12 +13512,17 @@ components:
         headerIcon:
           type: string
           readOnly: true
+        currencyContext:
+          allOf:
+          - $ref: '#/components/schemas/DashboardCurrencyContext'
+          readOnly: true
         goals:
           type: array
           items:
             $ref: '#/components/schemas/GoalsCardItem'
           readOnly: true
       required:
+      - currencyContext
       - goals
       - headerIcon
       - title
@@ -12922,19 +13539,33 @@ components:
           type: number
           format: double
           readOnly: true
+        target:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         currentRub:
           type: number
           format: double
+          readOnly: true
+        current:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
+          type: string
           readOnly: true
         percent:
           type: number
           format: double
           readOnly: true
       required:
+      - current
       - currentRub
       - id
       - name
       - percent
+      - sourceCurrency
+      - target
       - targetRub
     HealthCheckResponse:
       type: object
@@ -13189,6 +13820,23 @@ components:
       - last_name
       - role
       - username
+    Logout:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+    LogoutRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - refresh
     ModeEnum:
       enum:
       - single
@@ -13197,6 +13845,20 @@ components:
       description: |-
         * `single` - Одна операция на весь чек
         * `by_items` - Одна операция на каждую позицию
+    MoneyAmount:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: double
+          description: Сумма в выбранной валюте отображения.
+        currency:
+          type: string
+          description: ISO-код валюты суммы, например RUB, USD или EUR.
+          maxLength: 3
+      required:
+      - amount
+      - currency
     MortgageCalculationResult:
       type: object
       properties:
@@ -15050,6 +15712,10 @@ components:
           type: string
         tone:
           $ref: '#/components/schemas/ToneEnum'
+        amountDisplay:
+          $ref: '#/components/schemas/MoneyAmount'
+        sourceCurrency:
+          type: string
       required:
       - id
       - label
@@ -15087,8 +15753,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlannedCalendarDayCell'
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - cells
+      - currencyContext
       - month
       - year
     PlannedForecastChartPoint:
@@ -15142,7 +15813,14 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        totalPlannedExpenses:
+          $ref: '#/components/schemas/MoneyAmount'
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
+      - currencyContext
       - defaultTimeRange
       - legendWithPlans
       - legendWithPlansValue
@@ -15150,6 +15828,7 @@ components:
       - legendWithoutPlansValue
       - points
       - timeRanges
+      - totalPlannedExpenses
       - totalPlannedExpensesLabel
       - totalPlannedExpensesRub
       - yAxisLabels
@@ -15209,12 +15888,16 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        planned_month:
+          $ref: '#/components/schemas/MoneyAmount'
         to_confirm_count:
           type: integer
         forecast_delta_rub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        forecast_delta:
+          $ref: '#/components/schemas/MoneyAmount'
         forecast_delta_label:
           type: string
         plannedMonthLabel:
@@ -15223,19 +15906,32 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        plannedMonth:
+          $ref: '#/components/schemas/MoneyAmount'
         toConfirmCount:
           type: integer
         forecastDeltaRub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        forecastDelta:
+          $ref: '#/components/schemas/MoneyAmount'
         forecastDeltaLabel:
           type: string
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
+      - currencyContext
+      - forecastDelta
       - forecastDeltaRub
+      - forecast_delta
       - forecast_delta_rub
+      - plannedMonth
       - plannedMonthLabel
       - plannedMonthRub
+      - planned_month
       - planned_month_label
       - planned_month_rub
       - toConfirmCount
@@ -15262,6 +15958,21 @@ components:
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Сумма
         amountRub:
+          type: string
+          readOnly: true
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        amountAbsDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        signedAmountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
           type: string
           readOnly: true
         category:
@@ -15378,6 +16089,8 @@ components:
       - accountId
       - accountName
       - amount
+      - amountAbsDisplay
+      - amountDisplay
       - amountRub
       - category
       - categoryColor
@@ -15401,6 +16114,8 @@ components:
       - operationId
       - plannedDate
       - planned_date
+      - signedAmountDisplay
+      - sourceCurrency
       - statusLabel
       - updated_at
     PlannedTransactionRequest:
@@ -15776,6 +16491,17 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Сумма чека
+        totalAmountRub:
+          type: number
+          format: double
+          readOnly: true
+        totalAmountDisplay:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
         fiscal_drive_number:
           type: string
           title: ФН
@@ -15803,6 +16529,9 @@ components:
       - id
       - items
       - receipt_datetime
+      - sourceCurrency
+      - totalAmountDisplay
+      - totalAmountRub
       - total_amount
       - transactionsCount
     ReceiptBriefStatusEnum:
@@ -15844,11 +16573,30 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Цена
+        priceRub:
+          type: number
+          format: double
+          readOnly: true
+        priceDisplay:
+          type: object
+          additionalProperties: {}
+          readOnly: true
         amount:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Сумма
+        amountRub:
+          type: number
+          format: double
+          readOnly: true
+        amountDisplay:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
         suggestedCategoryId:
           type: integer
           readOnly: true
@@ -15866,11 +16614,16 @@ components:
           type: string
           readOnly: true
       required:
+      - amountDisplay
+      - amountRub
       - id
       - line_number
       - mappingConfidence
       - mappingReason
       - name
+      - priceDisplay
+      - priceRub
+      - sourceCurrency
       - suggestedCategoryId
       - suggestedCategoryName
     ReceiptProviderErrorBrief:
@@ -15912,8 +16665,13 @@ components:
           - $ref: '#/components/schemas/ReceiptProviderErrorBrief'
           readOnly: true
           nullable: true
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - created
+      - currencyContext
       - isDuplicate
       - providerError
       - providerStatus
@@ -16180,6 +16938,21 @@ components:
         amountRub:
           type: string
           readOnly: true
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        amountAbsDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        signedAmountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
         category:
           type: integer
           title: Категория
@@ -16334,6 +17107,8 @@ components:
       - accountId
       - accountName
       - amount
+      - amountAbsDisplay
+      - amountDisplay
       - amountRub
       - category
       - categoryColor
@@ -16358,6 +17133,8 @@ components:
       - name
       - nextChargeDate
       - next_charge_date
+      - signedAmountDisplay
+      - sourceCurrency
       - startDate
       - start_date
       - statusLabel
@@ -17707,10 +18484,28 @@ components:
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
           title: Сумма
+        amountRub:
+          type: number
+          readOnly: true
+        amountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         amount_abs:
           type: string
           readOnly: true
+        amountAbsDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         signed_amount:
+          type: string
+          readOnly: true
+        signedAmountDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
           type: string
           readOnly: true
         description:
@@ -17756,6 +18551,9 @@ components:
       - account_currency
       - account_name
       - amount
+      - amountAbsDisplay
+      - amountDisplay
+      - amountRub
       - amount_abs
       - category
       - category_color
@@ -17768,7 +18566,9 @@ components:
       - operation_date
       - receiptId
       - receiptItemId
+      - signedAmountDisplay
       - signed_amount
+      - sourceCurrency
       - tags
       - type
       - updated_at
@@ -17790,15 +18590,37 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        unitPriceRub:
+          type: number
+          readOnly: true
+        unitPriceDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         sum_rub:
           type: string
           format: decimal
           pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        sumRub:
+          type: number
+          readOnly: true
+        sumDisplay:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
+        sourceCurrency:
+          type: string
+          readOnly: true
       required:
       - id
       - name
       - qty
+      - sourceCurrency
+      - sumDisplay
+      - sumRub
       - sum_rub
+      - unitPriceDisplay
+      - unitPriceRub
       - unit_price_rub
     TransactionLineItemRequest:
       type: object
@@ -17942,11 +18764,18 @@ components:
           maximum: 1000000000000
           minimum: 0.01
           exclusiveMaximum: true
+        amount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         currency:
           type: string
           title: Валюта
           pattern: ^[A-Z]{3}$
           maxLength: 3
+        sourceCurrency:
+          type: string
+          readOnly: true
         accountId:
           type: integer
         accountName:
@@ -18003,6 +18832,7 @@ components:
       required:
       - accountId
       - accountName
+      - amount
       - amountRub
       - categoryColor
       - categoryIcon
@@ -18015,6 +18845,7 @@ components:
       - kind
       - lastUsedAt
       - name
+      - sourceCurrency
       - tags
       - updatedAt
       - useCount
@@ -18037,7 +18868,13 @@ components:
         amountRub:
           type: number
           format: double
+        amount:
+          allOf:
+          - $ref: '#/components/schemas/MoneyAmount'
+          readOnly: true
         currency:
+          type: string
+        sourceCurrency:
           type: string
         categoryId:
           type: integer
@@ -18066,19 +18903,26 @@ components:
         operationDate:
           type: string
           format: date
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
       - accountId
       - accountName
+      - amount
       - amountRub
       - categoryColor
       - categoryIcon
       - categoryId
       - categoryName
       - currency
+      - currencyContext
       - description
       - kind
       - note
       - operationDate
+      - sourceCurrency
       - tagIds
       - tags
       - templateId
@@ -18115,7 +18959,12 @@ components:
           $ref: '#/components/schemas/TransactionTemplate'
         transaction:
           $ref: '#/components/schemas/Transaction'
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
+      - currencyContext
       - template
       - transaction
     TransactionTemplateCheckNameResponse:
@@ -18174,7 +19023,12 @@ components:
           $ref: '#/components/schemas/TransactionTemplateSummary'
         pagination:
           $ref: '#/components/schemas/TransactionTemplatePagination'
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
       required:
+      - currencyContext
       - items
       - pagination
       - summary

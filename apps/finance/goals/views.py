@@ -18,6 +18,7 @@ from rest_framework.response import Response
 from apps.common.errors import DomainConflictError
 from apps.common.pagination import StandardResultsSetPagination
 from apps.common.validation import validate_choice_query_param
+from apps.finance.currencies.conversion import get_currency_conversion_service
 from apps.finance.goals.serializers import (
     GOAL_CATEGORY_OPTIONS,
     GOAL_PRIORITY_OPTIONS,
@@ -149,6 +150,11 @@ def get_goal_ordering(query_params):
                 OpenApiTypes.STR,
                 description="Направление сортировки: asc или desc.",
             ),
+            OpenApiParameter(
+                "currency",
+                OpenApiTypes.STR,
+                description="Валюта отображения сумм. Если не передана, используется валюта из настроек пользователя.",
+            ),
         ],
         responses={200: GoalSerializer(many=True)},
         examples=[
@@ -266,6 +272,20 @@ class GoalViewSet(viewsets.ModelViewSet):
         "options",
     ]
 
+    def get_currency_converter(self):
+        if not hasattr(self, "_currency_converter"):
+            self._currency_converter = get_currency_conversion_service(
+                user=self.request.user,
+                display_currency=self.request.query_params.get("currency"),
+            )
+
+        return self._currency_converter
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["currency_converter"] = self.get_currency_converter()
+        return context
+
     def get_queryset(self):
         if not self.request.user.is_authenticated:
             return Goal.objects.none()
@@ -372,18 +392,35 @@ class GoalViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=["get"], url_path="summary")
     def summary(self, request):
-        active_goals = Goal.objects.filter(
-            user=request.user,
-            status=GoalStatus.ACTIVE,
+        converter = self.get_currency_converter()
+        active_goals = (
+            Goal.objects
+            .filter(user=request.user, status=GoalStatus.ACTIVE)
+            .select_related("account")
         )
 
-        aggregate = active_goals.aggregate(
-            total_current=Sum("current_amount"),
-            total_target=Sum("target_amount"),
-        )
+        total_current = Decimal("0.00")
+        total_target = Decimal("0.00")
 
-        total_current = aggregate.get("total_current") or Decimal("0.00")
-        total_target = aggregate.get("total_target") or Decimal("0.00")
+        for goal in active_goals:
+            source_currency = (
+                goal.account.currency
+                if goal.account_id and goal.account
+                else converter.primary_currency
+            )
+            total_current += converter.convert_to_display(
+                goal.current_amount,
+                source_currency=source_currency,
+                quantize=False,
+            ).amount
+            total_target += converter.convert_to_display(
+                goal.target_amount,
+                source_currency=source_currency,
+                quantize=False,
+            ).amount
+
+        total_current = total_current.quantize(Decimal("0.01"))
+        total_target = total_target.quantize(Decimal("0.01"))
         active_count = active_goals.count()
         completed_count = Goal.objects.filter(
             user=request.user,
@@ -394,10 +431,20 @@ class GoalViewSet(viewsets.ModelViewSet):
             {
                 "total_current": total_current,
                 "totalCurrentRub": total_current,
+                "totalCurrent": {
+                    "amount": float(total_current),
+                    "currency": converter.display_currency,
+                },
                 "total_target": total_target,
                 "totalTargetRub": total_target,
+                "totalTarget": {
+                    "amount": float(total_target),
+                    "currency": converter.display_currency,
+                },
                 "active_count": active_count,
                 "completed_count": completed_count,
+                "currency": converter.display_currency,
+                "currencyContext": converter.context_payload(),
             }
         )
         return Response(serializer.data)
@@ -591,6 +638,6 @@ class GoalViewSet(viewsets.ModelViewSet):
         return (
             goal.contributions
             .filter(user=self.request.user)
-            .select_related("account", "transaction")
+            .select_related("account", "transaction", "goal__account")
             .order_by("-contribution_date", "-created_at", "-id")
         )

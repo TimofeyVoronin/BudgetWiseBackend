@@ -5,18 +5,110 @@ from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.db import connection
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from openpyxl import load_workbook
 from rest_framework import status
 
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
 from apps.finance.models import Account, Budget, Category, Transaction, TransactionLineItem, TransactionType
 
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceTransactionAPITests(FinanceAPITestCase):
+    def setUp(self):
+            super().setUp()
+            ensure_user_currencies(self.user)
+
+    def ensure_usd_currency(self):
+            ensure_user_currencies(self.user)
+            usd_currency = get_user_currency_by_code(self.user, "USD")
+            usd_currency.is_visible = True
+            usd_currency.rate_to_primary = Decimal("100.00000000")
+            usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+            return usd_currency
+
+    def create_usd_account(self):
+            self.ensure_usd_currency()
+            return Account.objects.create(
+                user=self.user,
+                name="USD card",
+                initial_balance=Decimal("1000.00"),
+                balance=Decimal("1000.00"),
+                currency="USD",
+            )
+
+    def test_transaction_list_converts_amount_to_display_currency(self):
+            self.authenticate()
+            usd_account = self.create_usd_account()
+            transaction = self.create_transaction(
+                account=usd_account,
+                category=self.expense_category,
+                amount="10.00",
+                description="USD expense",
+                operation_date=self.today,
+            )
+            TransactionLineItem.objects.create(
+                transaction=transaction,
+                line_number=1,
+                name="Coffee",
+                quantity=Decimal("1.000"),
+                unit_price=Decimal("10.00"),
+                amount=Decimal("10.00"),
+            )
+
+            response = self.client.get(
+                reverse("finance:transaction-list"),
+                data={"currency": "RUB", "page_size": 20},
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            row = next(item for item in response.data["results"] if item["id"] == transaction.id)
+            self.assertEqual(row["sourceCurrency"], "USD")
+            self.assertEqual(row["amountRub"], 1000.0)
+            self.assertEqual(row["amountDisplay"], {"amount": 1000.0, "currency": "RUB"})
+            self.assertEqual(row["amountAbsDisplay"], {"amount": 1000.0, "currency": "RUB"})
+            self.assertEqual(row["signedAmountDisplay"], {"amount": -1000.0, "currency": "RUB"})
+            self.assertEqual(row["line_items"][0]["sumDisplay"], {"amount": 1000.0, "currency": "RUB"})
+            self.assertEqual(response.data["currencyContext"]["code"], "RUB")
+
+    def test_transaction_currency_query_is_display_currency_and_account_currency_filters_source(self):
+            self.authenticate()
+            usd_account = self.create_usd_account()
+            rub_transaction = self.create_transaction(
+                account=self.account,
+                category=self.expense_category,
+                amount="100.00",
+                operation_date=self.today,
+            )
+            usd_transaction = self.create_transaction(
+                account=usd_account,
+                category=self.expense_category,
+                amount="5.00",
+                operation_date=self.today,
+            )
+
+            display_response = self.client.get(
+                reverse("finance:transaction-list"),
+                data={"currency": "USD", "page_size": 20},
+            )
+
+            self.assertEqual(display_response.status_code, status.HTTP_200_OK)
+            self.assertIn(rub_transaction.id, self.get_transaction_ids(display_response))
+            self.assertIn(usd_transaction.id, self.get_transaction_ids(display_response))
+
+            filter_response = self.client.get(
+                reverse("finance:transaction-list"),
+                data={"accountCurrency": "USD", "page_size": 20},
+            )
+
+            self.assertEqual(filter_response.status_code, status.HTTP_200_OK)
+            self.assertEqual(self.get_transaction_ids(filter_response), [usd_transaction.id])
+
     def test_transaction_rejects_archived_category(self):
             self.authenticate()
 
@@ -606,7 +698,7 @@ class FinanceTransactionAPITests(FinanceAPITestCase):
                 self.assertIn("category_icon", item)
                 self.assertIn("category_color", item)
 
-            self.assertLessEqual(len(captured_queries), 5)
+            self.assertLessEqual(len(captured_queries), 7)
 
     def test_transactions_filtered_list_avoids_n_plus_one_queries(self):
             self.authenticate()
@@ -663,7 +755,7 @@ class FinanceTransactionAPITests(FinanceAPITestCase):
                 self.assertEqual(item["type"], TransactionType.EXPENSE)
                 self.assertIn("магазин", item["description"].lower())
 
-            self.assertLessEqual(len(captured_queries), 5)
+            self.assertLessEqual(len(captured_queries), 7)
 
     def test_transaction_detail_uses_related_account_and_category_without_extra_queries(self):
             self.authenticate()
@@ -687,7 +779,7 @@ class FinanceTransactionAPITests(FinanceAPITestCase):
             self.assertEqual(response.data["account_name"], self.account.name)
             self.assertEqual(response.data["category_name"], self.expense_category.name)
 
-            self.assertLessEqual(len(captured_queries), 4)
+            self.assertLessEqual(len(captured_queries), 6)
 
     def test_transaction_filters_by_type_category_account(self):
             self.authenticate()
@@ -1405,8 +1497,9 @@ class FinanceTransactionAPITests(FinanceAPITestCase):
 
             # Запрос списка теперь возвращает позиции операций line_items.
             # Для этого нужен отдельный prefetch-запрос, иначе появится N+1.
-            # Нормальная схема: count, page query, tags prefetch, line_items prefetch.
-            self.assertLessEqual(len(captured_queries), 4)
+            # Нормальная схема: count, page query, tags prefetch, line_items prefetch,
+            # плюс загрузка контекста валюты отображения.
+            self.assertLessEqual(len(captured_queries), 6)
 
 
 

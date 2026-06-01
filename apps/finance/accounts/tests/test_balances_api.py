@@ -1,9 +1,10 @@
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
-from apps.finance.models import TransactionType
+from apps.finance.models import Account, TransactionType
 
 from apps.finance.testing import FinanceAPITestCase
 
@@ -277,3 +278,50 @@ class FinanceAccountBalanceAPITests(FinanceAPITestCase):
             response.data["totals"]["accounts_balance"],
             "13500.00",
         )
+
+
+@override_settings(CURRENCY_RATES_ENABLED=False)
+class FinanceAccountCurrencyDisplayAPITests(FinanceAPITestCase):
+    def set_rate(self, code: str, value: str):
+        from apps.finance.currencies.services import get_user_currency_by_code
+
+        user_currency = get_user_currency_by_code(self.user, code)
+        user_currency.rate_to_primary = Decimal(value)
+        user_currency.save(update_fields=["rate_to_primary", "updated_at"])
+
+    def test_accounts_summary_converts_all_active_accounts_to_display_currency(self):
+        self.authenticate()
+        self.set_rate("USD", "100.00000000")
+        Account.objects.create(
+            user=self.user,
+            name="USD account",
+            initial_balance=Decimal("120.00"),
+            balance=Decimal("120.00"),
+            currency="USD",
+        )
+
+        response = self.client.get(
+            reverse("finance:account-summary"),
+            data={"currency": "USD"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["currency"], "USD")
+        self.assertEqual(response.data["total_balance"], "250.00")
+        self.assertEqual(response.data["totalBalance"], {"amount": 250.0, "currency": "USD"})
+        self.assertEqual(response.data["totalBalanceRub"], "250.00")
+
+    def test_account_list_returns_display_balance_in_selected_currency(self):
+        self.authenticate()
+        self.set_rate("USD", "100.00000000")
+
+        response = self.client.get(
+            reverse("finance:account-list"),
+            data={"currency": "USD"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(item for item in response.data["results"] if item["id"] == self.account.id)
+        self.assertEqual(row["balanceRub"], "100.00")
+        self.assertEqual(row["displayBalance"], {"amount": 100.0, "currency": "USD"})
+        self.assertEqual(row["displayInitialBalance"], {"amount": 100.0, "currency": "USD"})

@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.db.models import Sum
 from django.utils import timezone
 
+from apps.finance.currencies.money import build_money_payload
 from apps.finance.models import (
     Budget,
     BudgetCategoryGroup,
@@ -152,9 +153,45 @@ def get_budget_transactions_queryset(budget: Budget):
     )
 
 
-def get_budget_spent_amount(budget: Budget) -> Decimal:
-    aggregate = get_budget_transactions_queryset(budget).aggregate(total=Sum("amount"))
-    return (aggregate.get("total") or Decimal("0.00")).quantize(MONEY_QUANT)
+def get_transaction_source_currency(transaction: Transaction, *, fallback_currency: str) -> str:
+    if transaction.account_id and transaction.account:
+        return transaction.account.currency
+
+    return fallback_currency
+
+
+def get_budget_spent_amount(
+    budget: Budget,
+    *,
+    converter=None,
+    target_currency: str | None = None,
+    until_date: date | None = None,
+) -> Decimal:
+    queryset = get_budget_transactions_queryset(budget)
+
+    if until_date is not None:
+        queryset = queryset.filter(operation_date__lte=until_date)
+
+    if converter is None:
+        aggregate = queryset.aggregate(total=Sum("amount"))
+        return (aggregate.get("total") or Decimal("0.00")).quantize(MONEY_QUANT)
+
+    total = Decimal("0.00")
+    target_code = target_currency or budget.currency
+
+    for transaction in queryset:
+        source_currency = get_transaction_source_currency(
+            transaction,
+            fallback_currency=budget.currency,
+        )
+        total += converter.convert(
+            transaction.amount,
+            source_currency=source_currency,
+            target_currency=target_code,
+            quantize=False,
+        ).amount
+
+    return total.quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
 
 
 def get_budget_usage_percent(*, spent_amount: Decimal, limit_amount: Decimal) -> Decimal:
@@ -195,8 +232,12 @@ def get_budget_total_days(budget: Budget) -> int:
     return max((budget.period_end - budget.period_start).days + 1, 1)
 
 
-def get_budget_usage(budget: Budget) -> BudgetUsage:
-    spent_amount = get_budget_spent_amount(budget)
+def get_budget_usage(budget: Budget, *, converter=None) -> BudgetUsage:
+    spent_amount = get_budget_spent_amount(
+        budget,
+        converter=converter,
+        target_currency=budget.currency,
+    )
     remaining_amount = (budget.amount_limit - spent_amount).quantize(MONEY_QUANT)
     usage_percent = get_budget_usage_percent(
         spent_amount=spent_amount,
@@ -301,12 +342,12 @@ def budget_duplicate_exists(
     return queryset.exists()
 
 
-def build_budget_list_summary(budgets: list[Budget]) -> dict:
+def build_budget_list_summary(budgets: list[Budget], *, converter=None) -> dict:
     normal_count = 0
     attention_count = 0
 
     for budget in budgets:
-        usage = get_budget_usage(budget)
+        usage = get_budget_usage(budget, converter=converter)
 
         if usage.usage_status == BudgetUsageStatus.NORMAL:
             normal_count += 1
@@ -320,22 +361,69 @@ def build_budget_list_summary(budgets: list[Budget]) -> dict:
     }
 
 
-def build_budget_detail_stats(budget: Budget) -> dict:
-    usage = get_budget_usage(budget)
+def build_display_money_payload(
+    value,
+    *,
+    source_currency: str,
+    converter=None,
+) -> dict:
+    if converter is None:
+        return build_money_payload(value, currency=source_currency)
+
+    return converter.display_amount_payload(
+        value,
+        source_currency=source_currency,
+    )
+
+
+def build_budget_detail_stats(budget: Budget, *, converter=None) -> dict:
+    usage = get_budget_usage(budget, converter=converter)
+
+    limit = build_display_money_payload(
+        budget.amount_limit,
+        source_currency=budget.currency,
+        converter=converter,
+    )
+    spent = build_display_money_payload(
+        usage.spent_amount,
+        source_currency=budget.currency,
+        converter=converter,
+    )
+    remaining = build_display_money_payload(
+        usage.remaining_amount,
+        source_currency=budget.currency,
+        converter=converter,
+    )
+    avg_daily = build_display_money_payload(
+        usage.average_daily_amount,
+        source_currency=budget.currency,
+        converter=converter,
+    )
+    forecast = build_display_money_payload(
+        usage.forecast_amount,
+        source_currency=budget.currency,
+        converter=converter,
+    )
 
     return {
-        "limitRub": decimal_to_number(budget.amount_limit),
-        "spentRub": decimal_to_number(usage.spent_amount),
-        "remainingRub": decimal_to_number(usage.remaining_amount),
-        "avgDailyRub": decimal_to_number(usage.average_daily_amount),
-        "forecastRub": decimal_to_number(usage.forecast_amount),
+        "limitRub": decimal_to_number(limit["amount"]),
+        "spentRub": decimal_to_number(spent["amount"]),
+        "remainingRub": decimal_to_number(remaining["amount"]),
+        "avgDailyRub": decimal_to_number(avg_daily["amount"]),
+        "forecastRub": decimal_to_number(forecast["amount"]),
+        "limit": limit,
+        "spent": spent,
+        "remaining": remaining,
+        "avgDaily": avg_daily,
+        "forecast": forecast,
+        "currency": limit["currency"],
         "forecastWithinLimit": usage.forecast_within_limit,
     }
 
 
-def build_budget_chart(budget: Budget) -> list[dict]:
+def build_budget_chart(budget: Budget, *, converter=None) -> list[dict]:
     total_days = get_budget_total_days(budget)
-    usage = get_budget_usage(budget)
+    usage = get_budget_usage(budget, converter=converter)
     average_daily = usage.average_daily_amount
 
     checkpoints = sorted(
@@ -352,12 +440,11 @@ def build_budget_chart(budget: Budget) -> list[dict]:
 
     for day_offset in checkpoints:
         point_date = budget.period_start + timedelta(days=day_offset)
-        fact_amount = (
-            get_budget_transactions_queryset(budget)
-            .filter(operation_date__lte=point_date)
-            .aggregate(total=Sum("amount"))
-            .get("total")
-            or Decimal("0.00")
+        fact_amount = get_budget_spent_amount(
+            budget,
+            converter=converter,
+            target_currency=budget.currency,
+            until_date=point_date,
         )
         forecast_amount = average_daily * Decimal(str(day_offset + 1))
 
@@ -386,27 +473,48 @@ def format_budget_chart_label(value: date) -> str:
     return value.strftime("%d.%m")
 
 
-def build_budget_operations(budget: Budget, *, limit: int = 10) -> list[dict]:
+def build_budget_operations(
+    budget: Budget,
+    *,
+    limit: int = 10,
+    converter=None,
+) -> list[dict]:
     transactions = get_budget_transactions_queryset(budget).order_by(
         "-operation_date",
         "-created_at",
         "-id",
     )[:limit]
 
-    return [
-        {
-            "id": str(transaction.pk),
-            "title": transaction.description or transaction.category.name,
-            "subtitle": (
-                f"{transaction.category.name} • {transaction.account.name} • "
-                f"{transaction.operation_date.strftime('%d.%m.%Y')}"
-            ),
-            "dateLabel": transaction.operation_date.strftime("%d.%m.%Y"),
-            "amountRub": decimal_to_number(transaction.amount),
-            "icon": transaction.category.icon,
-        }
-        for transaction in transactions
-    ]
+    items = []
+
+    for transaction in transactions:
+        source_currency = get_transaction_source_currency(
+            transaction,
+            fallback_currency=budget.currency,
+        )
+        amount = build_display_money_payload(
+            transaction.amount,
+            source_currency=source_currency,
+            converter=converter,
+        )
+
+        items.append(
+            {
+                "id": str(transaction.pk),
+                "title": transaction.description or transaction.category.name,
+                "subtitle": (
+                    f"{transaction.category.name} • {transaction.account.name} • "
+                    f"{transaction.operation_date.strftime('%d.%m.%Y')}"
+                ),
+                "dateLabel": transaction.operation_date.strftime("%d.%m.%Y"),
+                "amountRub": decimal_to_number(amount["amount"]),
+                "amount": amount,
+                "sourceCurrency": source_currency,
+                "icon": transaction.category.icon,
+            }
+        )
+
+    return items
 
 
 def get_budget_warning_message(*, budget: Budget, usage: BudgetUsage) -> str:
@@ -414,7 +522,7 @@ def get_budget_warning_message(*, budget: Budget, usage: BudgetUsage) -> str:
         over_amount = usage.spent_amount - budget.amount_limit
 
         if budget.kind == BudgetKind.EXPENSE:
-            return f"Бюджет превышен на {decimal_to_number(over_amount):.2f} ₽."
+            return f"Бюджет превышен на {decimal_to_number(over_amount):.2f} {budget.currency}."
 
         return "Плановое значение бюджета превышено."
 
@@ -424,8 +532,23 @@ def get_budget_warning_message(*, budget: Budget, usage: BudgetUsage) -> str:
     return "Бюджет в норме."
 
 
-def build_budget_warning_item(budget: Budget) -> dict:
-    usage = get_budget_usage(budget)
+def build_budget_warning_item(budget: Budget, *, converter=None) -> dict:
+    usage = get_budget_usage(budget, converter=converter)
+    spent = build_display_money_payload(
+        usage.spent_amount,
+        source_currency=budget.currency,
+        converter=converter,
+    )
+    limit = build_display_money_payload(
+        budget.amount_limit,
+        source_currency=budget.currency,
+        converter=converter,
+    )
+    remaining = build_display_money_payload(
+        usage.remaining_amount,
+        source_currency=budget.currency,
+        converter=converter,
+    )
 
     return {
         "budgetId": str(budget.pk),
@@ -433,8 +556,12 @@ def build_budget_warning_item(budget: Budget) -> dict:
         "periodLabel": get_period_label(budget),
         "status": usage.usage_status,
         "percent": percent_to_number(usage.usage_percent),
-        "spentRub": decimal_to_number(usage.spent_amount),
-        "limitRub": decimal_to_number(budget.amount_limit),
-        "remainingRub": decimal_to_number(usage.remaining_amount),
+        "spentRub": decimal_to_number(spent["amount"]),
+        "limitRub": decimal_to_number(limit["amount"]),
+        "remainingRub": decimal_to_number(remaining["amount"]),
+        "spent": spent,
+        "limit": limit,
+        "remaining": remaining,
+        "sourceCurrency": budget.currency,
         "message": get_budget_warning_message(budget=budget, usage=usage),
     }

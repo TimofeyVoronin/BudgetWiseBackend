@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.finance.currencies.money import MoneyAmountSerializer
+
 
 FINANCIAL_CALENDAR_EVENT_TYPE_CHOICES = [
     ("income", "Доход"),
@@ -20,6 +22,14 @@ FINANCIAL_CALENDAR_RISK_LEVEL_CHOICES = [
 ]
 
 
+class FinancialCalendarCurrencyContextSerializer(serializers.Serializer):
+    code = serializers.CharField(help_text="ISO-код валюты отображения.")
+    primaryCode = serializers.CharField(help_text="Основная валюта пользователя.")
+    sourceAvailable = serializers.BooleanField(help_text="Доступен ли внешний источник курсов.")
+    usingCachedRates = serializers.BooleanField(help_text="Используются ли последние сохранённые курсы.")
+    warning = serializers.CharField(allow_blank=True, help_text="Предупреждение по курсам валют.")
+
+
 class FinancialCalendarEventSerializer(serializers.Serializer):
     id = serializers.CharField(help_text="Идентификатор события календаря с префиксом источника.")
     sourceId = serializers.IntegerField(help_text="ID исходной операции или плановой операции.")
@@ -29,8 +39,10 @@ class FinancialCalendarEventSerializer(serializers.Serializer):
     type = serializers.ChoiceField(choices=FINANCIAL_CALENDAR_EVENT_TYPE_CHOICES, help_text="Тип события календаря.")
     title = serializers.CharField(help_text="Заголовок события для ячейки и панели дня.")
     subtitle = serializers.CharField(help_text="Подзаголовок: категория, описание или служебная подпись.")
-    amountRub = serializers.DecimalField(max_digits=14, decimal_places=2, allow_null=True, help_text="Сумма в рублях. Доход положительный, расход отрицательный.")
+    amountRub = serializers.DecimalField(max_digits=14, decimal_places=2, allow_null=True, help_text="Сумма в валюте отображения. Доход положительный, расход отрицательный. Поле сохранено для совместимости.")
+    amountDisplay = MoneyAmountSerializer(required=False, help_text="Сумма события в выбранной валюте отображения.")
     amountLabel = serializers.CharField(required=False, allow_null=True, help_text="Сумма в пользовательском формате числа с символом валюты.")
+    sourceCurrency = serializers.CharField(required=False, help_text="Исходная валюта счёта события.")
     accountId = serializers.IntegerField(help_text="ID счёта события.")
     accountName = serializers.CharField(help_text="Название счёта события.")
     status = serializers.ChoiceField(choices=FINANCIAL_CALENDAR_EVENT_STATUS_CHOICES, help_text="Статус события: confirmed для факта, pending для плана.")
@@ -40,11 +52,14 @@ class FinancialCalendarEventSerializer(serializers.Serializer):
 class FinancialCalendarDayForecastSerializer(serializers.Serializer):
     date = serializers.DateField(help_text="Дата прогноза в формате YYYY-MM-DD.")
     dateLabel = serializers.CharField(required=False, help_text="Дата прогноза в пользовательском формате из настроек приложения.")
-    actualBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, allow_null=True, help_text="Фактический баланс на конец дня. Для будущих дней null.")
+    actualBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, allow_null=True, help_text="Фактический баланс на конец дня в валюте отображения. Для будущих дней null. Поле сохранено для совместимости.")
+    actualBalance = MoneyAmountSerializer(required=False, allow_null=True, help_text="Фактический баланс на конец дня в выбранной валюте отображения.")
     actualBalanceLabel = serializers.CharField(required=False, allow_null=True, help_text="Фактический баланс в пользовательском формате числа.")
-    forecastBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Прогнозный баланс на конец дня с учётом фактических и плановых событий.")
+    forecastBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Прогнозный баланс на конец дня в валюте отображения. Поле сохранено для совместимости.")
+    forecastBalance = MoneyAmountSerializer(required=False, help_text="Прогнозный баланс на конец дня в выбранной валюте отображения.")
     forecastBalanceLabel = serializers.CharField(required=False, help_text="Прогнозный баланс в пользовательском формате числа.")
-    totalDelta = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Суммарное изменение за день по фактическим и плановым событиям.")
+    totalDelta = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Суммарное изменение за день в валюте отображения. Поле сохранено для совместимости.")
+    totalDeltaDisplay = MoneyAmountSerializer(required=False, help_text="Суммарное изменение за день в выбранной валюте отображения.")
     totalDeltaLabel = serializers.CharField(required=False, help_text="Изменение за день в пользовательском формате числа.")
     hasEvents = serializers.BooleanField(help_text="Есть ли события в этот день.")
     riskLevel = serializers.ChoiceField(choices=FINANCIAL_CALENDAR_RISK_LEVEL_CHOICES, help_text="Уровень риска по прогнозному остатку дня: safe, caution или risk.")
@@ -65,9 +80,11 @@ class FinancialCalendarMonthCellSerializer(serializers.Serializer):
     isToday = serializers.BooleanField(help_text="Признак сегодняшнего дня.")
     isSaturday = serializers.BooleanField(help_text="Признак субботы.")
     isSunday = serializers.BooleanField(help_text="Признак воскресенья.")
-    forecastBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Прогнозный баланс на конец дня с учётом фактических и плановых событий.")
+    forecastBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Прогнозный баланс на конец дня в валюте отображения. Поле сохранено для совместимости.")
+    forecastBalance = MoneyAmountSerializer(required=False, help_text="Прогнозный баланс на конец дня в выбранной валюте отображения.")
     forecastBalanceLabel = serializers.CharField(required=False, help_text="Прогнозный баланс в пользовательском формате числа.")
-    actualBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, allow_null=True, help_text="Фактический баланс на конец дня или null для будущих дней.")
+    actualBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, allow_null=True, help_text="Фактический баланс на конец дня в валюте отображения или null для будущих дней. Поле сохранено для совместимости.")
+    actualBalance = MoneyAmountSerializer(required=False, allow_null=True, help_text="Фактический баланс на конец дня в выбранной валюте отображения.")
     actualBalanceLabel = serializers.CharField(required=False, allow_null=True, help_text="Фактический баланс в пользовательском формате числа.")
     riskLevel = serializers.ChoiceField(choices=FINANCIAL_CALENDAR_RISK_LEVEL_CHOICES, help_text="Уровень риска ячейки.")
     events = FinancialCalendarEventSerializer(many=True, help_text="События дня.")
@@ -78,8 +95,11 @@ class FinancialCalendarMonthResponseSerializer(serializers.Serializer):
     month = serializers.IntegerField(help_text="Месяц календаря, 1-12.")
     todayIso = serializers.DateField(help_text="Сегодняшняя дата по часовому поясу пользователя.")
     todayLabel = serializers.CharField(required=False, help_text="Сегодняшняя дата в пользовательском формате из настроек приложения.")
-    openingBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Расчётный остаток активных счетов на начало диапазона календаря.")
+    openingBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Расчётный остаток активных счетов на начало диапазона календаря в валюте отображения. Поле сохранено для совместимости.")
+    openingBalance = MoneyAmountSerializer(required=False, help_text="Расчётный остаток активных счетов на начало диапазона в выбранной валюте отображения.")
     openingBalanceLabel = serializers.CharField(required=False, help_text="Остаток на начало диапазона в пользовательском формате числа.")
+    currency = serializers.CharField(required=False, help_text="Валюта отображения финансового календаря.")
+    currencyContext = FinancialCalendarCurrencyContextSerializer(required=False, help_text="Контекст валюты отображения и состояния курсов.")
     cells = FinancialCalendarMonthCellSerializer(many=True, help_text="Расширенная сетка месяца с соседними днями.")
     events = FinancialCalendarEventSerializer(many=True, help_text="Все события в диапазоне сетки.")
     dayForecasts = FinancialCalendarDayForecastSerializer(many=True, help_text="Прогнозы баланса по дням.")
@@ -88,6 +108,8 @@ class FinancialCalendarMonthResponseSerializer(serializers.Serializer):
 
 class FinancialCalendarEventsResponseSerializer(serializers.Serializer):
     items = FinancialCalendarEventSerializer(many=True, help_text="Список событий календаря.")
+    currency = serializers.CharField(required=False, help_text="Валюта отображения событий.")
+    currencyContext = FinancialCalendarCurrencyContextSerializer(required=False, help_text="Контекст валюты отображения и состояния курсов.")
 
 
 class FinancialCalendarDayResponseSerializer(serializers.Serializer):
@@ -95,6 +117,8 @@ class FinancialCalendarDayResponseSerializer(serializers.Serializer):
     dateLabel = serializers.CharField(required=False, help_text="Дата дня в пользовательском формате из настроек приложения.")
     dayBalance = FinancialCalendarDayForecastSerializer(allow_null=True, help_text="Баланс и прогноз по выбранному дню.")
     events = FinancialCalendarEventSerializer(many=True, help_text="События выбранного дня.")
+    currency = serializers.CharField(required=False, help_text="Валюта отображения дня.")
+    currencyContext = FinancialCalendarCurrencyContextSerializer(required=False, help_text="Контекст валюты отображения и состояния курсов.")
 
 
 class FinancialCalendarAccountOptionSerializer(serializers.Serializer):
@@ -122,8 +146,11 @@ class FinancialCalendarMetaResponseSerializer(serializers.Serializer):
     eventTypes = FinancialCalendarEventTypeOptionSerializer(many=True, help_text="Типы событий календаря.")
     timezones = FinancialCalendarTimezoneOptionSerializer(many=True, help_text="Доступные часовые пояса.")
     defaultTimezone = serializers.CharField(help_text="Активный часовой пояс из настроек приложения пользователя.")
-    openingBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Текущий остаток активных счетов пользователя.")
+    openingBalanceRub = serializers.DecimalField(max_digits=14, decimal_places=2, help_text="Текущий остаток активных счетов пользователя в валюте отображения. Поле сохранено для совместимости.")
+    openingBalance = MoneyAmountSerializer(required=False, help_text="Текущий остаток активных счетов пользователя в выбранной валюте отображения.")
     openingBalanceLabel = serializers.CharField(required=False, help_text="Текущий остаток активных счетов в пользовательском формате числа.")
+    currency = serializers.CharField(required=False, help_text="Валюта отображения справочников календаря.")
+    currencyContext = FinancialCalendarCurrencyContextSerializer(required=False, help_text="Контекст валюты отображения и состояния курсов.")
 
 
 class FinancialCalendarExportColumnsSerializer(serializers.Serializer):
@@ -145,6 +172,8 @@ class FinancialCalendarExportPreviewRowSerializer(serializers.Serializer):
 
 class FinancialCalendarExportPreviewResponseSerializer(serializers.Serializer):
     rows = FinancialCalendarExportPreviewRowSerializer(many=True, help_text="Строки предварительного просмотра выгрузки.")
+    currency = serializers.CharField(required=False, help_text="Валюта отображения строк предварительного просмотра.")
+    currencyContext = FinancialCalendarCurrencyContextSerializer(required=False, help_text="Контекст валюты отображения и состояния курсов.")
 
 
 class FinancialCalendarExportRequestSerializer(serializers.Serializer):
@@ -170,6 +199,7 @@ class FinancialCalendarExportRequestSerializer(serializers.Serializer):
     dateFrom = serializers.DateField(required=False, help_text="Нижняя граница периода выгрузки.")
     dateTo = serializers.DateField(required=False, help_text="Верхняя граница периода выгрузки.")
     timezone = serializers.CharField(required=False, help_text="IANA-часовой пояс. Если не передан, используется настройка пользователя.")
+    currency = serializers.CharField(required=False, help_text="Валюта отображения сумм в экспорте.")
 
 
 class FinancialCalendarExportResponseSerializer(serializers.Serializer):

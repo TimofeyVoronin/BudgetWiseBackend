@@ -91,23 +91,25 @@ def build_financial_calendar_export_file(
     columns: dict[str, bool] | None = None,
     year: int,
     month: int,
+    currency_code: str = "RUB",
 ) -> FinancialCalendarExportResult:
     export_format = normalize_financial_calendar_export_format(export_format)
     columns = normalize_financial_calendar_export_columns(columns)
     selected_columns = _get_selected_columns(columns)
+    column_titles = _get_export_column_titles(currency_code)
     table_rows = _build_table_rows(rows, selected_columns)
     filename = _build_filename(export_format, year, month)
 
     if export_format == FINANCIAL_CALENDAR_EXPORT_FORMAT_CSV:
         return FinancialCalendarExportResult(
-            content=_build_csv(table_rows, selected_columns),
+            content=_build_csv(table_rows, selected_columns, column_titles=column_titles),
             content_type="text/csv;charset=utf-8",
             filename=filename,
         )
 
     if export_format == FINANCIAL_CALENDAR_EXPORT_FORMAT_XLSX:
         return FinancialCalendarExportResult(
-            content=_build_xlsx(table_rows, selected_columns),
+            content=_build_xlsx(table_rows, selected_columns, column_titles=column_titles),
             content_type=(
                 "application/vnd.openxmlformats-officedocument."
                 "spreadsheetml.sheet"
@@ -117,7 +119,7 @@ def build_financial_calendar_export_file(
 
     if export_format == FINANCIAL_CALENDAR_EXPORT_FORMAT_PDF:
         return FinancialCalendarExportResult(
-            content=_build_pdf(table_rows, selected_columns, year=year, month=month),
+            content=_build_pdf(table_rows, selected_columns, year=year, month=month, column_titles=column_titles),
             content_type="application/pdf",
             filename=filename,
         )
@@ -156,6 +158,28 @@ def _get_selected_columns(columns: dict[str, bool]) -> list[str]:
     return selected
 
 
+def _get_export_column_titles(currency_code: str) -> dict[str, str]:
+    currency_label = _get_export_currency_label(currency_code)
+    titles = FINANCIAL_CALENDAR_EXPORT_COLUMN_TITLES.copy()
+    titles["actual"] = f"Факт {currency_label}"
+    titles["balance"] = f"Баланс {currency_label}"
+    return titles
+
+
+def _get_export_currency_label(currency_code: str) -> str:
+    code = str(currency_code or "RUB").strip().upper()
+    return {
+        "RUB": "₽",
+        "USD": "$",
+        "EUR": "€",
+        "KZT": "₸",
+        "CNY": "¥",
+        "GBP": "£",
+        "BTC": "₿",
+        "ETH": "Ξ",
+    }.get(code, code)
+
+
 def _build_table_rows(rows: list[dict], selected_columns: list[str]) -> list[dict[str, str]]:
     table_rows: list[dict[str, str]] = []
 
@@ -184,11 +208,16 @@ def _build_filename(export_format: str, year: int, month: int) -> str:
     return f"financial_calendar_{year}_{month:02d}_{timestamp}.{export_format}"
 
 
-def _build_csv(rows: list[dict[str, str]], selected_columns: list[str]) -> bytes:
+def _build_csv(
+    rows: list[dict[str, str]],
+    selected_columns: list[str],
+    *,
+    column_titles: dict[str, str],
+) -> bytes:
     output = StringIO()
     writer = csv.DictWriter(
         output,
-        fieldnames=[FINANCIAL_CALENDAR_EXPORT_COLUMN_TITLES[column] for column in selected_columns],
+        fieldnames=[column_titles[column] for column in selected_columns],
         extrasaction="ignore",
     )
 
@@ -196,7 +225,7 @@ def _build_csv(rows: list[dict[str, str]], selected_columns: list[str]) -> bytes
     for row in rows:
         writer.writerow(
             {
-                FINANCIAL_CALENDAR_EXPORT_COLUMN_TITLES[column]: row[column]
+                column_titles[column]: row[column]
                 for column in selected_columns
             }
         )
@@ -204,12 +233,17 @@ def _build_csv(rows: list[dict[str, str]], selected_columns: list[str]) -> bytes
     return output.getvalue().encode("utf-8-sig")
 
 
-def _build_xlsx(rows: list[dict[str, str]], selected_columns: list[str]) -> bytes:
+def _build_xlsx(
+    rows: list[dict[str, str]],
+    selected_columns: list[str],
+    *,
+    column_titles: dict[str, str],
+) -> bytes:
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = "Календарь"
 
-    headers = [FINANCIAL_CALENDAR_EXPORT_COLUMN_TITLES[column] for column in selected_columns]
+    headers = [column_titles[column] for column in selected_columns]
     worksheet.append(headers)
 
     header_fill = PatternFill(fill_type="solid", fgColor="E5E7EB")
@@ -233,7 +267,14 @@ def _build_xlsx(rows: list[dict[str, str]], selected_columns: list[str]) -> byte
     return output.getvalue()
 
 
-def _build_pdf(rows: list[dict[str, str]], selected_columns: list[str], *, year: int, month: int) -> bytes:
+def _build_pdf(
+    rows: list[dict[str, str]],
+    selected_columns: list[str],
+    *,
+    year: int,
+    month: int,
+    column_titles: dict[str, str],
+) -> bytes:
     font_name = _register_pdf_font()
     output = BytesIO()
     document = SimpleDocTemplate(
@@ -262,7 +303,7 @@ def _build_pdf(rows: list[dict[str, str]], selected_columns: list[str], *, year:
         leading=10,
     )
 
-    headers = [FINANCIAL_CALENDAR_EXPORT_COLUMN_TITLES[column] for column in selected_columns]
+    headers = [column_titles[column] for column in selected_columns]
     table_data = [[Paragraph(header, cell_style) for header in headers]]
 
     for row in rows:

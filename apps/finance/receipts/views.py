@@ -7,12 +7,31 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.finance.currencies.conversion import get_currency_conversion_service
 from apps.finance.models import (
     Receipt,
     ReceiptAuditAction,
     ReceiptAuditStatus,
     ReceiptStatus,
 )
+
+
+def get_receipt_display_currency_query_param(request) -> str | None:
+    return (
+        request.query_params.get("currency")
+        or request.query_params.get("currencyCode")
+        or request.query_params.get("currency_code")
+    )
+
+
+def get_receipt_serializer_context(request) -> dict:
+    return {
+        "request": request,
+        "currency_converter": get_currency_conversion_service(
+            request.user,
+            display_currency=get_receipt_display_currency_query_param(request),
+        ),
+    }
 from apps.finance.receipts.audit import log_receipt_audit_event
 from apps.finance.receipts.duplicates import (
     check_receipt_duplicate,
@@ -63,6 +82,13 @@ class ReceiptImportByQRView(APIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Получать ли расширенные данные чека у внешнего провайдера. По умолчанию true.",
+            ),
+            OpenApiParameter(
+                name="currency",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Валюта отображения сумм в ответе.",
             ),
         ],
         responses={
@@ -163,6 +189,7 @@ class ReceiptImportByQRView(APIView):
                 is_duplicate=result.is_duplicate,
                 provider_status=provider_status,
                 provider_error=provider_error,
+                context=get_receipt_serializer_context(request),
             )
             return Response(response_data, status=status.HTTP_200_OK)
 
@@ -191,6 +218,7 @@ class ReceiptImportByQRView(APIView):
             is_duplicate=result.is_duplicate,
             provider_status=provider_status,
             provider_error=provider_error,
+            context=get_receipt_serializer_context(request),
         )
         return Response(response_data, status=status.HTTP_200_OK)
 
@@ -282,5 +310,6 @@ class ReceiptCreateTransactionsView(APIView):
             receipt=result.receipt,
             mode=result.mode,
             transactions=result.transactions,
+            context=get_receipt_serializer_context(request),
         )
         return Response(response_data, status=status.HTTP_201_CREATED)

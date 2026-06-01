@@ -18,6 +18,7 @@ from apps.common.validation import get_date_query_param, get_int_query_param
 from apps.finance.financial_calendar.services import (
     FINANCIAL_CALENDAR_EVENT_TYPES,
     build_financial_calendar_export_preview,
+    build_financial_calendar_converter,
     build_financial_calendar_export_response,
     build_financial_calendar_month,
     get_financial_calendar_account_ids,
@@ -88,6 +89,15 @@ def get_multi_query_str_values(query_params, *names: str) -> list[str] | None:
     return values or None
 
 
+def get_financial_calendar_display_currency_query_param(query_params) -> str | None:
+    return (
+        query_params.get("currency")
+        or query_params.get("currencyCode")
+        or query_params.get("currency_code")
+        or None
+    )
+
+
 def get_financial_calendar_year_month(query_params, user) -> tuple[int, int]:
     from django.utils import timezone
 
@@ -110,6 +120,7 @@ def get_financial_calendar_common_params(request) -> dict:
     account_ids = get_multi_query_int_values(query_params, "accountIds", "account_ids")
     event_types = get_multi_query_str_values(query_params, "eventTypes", "event_types")
     timezone_value = query_params.get("timezone") or None
+    display_currency = get_financial_calendar_display_currency_query_param(query_params)
 
     if event_types:
         invalid_values = set(event_types) - FINANCIAL_CALENDAR_EVENT_TYPES
@@ -127,6 +138,7 @@ def get_financial_calendar_common_params(request) -> dict:
         "account_ids": account_ids,
         "event_types": event_types,
         "timezone_value": timezone_value,
+        "display_currency": display_currency,
     }
 
 
@@ -191,6 +203,7 @@ def get_financial_calendar_export_params_from_body(request) -> dict:
         "account_ids": data.get("accountIds"),
         "event_types": data.get("eventTypes"),
         "timezone_value": data.get("timezone"),
+        "display_currency": data.get("currency"),
     }
 
 
@@ -210,7 +223,7 @@ class FinancialCalendarMonthView(APIView):
             "ячейки дней, фактические операции, плановые операции, дневные "
             "дельты, фактический баланс для прошлых дней, прогнозный баланс "
             "и первый найденный кассовый разрыв. "
-            "Месяц в API передаётся в формате 1-12. Прогноз строится в валюте выбранных счетов; автоматическая конвертация валют не выполняется."
+            "Месяц в API передаётся в формате 1-12. Суммы приводятся к валюте отображения из параметра currency или из настроек пользователя."
         ),
         parameters=[
             OpenApiParameter("year", OpenApiTypes.INT, description="Год календаря, например 2026."),
@@ -220,6 +233,7 @@ class FinancialCalendarMonthView(APIView):
             OpenApiParameter("dateFrom", OpenApiTypes.DATE, description="Нижняя граница периода, YYYY-MM-DD. Опционально."),
             OpenApiParameter("dateTo", OpenApiTypes.DATE, description="Верхняя граница периода, YYYY-MM-DD. Опционально."),
             OpenApiParameter("timezone", OpenApiTypes.STR, description="IANA-часовой пояс, например Asia/Krasnoyarsk. Если параметр не передан, используется настройка пользователя."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм, например RUB, USD или EUR."),
         ],
         responses={
             200: FinancialCalendarMonthResponseSerializer,
@@ -235,7 +249,9 @@ class FinancialCalendarMonthView(APIView):
                     "todayIso": "2026-05-22",
                     "todayLabel": "22.05.2026",
                     "openingBalanceRub": "227800.00",
+                    "openingBalance": {"amount": 227800.0, "currency": "RUB"},
                     "openingBalanceLabel": "227 800,00 ₽",
+                    "currency": "RUB",
                     "cells": [],
                     "events": [],
                     "dayForecasts": [],
@@ -282,6 +298,7 @@ class FinancialCalendarEventsView(APIView):
             OpenApiParameter("accountIds", OpenApiTypes.INT, many=True, description="ID счетов."),
             OpenApiParameter("eventTypes", OpenApiTypes.STR, many=True, description="Типы событий: income, expense, transfer, reminder."),
             OpenApiParameter("timezone", OpenApiTypes.STR, description="IANA-часовой пояс, например Asia/Krasnoyarsk. Если параметр не передан, используется настройка пользователя."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм, например RUB, USD или EUR."),
         ],
         responses={200: FinancialCalendarEventsResponseSerializer},
     )
@@ -299,6 +316,10 @@ class FinancialCalendarEventsView(APIView):
 
         try:
             account_ids = get_financial_calendar_account_ids(request.user, common_params["account_ids"])
+            converter = build_financial_calendar_converter(
+                user=request.user,
+                display_currency=common_params["display_currency"],
+            )
             events = get_financial_calendar_events(
                 user=request.user,
                 date_from=date_from,
@@ -309,11 +330,16 @@ class FinancialCalendarEventsView(APIView):
                     request.user,
                     timezone_value=common_params["timezone_value"],
                 ),
+                converter=converter,
             )
         except ValueError as exc:
             handle_financial_calendar_value_error(exc)
 
-        return Response({"items": events})
+        return Response({
+            "items": events,
+            "currency": converter.display_currency,
+            "currencyContext": converter.context_payload(),
+        })
 
 
 class FinancialCalendarDayView(APIView):
@@ -327,6 +353,7 @@ class FinancialCalendarDayView(APIView):
             OpenApiParameter("accountIds", OpenApiTypes.INT, many=True, description="ID счетов."),
             OpenApiParameter("eventTypes", OpenApiTypes.STR, many=True, description="Типы событий."),
             OpenApiParameter("timezone", OpenApiTypes.STR, description="IANA-часовой пояс, например Asia/Krasnoyarsk. Если параметр не передан, используется настройка пользователя."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм, например RUB, USD или EUR."),
         ],
         responses={200: FinancialCalendarDayResponseSerializer},
     )
@@ -345,6 +372,7 @@ class FinancialCalendarDayView(APIView):
                 account_ids=common_params["account_ids"],
                 event_types=common_params["event_types"],
                 timezone_value=common_params["timezone_value"],
+                display_currency=common_params["display_currency"],
             )
         except ValueError as exc:
             handle_financial_calendar_value_error(exc)
@@ -362,10 +390,18 @@ class FinancialCalendarMetaView(APIView):
             "Возвращает активные счета пользователя, типы событий, доступные "
             "часовые пояса из настроек приложения и баланс активных счетов для стартового состояния формы."
         ),
+        parameters=[
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм, например RUB, USD или EUR."),
+        ],
         responses={200: FinancialCalendarMetaResponseSerializer},
     )
     def get(self, request):
-        return Response(get_financial_calendar_meta(request.user))
+        return Response(
+            get_financial_calendar_meta(
+                request.user,
+                display_currency=get_financial_calendar_display_currency_query_param(request.query_params),
+            )
+        )
 
 
 
@@ -388,6 +424,7 @@ class FinancialCalendarExportPreviewView(APIView):
             OpenApiParameter("dateFrom", OpenApiTypes.DATE, description="Нижняя граница периода, YYYY-MM-DD."),
             OpenApiParameter("dateTo", OpenApiTypes.DATE, description="Верхняя граница периода, YYYY-MM-DD."),
             OpenApiParameter("timezone", OpenApiTypes.STR, description="IANA-часовой пояс, например Asia/Krasnoyarsk."),
+            OpenApiParameter("currency", OpenApiTypes.STR, description="Валюта отображения сумм, например RUB, USD или EUR."),
         ],
         responses={
             200: FinancialCalendarExportPreviewResponseSerializer,
@@ -427,6 +464,7 @@ class FinancialCalendarExportPreviewView(APIView):
                 date_from=params["date_from"],
                 date_to=params["date_to"],
                 timezone_value=params["timezone_value"],
+                display_currency=params["display_currency"],
             )
         except ValueError as exc:
             handle_financial_calendar_value_error(exc)
@@ -495,6 +533,7 @@ class FinancialCalendarExportView(APIView):
                 date_from=params["date_from"],
                 date_to=params["date_to"],
                 timezone_value=params["timezone_value"],
+                display_currency=params["display_currency"],
             )
         except ValueError as exc:
             handle_financial_calendar_value_error(exc)

@@ -3,6 +3,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -170,6 +171,7 @@ DRF_APPS = [
 
 THIRD_PARTY_APPS = [
     "corsheaders",
+    "whitenoise.runserver_nostatic",
 ]
 
 PROJECT_APPS = [
@@ -181,10 +183,15 @@ PROJECT_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + DRF_APPS + THIRD_PARTY_APPS + PROJECT_APPS
 
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    "if-match",
+)
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "apps.common.monitoring.metrics.PrometheusMetricsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -215,16 +222,25 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("POSTGRES_DB", default="finance_db"),
-        "USER": env("POSTGRES_USER", default="finance_user"),
-        "PASSWORD": env("POSTGRES_PASSWORD", default="finance_password"),
-        "HOST": env("POSTGRES_HOST", default="localhost"),
-        "PORT": env("POSTGRES_PORT", default="5432"),
+DATABASE_URL = env("DATABASE_URL", default="")
+
+if DATABASE_URL:
+    DATABASES = {
+        "default": env.db("DATABASE_URL"),
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": env("POSTGRES_DB", default="finance_db"),
+            "USER": env("POSTGRES_USER", default="finance_user"),
+            "PASSWORD": env("POSTGRES_PASSWORD", default="finance_password"),
+            "HOST": env("POSTGRES_HOST", default="localhost"),
+            "PORT": env("POSTGRES_PORT", default="5432"),
+        }
+    }
+
+DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=60)
 
 
 AUTH_USER_MODEL = "users.User"
@@ -255,8 +271,17 @@ USE_I18N = True
 USE_TZ = True
 
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"

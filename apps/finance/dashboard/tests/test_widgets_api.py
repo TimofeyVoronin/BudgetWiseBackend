@@ -1,15 +1,23 @@
 from datetime import date
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
+from apps.finance.currencies.services import get_user_currency_by_code
 from apps.finance.models import Account, Goal, GoalStatus, TransactionType
 
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceDashboardWidgetsAPITests(FinanceAPITestCase):
+    def set_rate(self, code: str, value: str):
+        user_currency = get_user_currency_by_code(self.user, code)
+        user_currency.rate_to_primary = Decimal(value)
+        user_currency.save(update_fields=["rate_to_primary", "updated_at"])
+
     def test_dashboard_widgets_require_authentication(self):
         urls = [
             reverse("finance:dashboard-period-currency"),
@@ -71,8 +79,9 @@ class FinanceDashboardWidgetsAPITests(FinanceAPITestCase):
         self.assertEqual(response.data["amountRub"], 13000.0)
         self.assertEqual(response.data["trendLabel"], "Нет данных для сравнения")
 
-    def test_balance_summary_filters_by_currency_and_validates_period(self):
+    def test_balance_summary_converts_to_selected_currency_and_validates_period(self):
         self.authenticate()
+        self.set_rate("USD", "100.00000000")
         Account.objects.create(
             user=self.user,
             name="USD account",
@@ -86,7 +95,8 @@ class FinanceDashboardWidgetsAPITests(FinanceAPITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["amountRub"], 120.0)
+        self.assertEqual(response.data["amountRub"], 250.0)
+        self.assertEqual(response.data["amount"], {"amount": 250.0, "currency": "USD"})
 
         invalid_period_response = self.client.get(
             reverse("finance:dashboard-balance-summary"),
@@ -130,10 +140,11 @@ class FinanceDashboardWidgetsAPITests(FinanceAPITestCase):
         self.assertIn(str(self.account.id), row_ids)
         self.assertIn(str(self.cash_account.id), row_ids)
         self.assertNotIn(str(archived_account.id), row_ids)
-        self.assertNotIn(str(usd_account.id), row_ids)
+        self.assertIn(str(usd_account.id), row_ids)
 
-    def test_goals_summary_filters_goals_by_currency(self):
+    def test_goals_summary_converts_goals_to_selected_currency(self):
         self.authenticate()
+        self.set_rate("USD", "100.00000000")
         usd_account = Account.objects.create(
             user=self.user,
             name="USD account",
@@ -177,11 +188,15 @@ class FinanceDashboardWidgetsAPITests(FinanceAPITestCase):
         rub_ids = {item["id"] for item in rub_response.data["goals"]}
         self.assertIn(str(rub_goal.id), rub_ids)
         self.assertIn(str(no_account_goal.id), rub_ids)
-        self.assertNotIn(str(usd_goal.id), rub_ids)
+        self.assertIn(str(usd_goal.id), rub_ids)
         rub_goal_row = next(item for item in rub_response.data["goals"] if item["id"] == str(rub_goal.id))
         self.assertEqual(rub_goal_row["targetRub"], 500000.0)
+        self.assertEqual(rub_goal_row["target"], {"amount": 500000.0, "currency": "RUB"})
         self.assertEqual(rub_goal_row["currentRub"], 455000.0)
+        self.assertEqual(rub_goal_row["current"], {"amount": 455000.0, "currency": "RUB"})
         self.assertEqual(rub_goal_row["percent"], 91.0)
+        usd_goal_row = next(item for item in rub_response.data["goals"] if item["id"] == str(usd_goal.id))
+        self.assertEqual(usd_goal_row["target"], {"amount": 100000.0, "currency": "RUB"})
 
         usd_response = self.client.get(
             reverse("finance:dashboard-goals-summary"),
@@ -190,7 +205,9 @@ class FinanceDashboardWidgetsAPITests(FinanceAPITestCase):
 
         self.assertEqual(usd_response.status_code, status.HTTP_200_OK)
         usd_ids = {item["id"] for item in usd_response.data["goals"]}
-        self.assertEqual(usd_ids, {str(usd_goal.id)})
+        self.assertEqual(usd_ids, {str(rub_goal.id), str(no_account_goal.id), str(usd_goal.id)})
+        converted_rub_goal = next(item for item in usd_response.data["goals"] if item["id"] == str(rub_goal.id))
+        self.assertEqual(converted_rub_goal["target"], {"amount": 5000.0, "currency": "USD"})
 
     def test_expense_dynamics_returns_weekly_relative_values(self):
         self.authenticate()

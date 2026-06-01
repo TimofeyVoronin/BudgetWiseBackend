@@ -1,11 +1,14 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
 from apps.finance.goals.services import GOAL_TOPUP_CATEGORY_NAME
 from apps.finance.models import (
+    Account,
     Category,
     Goal,
     GoalCategory,
@@ -18,6 +21,7 @@ from apps.finance.models import (
 from apps.finance.testing import FinanceAPITestCase
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinanceGoalTopupsAPITests(FinanceAPITestCase):
     def create_goal(
         self,
@@ -38,6 +42,22 @@ class FinanceGoalTopupsAPITests(FinanceAPITestCase):
             target_amount=Decimal(target_amount),
             current_amount=Decimal(current_amount),
             deadline=self.today + timedelta(days=30),
+        )
+
+
+    def create_usd_account(self):
+        ensure_user_currencies(self.user)
+        usd_currency = get_user_currency_by_code(self.user, "USD")
+        usd_currency.is_visible = True
+        usd_currency.rate_to_primary = Decimal("100.00000000")
+        usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+
+        return Account.objects.create(
+            user=self.user,
+            name="USD card",
+            initial_balance=Decimal("1000.00"),
+            balance=Decimal("1000.00"),
+            currency="USD",
         )
 
     def post_topup(self, goal, *, amount="1000.00", account=None, date=None, comment=""):
@@ -162,6 +182,33 @@ class FinanceGoalTopupsAPITests(FinanceAPITestCase):
         self.assertEqual(response.data["history"][0]["amountRub"], "1000.00")
         self.assertEqual(response.data["history"][0]["accountName"], self.account.name)
         self.assertEqual(response.data["history"][0]["operationId"], topup_response.data["operationId"])
+
+
+    def test_goal_topups_list_converts_amount_to_display_currency(self):
+        self.authenticate()
+        usd_account = self.create_usd_account()
+        goal = self.create_goal(account=usd_account, target_amount="1000.00")
+        contribution = GoalContribution.objects.create(
+            user=self.user,
+            goal=goal,
+            account=usd_account,
+            account_name=usd_account.name,
+            amount=Decimal("5.00"),
+            contribution_date=self.today,
+            comment="USD topup",
+        )
+
+        response = self.client.get(
+            reverse("finance:goal-topups", kwargs={"pk": goal.id}),
+            data={"currency": "RUB"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = response.data["results"][0]
+        self.assertEqual(row["id"], contribution.id)
+        self.assertEqual(row["sourceCurrency"], "USD")
+        self.assertEqual(row["amountRub"], "500.00")
+        self.assertEqual(row["amountDisplay"], {"amount": 500.0, "currency": "RUB"})
 
     def test_goal_topups_for_other_user_goal_return_not_found(self):
         self.authenticate()

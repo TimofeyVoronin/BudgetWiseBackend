@@ -7,9 +7,11 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.cache import cache
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from django.utils import timezone
 
+from apps.finance.currencies.conversion import CurrencyConversionService, get_currency_conversion_service
+from apps.finance.currencies.money import build_money_payload
 from apps.finance.currencies.services import get_user_default_currency_code, get_visible_user_currencies
 from apps.finance.models import Account, Goal, GoalStatus, Transaction, TransactionType
 from apps.users.app_settings.formatting import get_user_app_today
@@ -137,15 +139,19 @@ def build_dashboard_summary(
         date_to=date_to,
         today=get_user_app_today(user),
     )
-    normalized_currency = currency.upper()
+    converter = get_currency_conversion_service(
+        user=user,
+        display_currency=currency,
+    )
+    display_currency = converter.display_currency
 
     accounts_balance = _get_accounts_balance(
         user=user,
-        currency=normalized_currency,
+        converter=converter,
     )
     income = _get_period_amount(
         user=user,
-        currency=normalized_currency,
+        converter=converter,
         transaction_type=TransactionType.INCOME,
         date_from=resolved_date_from,
         date_to=resolved_date_to,
@@ -153,7 +159,7 @@ def build_dashboard_summary(
     )
     expense = _get_period_amount(
         user=user,
-        currency=normalized_currency,
+        converter=converter,
         transaction_type=TransactionType.EXPENSE,
         date_from=resolved_date_from,
         date_to=resolved_date_to,
@@ -166,22 +172,26 @@ def build_dashboard_summary(
             "date_from": resolved_date_from,
             "date_to": resolved_date_to,
         },
-        "currency": normalized_currency,
+        "currency": display_currency,
+        "currencyContext": converter.context_payload(),
         "totals": {
             "accounts_balance": _format_money(accounts_balance),
+            "accountsBalance": _build_display_money_payload(accounts_balance, converter),
             "income": _format_money(income),
+            "incomeAmount": _build_display_money_payload(income, converter),
             "expense": _format_money(expense),
+            "expenseAmount": _build_display_money_payload(expense, converter),
             "net": _format_money(income - expense),
+            "netAmount": _build_display_money_payload(income - expense, converter),
         },
         "recent_transactions": _get_recent_transactions(
             user=user,
-            currency=normalized_currency,
             limit=recent_limit,
             tag_ids=tag_ids,
         ),
         "top_expense_categories": _get_top_expense_categories(
             user=user,
-            currency=normalized_currency,
+            converter=converter,
             date_from=resolved_date_from,
             date_to=resolved_date_to,
             tag_ids=tag_ids,
@@ -220,59 +230,56 @@ def resolve_dashboard_period(
     raise ValueError("Недопустимый период dashboard.")
 
 
-def _get_accounts_balance(*, user, currency: str) -> Decimal:
-    value = (
-        Account.objects
-        .filter(
-            user=user,
-            currency=currency,
-            is_active=True,
-            is_archived=False,
-        )
-        .aggregate(total=Sum("balance"))
-        .get("total")
+def _get_accounts_balance(*, user, converter: CurrencyConversionService) -> Decimal:
+    accounts = Account.objects.filter(
+        user=user,
+        is_active=True,
+        is_archived=False,
     )
 
-    return value or Decimal("0.00")
+    return _sum_converted_amounts(
+        converter=converter,
+        items=((account.balance, account.currency) for account in accounts),
+    )
 
 
 def _get_period_amount(
     *,
     user,
-    currency: str,
+    converter: CurrencyConversionService,
     transaction_type: str,
     date_from: date,
     date_to: date,
     tag_ids: list[int] | None = None,
 ) -> Decimal:
-    queryset = Transaction.objects.filter(
-        user=user,
-        account__currency=currency,
-        type=transaction_type,
-        operation_date__gte=date_from,
-        operation_date__lte=date_to,
+    queryset = (
+        Transaction.objects
+        .filter(
+            user=user,
+            type=transaction_type,
+            operation_date__gte=date_from,
+            operation_date__lte=date_to,
+        )
+        .select_related("account")
     )
 
     queryset = _filter_transactions_by_tags(queryset, tag_ids)
 
-    value = queryset.aggregate(total=Sum("amount")).get("total")
-
-    return value or Decimal("0.00")
+    return _sum_converted_amounts(
+        converter=converter,
+        items=((transaction.amount, transaction.account.currency) for transaction in queryset),
+    )
 
 
 def _get_recent_transactions(
     *,
     user,
-    currency: str,
     limit: int,
     tag_ids: list[int] | None = None,
 ):
     queryset = (
         Transaction.objects
-        .filter(
-            user=user,
-            account__currency=currency,
-        )
+        .filter(user=user)
         .select_related("account", "category")
         .prefetch_related("tags__group")
     )
@@ -285,46 +292,57 @@ def _get_recent_transactions(
 def _get_top_expense_categories(
     *,
     user,
-    currency: str,
+    converter: CurrencyConversionService,
     date_from: date,
     date_to: date,
     tag_ids: list[int] | None = None,
 ) -> list[dict]:
-    queryset = Transaction.objects.filter(
-        user=user,
-        account__currency=currency,
-        type=TransactionType.EXPENSE,
-        operation_date__gte=date_from,
-        operation_date__lte=date_to,
+    queryset = (
+        Transaction.objects
+        .filter(
+            user=user,
+            type=TransactionType.EXPENSE,
+            operation_date__gte=date_from,
+            operation_date__lte=date_to,
+        )
+        .select_related("account", "category")
     )
 
     queryset = _filter_transactions_by_tags(queryset, tag_ids)
 
-    rows = (
-        queryset
-        .values(
-            "category_id",
-            "category__name",
-            "category__icon",
-            "category__color",
-        )
-        .annotate(total=Sum("amount"))
-        .order_by("-total", "category__name", "category_id")[
-            :DASHBOARD_TOP_CATEGORIES_LIMIT
-        ]
-    )
+    category_totals: dict[int, dict] = {}
+    for transaction in queryset:
+        category_id = transaction.category_id
+        if category_id not in category_totals:
+            category_totals[category_id] = {
+                "category": category_id,
+                "category_name": transaction.category.name,
+                "category_icon": transaction.category.icon,
+                "category_color": transaction.category.color,
+                "total_value": Decimal("0.00"),
+            }
+
+        category_totals[category_id]["total_value"] += converter.convert_to_display(
+            transaction.amount,
+            source_currency=transaction.account.currency,
+        ).amount
+
+    rows = sorted(
+        category_totals.values(),
+        key=lambda item: (-item["total_value"], item["category_name"], item["category"]),
+    )[:DASHBOARD_TOP_CATEGORIES_LIMIT]
 
     return [
         {
-            "category": row["category_id"],
-            "category_name": row["category__name"],
-            "category_icon": row["category__icon"],
-            "category_color": row["category__color"],
-            "total": _format_money(row["total"] or Decimal("0.00")),
+            "category": row["category"],
+            "category_name": row["category_name"],
+            "category_icon": row["category_icon"],
+            "category_color": row["category_color"],
+            "total": _format_money(row["total_value"]),
+            "totalAmount": _build_display_money_payload(row["total_value"], converter),
         }
         for row in rows
     ]
-
 
 
 def _filter_transactions_by_tags(queryset, tag_ids: list[int] | None):
@@ -401,7 +419,10 @@ def build_dashboard_balance_summary(
     period_type: str = DEFAULT_DASHBOARD_PERIOD,
     currency: str = DEFAULT_DASHBOARD_CURRENCY,
 ) -> dict:
-    normalized_currency = currency.upper()
+    converter = get_currency_conversion_service(
+        user=user,
+        display_currency=currency,
+    )
     today = get_user_app_today(user)
     date_from, date_to = resolve_dashboard_period(
         period_type=period_type,
@@ -415,17 +436,17 @@ def build_dashboard_balance_summary(
 
     balance = _get_accounts_balance(
         user=user,
-        currency=normalized_currency,
+        converter=converter,
     )
     current_net = _get_period_net_amount(
         user=user,
-        currency=normalized_currency,
+        converter=converter,
         date_from=date_from,
         date_to=date_to,
     )
     previous_net = _get_period_net_amount(
         user=user,
-        currency=normalized_currency,
+        converter=converter,
         date_from=previous_date_from,
         date_to=previous_date_to,
     )
@@ -434,6 +455,9 @@ def build_dashboard_balance_summary(
         "title": "Текущий баланс",
         "headerIcon": "wallet",
         "amountRub": _to_number(balance),
+        "amount": _build_display_money_payload(balance, converter),
+        "currency": converter.display_currency,
+        "currencyContext": converter.context_payload(),
         "trendLabel": build_trend_label(
             current_value=current_net,
             previous_value=previous_net,
@@ -448,30 +472,43 @@ def build_dashboard_accounts_summary(
     period_type: str = DEFAULT_DASHBOARD_PERIOD,
     currency: str = DEFAULT_DASHBOARD_CURRENCY,
 ) -> dict:
-    normalized_currency = currency.upper()
+    converter = get_currency_conversion_service(
+        user=user,
+        display_currency=currency,
+    )
     accounts = (
         Account.objects
         .filter(
             user=user,
-            currency=normalized_currency,
             is_active=True,
             is_archived=False,
         )
         .order_by("-is_default", "name", "id")[:DASHBOARD_ACCOUNTS_PREVIEW_LIMIT]
     )
 
-    return {
-        "title": "Счета",
-        "headerIcon": "credit-card",
-        "rows": [
+    rows = []
+    for account in accounts:
+        converted_balance = converter.convert_to_display(
+            account.balance,
+            source_currency=account.currency,
+        )
+        rows.append(
             {
                 "id": str(account.id),
                 "name": account.name,
-                "amountRub": _to_number(account.balance),
+                "amountRub": _to_number(converted_balance.amount),
+                "amount": converted_balance.as_payload(),
+                "currency": converted_balance.currency,
+                "sourceCurrency": account.currency,
                 "icon": account.icon,
             }
-            for account in accounts
-        ],
+        )
+
+    return {
+        "title": "Счета",
+        "headerIcon": "credit-card",
+        "currencyContext": converter.context_payload(),
+        "rows": rows,
         "footerLinkLabel": "Все счета",
     }
 
@@ -481,36 +518,46 @@ def build_dashboard_goals_summary(
     user,
     currency: str = DEFAULT_DASHBOARD_CURRENCY,
 ) -> dict:
-    normalized_currency = currency.upper()
-    default_currency = get_user_default_currency_code(user)
+    converter = get_currency_conversion_service(
+        user=user,
+        display_currency=currency,
+    )
     queryset = (
         Goal.objects
         .filter(user=user, status=GoalStatus.ACTIVE)
         .select_related("account")
+        .order_by("deadline", "name", "id")[:DASHBOARD_GOALS_PREVIEW_LIMIT]
     )
 
-    if normalized_currency == default_currency:
-        queryset = queryset.filter(
-            Q(account__currency=normalized_currency) | Q(account__isnull=True)
+    goals = []
+    for goal in queryset:
+        source_currency = goal.account.currency if goal.account_id else converter.primary_currency
+        target_amount = converter.convert_to_display(
+            goal.target_amount,
+            source_currency=source_currency,
         )
-    else:
-        queryset = queryset.filter(account__currency=normalized_currency)
-
-    goals = queryset.order_by("deadline", "name", "id")[:DASHBOARD_GOALS_PREVIEW_LIMIT]
+        current_amount = converter.convert_to_display(
+            goal.current_amount,
+            source_currency=source_currency,
+        )
+        goals.append(
+            {
+                "id": str(goal.id),
+                "name": goal.name,
+                "targetRub": _to_number(target_amount.amount),
+                "target": target_amount.as_payload(),
+                "currentRub": _to_number(current_amount.amount),
+                "current": current_amount.as_payload(),
+                "sourceCurrency": source_currency,
+                "percent": _to_number(goal.progress_percent),
+            }
+        )
 
     return {
         "title": "Цели",
         "headerIcon": "target",
-        "goals": [
-            {
-                "id": str(goal.id),
-                "name": goal.name,
-                "targetRub": _to_number(goal.target_amount),
-                "currentRub": _to_number(goal.current_amount),
-                "percent": _to_number(goal.progress_percent),
-            }
-            for goal in goals
-        ],
+        "currencyContext": converter.context_payload(),
+        "goals": goals,
     }
 
 
@@ -520,7 +567,10 @@ def build_dashboard_expense_dynamics(
     month: date,
     currency: str = DEFAULT_DASHBOARD_CURRENCY,
 ) -> dict:
-    normalized_currency = currency.upper()
+    converter = get_currency_conversion_service(
+        user=user,
+        display_currency=currency,
+    )
     buckets = build_month_week_buckets(month)
     month_start = buckets[0][0]
     month_end = buckets[-1][1]
@@ -528,11 +578,11 @@ def build_dashboard_expense_dynamics(
         Transaction.objects
         .filter(
             user=user,
-            account__currency=normalized_currency,
             operation_date__gte=month_start,
             operation_date__lte=month_end,
         )
-        .values("type", "operation_date")
+        .select_related("account")
+        .values("type", "operation_date", "account__currency")
         .annotate(total=Sum("amount"))
     )
 
@@ -549,7 +599,10 @@ def build_dashboard_expense_dynamics(
         if bucket_index is None:
             continue
 
-        total = row["total"] or Decimal("0.00")
+        total = converter.convert_to_display(
+            row["total"] or Decimal("0.00"),
+            source_currency=row["account__currency"],
+        ).amount
         if row["type"] == TransactionType.INCOME:
             bucket_values[bucket_index]["income"] += total
         elif row["type"] == TransactionType.EXPENSE:
@@ -567,6 +620,8 @@ def build_dashboard_expense_dynamics(
         "monthLabel": DASHBOARD_MONTH_NAMES[month.month],
         "legendIncome": "Доходы",
         "legendExpenses": "Расходы",
+        "currency": converter.display_currency,
+        "currencyContext": converter.context_payload(),
         "yAxisLabels": DASHBOARD_Y_AXIS_LABELS,
         "weeks": [
             {
@@ -635,26 +690,43 @@ def get_week_bucket_index(
 def _get_period_net_amount(
     *,
     user,
-    currency: str,
+    converter: CurrencyConversionService,
     date_from: date,
     date_to: date,
 ) -> Decimal:
     income = _get_period_amount(
         user=user,
-        currency=currency,
+        converter=converter,
         transaction_type=TransactionType.INCOME,
         date_from=date_from,
         date_to=date_to,
     )
     expense = _get_period_amount(
         user=user,
-        currency=currency,
+        converter=converter,
         transaction_type=TransactionType.EXPENSE,
         date_from=date_from,
         date_to=date_to,
     )
     return income - expense
 
+
+
+def _sum_converted_amounts(*, converter: CurrencyConversionService, items) -> Decimal:
+    total = Decimal("0.00")
+    for amount, source_currency in items:
+        total += converter.convert_to_display(
+            amount or Decimal("0.00"),
+            source_currency=source_currency,
+        ).amount
+    return total
+
+
+def _build_display_money_payload(value: Decimal, converter: CurrencyConversionService) -> dict:
+    return build_money_payload(
+        value,
+        currency=converter.display_currency,
+    )
 
 def build_trend_label(
     *,

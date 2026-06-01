@@ -3,6 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
+from apps.finance.currencies.money import MoneyAmountSerializer, build_money_payload
 from apps.finance.currencies.services import validate_user_currency_available
 from apps.finance.models import (
     Account,
@@ -56,6 +57,11 @@ class TransactionLineItemSerializer(serializers.ModelSerializer):
         decimal_places=2,
         min_value=Decimal("0.01"),
     )
+    unitPriceRub = serializers.SerializerMethodField(read_only=True)
+    sumRub = serializers.SerializerMethodField(read_only=True)
+    unitPriceDisplay = serializers.SerializerMethodField(read_only=True)
+    sumDisplay = serializers.SerializerMethodField(read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = TransactionLineItem
@@ -64,9 +70,51 @@ class TransactionLineItemSerializer(serializers.ModelSerializer):
             "name",
             "qty",
             "unit_price_rub",
+            "unitPriceRub",
+            "unitPriceDisplay",
             "sum_rub",
+            "sumRub",
+            "sumDisplay",
+            "sourceCurrency",
         ]
         read_only_fields = ["id"]
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sourceCurrency(self, obj: TransactionLineItem) -> str:
+        return self._source_currency(obj)
+
+    @extend_schema_field(OpenApiTypes.NUMBER)
+    def get_unitPriceRub(self, obj: TransactionLineItem) -> float:
+        return self._display_money(obj, obj.unit_price)["amount"]
+
+    @extend_schema_field(OpenApiTypes.NUMBER)
+    def get_sumRub(self, obj: TransactionLineItem) -> float:
+        return self._display_money(obj, obj.amount)["amount"]
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_unitPriceDisplay(self, obj: TransactionLineItem) -> dict:
+        return self._display_money(obj, obj.unit_price)
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_sumDisplay(self, obj: TransactionLineItem) -> dict:
+        return self._display_money(obj, obj.amount)
+
+    def _source_currency(self, obj: TransactionLineItem) -> str:
+        transaction = getattr(obj, "transaction", None)
+        account = getattr(transaction, "account", None)
+        return getattr(account, "currency", None) or "RUB"
+
+    def _display_money(self, obj: TransactionLineItem, value) -> dict:
+        converter = self.context.get("currency_converter")
+        source_currency = self._source_currency(obj)
+
+        if converter is None:
+            return build_money_payload(value, currency=source_currency)
+
+        return converter.display_amount_payload(
+            value,
+            source_currency=source_currency,
+        )
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -121,6 +169,11 @@ class TransactionSerializer(serializers.ModelSerializer):
     )
     amount_abs = serializers.SerializerMethodField(read_only=True)
     signed_amount = serializers.SerializerMethodField(read_only=True)
+    amountRub = serializers.SerializerMethodField(read_only=True)
+    amountDisplay = serializers.SerializerMethodField(read_only=True)
+    amountAbsDisplay = serializers.SerializerMethodField(read_only=True)
+    signedAmountDisplay = serializers.SerializerMethodField(read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
     category_name = serializers.CharField(
         source="category.name",
         read_only=True,
@@ -165,8 +218,13 @@ class TransactionSerializer(serializers.ModelSerializer):
             "type",
             "kind",
             "amount",
+            "amountRub",
+            "amountDisplay",
             "amount_abs",
+            "amountAbsDisplay",
             "signed_amount",
+            "signedAmountDisplay",
+            "sourceCurrency",
             "description",
             "operation_date",
             "date",
@@ -187,7 +245,12 @@ class TransactionSerializer(serializers.ModelSerializer):
             "category_color",
             "kind",
             "amount_abs",
+            "amountRub",
+            "amountDisplay",
+            "amountAbsDisplay",
             "signed_amount",
+            "signedAmountDisplay",
+            "sourceCurrency",
             "date",
             "created_at",
             "updated_at",
@@ -270,6 +333,50 @@ class TransactionSerializer(serializers.ModelSerializer):
             amount = -amount
 
         return str(amount.quantize(Decimal("0.01")))
+
+    @extend_schema_field(OpenApiTypes.NUMBER)
+    def get_amountRub(self, obj: Transaction) -> float:
+        return self._display_money(obj, obj.amount)["amount"]
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_amountDisplay(self, obj: Transaction) -> dict:
+        return self._display_money(obj, obj.amount)
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_amountAbsDisplay(self, obj: Transaction) -> dict:
+        return self._display_money(obj, abs(obj.amount))
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_signedAmountDisplay(self, obj: Transaction) -> dict:
+        return self._display_money(obj, self._signed_amount_value(obj))
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sourceCurrency(self, obj: Transaction) -> str:
+        return self._source_currency(obj)
+
+    def _signed_amount_value(self, obj: Transaction) -> Decimal:
+        amount = abs(obj.amount)
+
+        if obj.type == TransactionType.EXPENSE:
+            amount = -amount
+
+        return amount
+
+    def _source_currency(self, obj: Transaction) -> str:
+        account = getattr(obj, "account", None)
+        return getattr(account, "currency", None) or "RUB"
+
+    def _display_money(self, obj: Transaction, value) -> dict:
+        converter = self.context.get("currency_converter")
+        source_currency = self._source_currency(obj)
+
+        if converter is None:
+            return build_money_payload(value, currency=source_currency)
+
+        return converter.display_amount_payload(
+            value,
+            source_currency=source_currency,
+        )
 
     def validate_account(self, account: Account) -> Account:
         request = self.context.get("request")

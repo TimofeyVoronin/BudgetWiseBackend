@@ -8,6 +8,8 @@ from django.db.models import Q
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
+from apps.finance.currencies.money import MoneyAmountSerializer, build_money_payload
+from apps.finance.currencies.services import validate_user_currency_available
 from apps.finance.models import (
     Account,
     Category,
@@ -266,6 +268,10 @@ class RecurringTransactionSerializer(serializers.ModelSerializer):
         required=False,
     )
     amountRub = serializers.SerializerMethodField(read_only=True)
+    amountDisplay = serializers.SerializerMethodField(read_only=True)
+    amountAbsDisplay = serializers.SerializerMethodField(read_only=True)
+    signedAmountDisplay = serializers.SerializerMethodField(read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
     categoryId = serializers.SerializerMethodField(read_only=True)
     categoryName = serializers.CharField(
         source="category.name",
@@ -353,6 +359,10 @@ class RecurringTransactionSerializer(serializers.ModelSerializer):
             "kind",
             "amount",
             "amountRub",
+            "amountDisplay",
+            "amountAbsDisplay",
+            "signedAmountDisplay",
+            "sourceCurrency",
             "category",
             "categoryId",
             "categoryName",
@@ -397,6 +407,10 @@ class RecurringTransactionSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "amountRub",
+            "amountDisplay",
+            "amountAbsDisplay",
+            "signedAmountDisplay",
+            "sourceCurrency",
             "categoryId",
             "categoryName",
             "categoryIcon",
@@ -469,7 +483,50 @@ class RecurringTransactionSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_amountRub(self, obj) -> str:
-        return str(obj.amount.quantize(Decimal("0.01")))
+        return self._format_decimal(self._display_money(obj, obj.amount)["amount"])
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_amountDisplay(self, obj) -> dict:
+        return self._display_money(obj, obj.amount)
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_amountAbsDisplay(self, obj) -> dict:
+        return self._display_money(obj, abs(obj.amount))
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_signedAmountDisplay(self, obj) -> dict:
+        return self._display_money(obj, self._signed_amount_value(obj))
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sourceCurrency(self, obj) -> str:
+        return self._source_currency(obj)
+
+    def _format_decimal(self, value) -> str:
+        return str(Decimal(str(value)).quantize(Decimal("0.01")))
+
+    def _signed_amount_value(self, obj) -> Decimal:
+        amount = abs(obj.amount)
+
+        if obj.type == TransactionType.EXPENSE:
+            amount = -amount
+
+        return amount
+
+    def _source_currency(self, obj) -> str:
+        account = getattr(obj, "account", None)
+        return getattr(account, "currency", None) or "RUB"
+
+    def _display_money(self, obj, value) -> dict:
+        converter = self.context.get("currency_converter")
+        source_currency = self._source_currency(obj)
+
+        if converter is None:
+            return build_money_payload(value, currency=source_currency)
+
+        return converter.display_amount_payload(
+            value,
+            source_currency=source_currency,
+        )
 
     @extend_schema_field(OpenApiTypes.INT)
     def get_categoryId(self, obj) -> int:
@@ -489,6 +546,14 @@ class RecurringTransactionSerializer(serializers.ModelSerializer):
         if request and account.user_id != request.user.id:
             raise serializers.ValidationError(
                 "Счёт должен принадлежать текущему пользователю."
+            )
+
+        if request:
+            validate_user_currency_available(
+                request.user,
+                account.currency,
+                field_name="account",
+                require_visible=True,
             )
 
         if not account.is_active:
@@ -633,6 +698,8 @@ class RecurringTransactionChargeSerializer(serializers.ModelSerializer):
     recurringId = serializers.SerializerMethodField(read_only=True)
     chargedAt = serializers.SerializerMethodField(read_only=True)
     amountRub = serializers.SerializerMethodField(read_only=True)
+    amountDisplay = serializers.SerializerMethodField(read_only=True)
+    sourceCurrency = serializers.SerializerMethodField(read_only=True)
     errorMessage = serializers.CharField(
         source="error_message",
         read_only=True,
@@ -650,6 +717,8 @@ class RecurringTransactionChargeSerializer(serializers.ModelSerializer):
             "scheduled_date",
             "amount",
             "amountRub",
+            "amountDisplay",
+            "sourceCurrency",
             "status",
             "error_code",
             "error_message",
@@ -671,7 +740,40 @@ class RecurringTransactionChargeSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_amountRub(self, obj) -> str:
-        return str(obj.amount.quantize(Decimal("0.01")))
+        return str(Decimal(str(self._display_money(obj)["amount"])).quantize(Decimal("0.01")))
+
+    @extend_schema_field(MoneyAmountSerializer)
+    def get_amountDisplay(self, obj) -> dict:
+        return self._display_money(obj)
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sourceCurrency(self, obj) -> str:
+        return self._source_currency(obj)
+
+    def _source_currency(self, obj) -> str:
+        recurring = getattr(obj, "recurring_transaction", None)
+        account = getattr(recurring, "account", None)
+        if account is not None:
+            return account.currency
+
+        transaction = getattr(obj, "transaction", None)
+        transaction_account = getattr(transaction, "account", None)
+        if transaction_account is not None:
+            return transaction_account.currency
+
+        return "RUB"
+
+    def _display_money(self, obj) -> dict:
+        converter = self.context.get("currency_converter")
+        source_currency = self._source_currency(obj)
+
+        if converter is None:
+            return build_money_payload(obj.amount, currency=source_currency)
+
+        return converter.display_amount_payload(
+            obj.amount,
+            source_currency=source_currency,
+        )
 
     @extend_schema_field(OpenApiTypes.INT)
     def get_operationId(self, obj) -> int | None:

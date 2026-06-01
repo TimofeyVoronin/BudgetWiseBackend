@@ -1,14 +1,17 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 
-from apps.finance.models import PlannedStatus, PlannedTransaction, TransactionType
+from apps.finance.currencies.services import ensure_user_currencies, get_user_currency_by_code
+from apps.finance.models import Account, PlannedStatus, PlannedTransaction, TransactionType
 from apps.finance.testing import FinanceAPITestCase
 from apps.users.models import AppDateFormat, AppNumberFormat, UserAppSettings
 
 
+@override_settings(CURRENCY_RATES_ENABLED=False)
 class FinancialCalendarAPITests(FinanceAPITestCase):
     def create_planned(
         self,
@@ -32,6 +35,24 @@ class FinancialCalendarAPITests(FinanceAPITestCase):
             planned_date=planned_date or self.today,
             status=status,
             include_in_forecast=include_in_forecast,
+        )
+
+    def ensure_usd_currency(self):
+        ensure_user_currencies(self.user)
+        usd_currency = get_user_currency_by_code(self.user, "USD")
+        usd_currency.is_visible = True
+        usd_currency.rate_to_primary = Decimal("100.00000000")
+        usd_currency.save(update_fields=["is_visible", "rate_to_primary", "updated_at"])
+        return usd_currency
+
+    def create_usd_account(self, *, balance="100.00"):
+        self.ensure_usd_currency()
+        return Account.objects.create(
+            user=self.user,
+            name="USD card",
+            initial_balance=Decimal(balance),
+            balance=Decimal(balance),
+            currency="USD",
         )
 
     def test_calendar_requires_authentication(self):
@@ -252,10 +273,88 @@ class FinancialCalendarAPITests(FinanceAPITestCase):
         self.assertGreaterEqual(len(response.data["accounts"]), 2)
         self.assertEqual(response.data["defaultTimezone"], "Asia/Krasnoyarsk")
         self.assertIn("openingBalanceLabel", response.data)
+        self.assertIn("openingBalance", response.data)
+        self.assertIn("currencyContext", response.data)
         self.assertEqual(
             {item["value"] for item in response.data["eventTypes"]},
             {"income", "expense", "transfer", "reminder"},
         )
+
+    def test_calendar_month_converts_mixed_currency_events_to_display_currency(self):
+        self.authenticate()
+        selected_date = self.today + timedelta(days=3)
+        usd_account = self.create_usd_account(balance="100.00")
+        self.account.balance = Decimal("10000.00")
+        self.account.save(update_fields=["balance"])
+        rub_income = self.create_transaction(
+            account=self.account,
+            type=TransactionType.INCOME,
+            category=self.income_category,
+            amount="1000.00",
+            description="RUB income",
+            operation_date=selected_date,
+        )
+        usd_plan = self.create_planned(
+            account=usd_account,
+            name="USD plan",
+            amount="10.00",
+            planned_date=selected_date,
+        )
+
+        response = self.client.get(
+            reverse("finance:financial-calendar-month"),
+            data={
+                "year": selected_date.year,
+                "month": selected_date.month,
+                "accountIds": f"{self.account.id},{usd_account.id}",
+                "currency": "USD",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["currencyContext"]["code"], "USD")
+        self.assertEqual(response.data["openingBalance"], {"amount": 200.0, "currency": "USD"})
+        events_by_id = {item["id"]: item for item in response.data["events"]}
+        self.assertEqual(events_by_id[f"tx-{rub_income.id}"]["amountDisplay"], {"amount": 10.0, "currency": "USD"})
+        self.assertEqual(events_by_id[f"tx-{rub_income.id}"]["sourceCurrency"], "RUB")
+        self.assertEqual(events_by_id[f"planned-{usd_plan.id}"]["amountDisplay"], {"amount": -10.0, "currency": "USD"})
+        self.assertEqual(events_by_id[f"planned-{usd_plan.id}"]["sourceCurrency"], "USD")
+
+        day_forecast = next(
+            item for item in response.data["dayForecasts"] if item["date"] == selected_date.isoformat()
+        )
+        self.assertEqual(day_forecast["totalDeltaDisplay"], {"amount": 0.0, "currency": "USD"})
+        self.assertEqual(day_forecast["forecastBalance"], {"amount": 200.0, "currency": "USD"})
+
+    def test_calendar_events_endpoint_converts_to_display_currency(self):
+        self.authenticate()
+        selected_date = self.today
+        usd_account = self.create_usd_account(balance="100.00")
+        transaction = self.create_transaction(
+            account=usd_account,
+            type=TransactionType.EXPENSE,
+            category=self.expense_category,
+            amount="10.00",
+            description="USD expense",
+            operation_date=selected_date,
+        )
+
+        response = self.client.get(
+            reverse("finance:financial-calendar-events"),
+            data={
+                "dateFrom": selected_date.isoformat(),
+                "dateTo": selected_date.isoformat(),
+                "currency": "RUB",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["currencyContext"]["code"], "RUB")
+        event = response.data["items"][0]
+        self.assertEqual(event["id"], f"tx-{transaction.id}")
+        self.assertEqual(event["sourceCurrency"], "USD")
+        self.assertEqual(event["amountDisplay"], {"amount": -1000.0, "currency": "RUB"})
+        self.assertEqual(event["amountRub"], "-1000.00")
 
     def test_calendar_rejects_invalid_month_and_foreign_account(self):
         self.authenticate()
