@@ -7,10 +7,13 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.users.auth.serializers import (
+    ChangeEmailSerializer,
+    ChangePasswordSerializer,
     ForgotPasswordSerializer,
     LoginSerializer,
     LogoutSerializer,
     RegisterSerializer,
+    ResendEmailVerificationSerializer,
     ResetPasswordSerializer,
     VerifyEmailSerializer,
 )
@@ -29,8 +32,9 @@ class RegisterView(APIView):
         tags=["auth"],
         summary="Зарегистрировать пользователя",
         description=(
-            "Создаёт нового неактивного пользователя по email и password. "
-            "После регистрации backend отправляет письмо со ссылкой подтверждения email."
+            "Создаёт нового активного пользователя по email и password. "
+            "Если email-верификация включена, backend отправляет письмо подтверждения, "
+            "но вход в систему остаётся доступным сразу после регистрации."
         ),
         request=RegisterSerializer,
         responses={201: RegisterSerializer},
@@ -50,10 +54,12 @@ class RegisterView(APIView):
                     "id": 1,
                     "username": "user",
                     "email": "user@example.com",
-                    "is_active": False,
+                    "is_active": True,
+                    "isEmailVerified": False,
+                    "emailVerificationRequired": True,
                     "detail": (
                         "Пользователь зарегистрирован. "
-                        "Для активации аккаунта подтвердите email."
+                        "Для защиты аккаунта подтвердите email."
                     ),
                 },
                 response_only=True,
@@ -82,8 +88,8 @@ class VerifyEmailView(APIView):
         summary="Подтвердить email пользователя",
         description=(
             "Проверяет token подтверждения email. "
-            "Если token действителен, активирует аккаунт пользователя. "
-            "Повторное использование token после активации запрещено."
+            "Если token действителен, подтверждает email пользователя. "
+            "Повторное использование token для уже подтверждённого email возвращает успешный ответ."
         ),
         request=VerifyEmailSerializer,
         responses={200: VerifyEmailSerializer},
@@ -101,7 +107,9 @@ class VerifyEmailView(APIView):
                     "id": 1,
                     "email": "user@example.com",
                     "is_active": True,
-                    "detail": "Email подтверждён. Аккаунт активирован.",
+                    "isEmailVerified": True,
+                    "emailVerificationRequired": False,
+                    "detail": "Email подтверждён.",
                 },
                 response_only=True,
             ),
@@ -115,8 +123,123 @@ class VerifyEmailView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        response_serializer = self.serializer_class(user)
+        return Response(serializer.to_representation(user), status=status.HTTP_200_OK)
 
+
+class ResendEmailVerificationView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ResendEmailVerificationSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Повторно отправить письмо подтверждения email",
+        description=(
+            "Отправляет новое письмо подтверждения email текущему пользователю. "
+            "Если email уже подтверждён, возвращает успешный ответ без отправки письма."
+        ),
+        request=None,
+        responses={200: ResendEmailVerificationSerializer},
+        examples=[
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "detail": "Письмо подтверждения email отправлено.",
+                    "queued": True,
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(context={"request": request})
+        result = serializer.save()
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChangePasswordSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Изменить пароль текущего пользователя",
+        description=(
+            "Меняет пароль авторизованного пользователя. "
+            "Для действия нужен подтверждённый email или телефон."
+        ),
+        request=ChangePasswordSerializer,
+        responses={200: ChangePasswordSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={
+                    "currentPassword": "OldPassword123!",
+                    "newPassword": "NewPassword123!",
+                    "newPasswordConfirm": "NewPassword123!",
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={"detail": "Пароль успешно изменён."},
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ChangeEmailView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChangeEmailSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Изменить email текущего пользователя",
+        description=(
+            "Меняет email текущего пользователя после проверки текущего пароля. "
+            "Для действия нужен подтверждённый email или телефон. "
+            "После смены email подтверждение сбрасывается и отправляется новое письмо."
+        ),
+        request=ChangeEmailSerializer,
+        responses={200: ChangeEmailSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={
+                    "newEmail": "new-email@example.com",
+                    "currentPassword": "Password123!",
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "id": 1,
+                    "email": "new-email@example.com",
+                    "isEmailVerified": False,
+                    "emailVerificationRequired": True,
+                    "detail": "Email изменён. Подтвердите новый email по ссылке из письма.",
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        response_serializer = self.serializer_class(user)
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
 

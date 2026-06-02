@@ -31,7 +31,7 @@ class UserProfileMeAPITests(APITestCase):
         self.assertFalse(response.data["success"])
         self.assertEqual(response.data["error"]["status_code"], 401)
 
-    @override_settings(REGISTRATION_REQUIRE_EMAIL_CONFIRMATION=False)
+    @override_settings(EMAIL_VERIFICATION_ENABLED=False)
     def test_get_profile_me_returns_profile_data(self):
         self.client.force_authenticate(user=self.user)
 
@@ -134,7 +134,7 @@ class UserProfileMeAPITests(APITestCase):
         self.assertIn("city", field_errors)
         self.assertIn("bio", field_errors)
 
-    @override_settings(REGISTRATION_REQUIRE_EMAIL_CONFIRMATION=True)
+    @override_settings(EMAIL_VERIFICATION_ENABLED=True)
     def test_profile_me_returns_email_verification_enabled(self):
         self.client.force_authenticate(user=self.user)
 
@@ -143,3 +143,54 @@ class UserProfileMeAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["emailVerificationEnabled"])
         self.assertTrue(response.data["isEmailVerified"])
+
+    @override_settings(EMAIL_VERIFICATION_ENABLED=True)
+    def test_patch_profile_allows_first_phone_add_without_verified_contact(self):
+        self.user.phone = ""
+        self.user.email_verified = False
+        self.user.phone_verified = False
+        self.user.save(update_fields=["phone", "email_verified", "phone_verified"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            self.url,
+            {"phone": "+79990000000"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["phone"], "+79990000000")
+
+    @override_settings(EMAIL_VERIFICATION_ENABLED=True)
+    def test_patch_profile_rejects_existing_phone_change_without_verified_contact(self):
+        self.user.email_verified = False
+        self.user.phone_verified = False
+        self.user.save(update_fields=["email_verified", "phone_verified"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            self.url,
+            {"phone": "+79991112233"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(response.data["success"])
+        self.assertEqual(response.data["error"]["code"], "email_not_verified")
+
+    @override_settings(EMAIL_VERIFICATION_ENABLED=True)
+    def test_patch_profile_allows_existing_phone_change_with_verified_email(self):
+        self.user.email_verified = True
+        self.user.phone_verified = False
+        self.user.save(update_fields=["email_verified", "phone_verified"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            self.url,
+            {"phone": "+79991112233"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["phone"], "+79991112233")
+

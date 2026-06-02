@@ -5,6 +5,13 @@ from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
+from apps.users.auth.verification import (
+    email_verification_enabled,
+    ensure_verified_contact,
+    is_email_verified,
+    is_phone_verified,
+)
+
 
 User = get_user_model()
 
@@ -55,6 +62,25 @@ class CurrentUserSerializer(serializers.ModelSerializer):
             return "staff"
 
         return "user"
+
+    def validate(self, attrs):
+        self._validate_phone_change(attrs)
+        return attrs
+
+    def _validate_phone_change(self, attrs) -> None:
+        if self.instance is None or "phone" not in attrs:
+            return
+
+        old_phone = (self.instance.phone or "").strip()
+        new_phone = (attrs.get("phone") or "").strip()
+
+        if old_phone == new_phone:
+            return
+
+        if not old_phone:
+            return
+
+        ensure_verified_contact(self.instance)
 
 
 class UserProfileMeSerializer(serializers.ModelSerializer):
@@ -187,18 +213,15 @@ class UserProfileMeSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_isEmailVerified(self, obj) -> bool:
-        if not settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION:
-            return False
-
-        return bool(obj.is_active)
+        return is_email_verified(obj)
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_isPhoneVerified(self, obj) -> bool:
-        return False
+        return is_phone_verified(obj)
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_emailVerificationEnabled(self, obj) -> bool:
-        return bool(settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION)
+        return email_verification_enabled()
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_phoneVerificationEnabled(self, obj) -> bool:
@@ -247,6 +270,25 @@ class UserProfileMeSerializer(serializers.ModelSerializer):
 
     def validate_bio(self, value: str) -> str:
         return value.strip()
+
+    def validate(self, attrs):
+        self._validate_phone_change(attrs)
+        return attrs
+
+    def _validate_phone_change(self, attrs) -> None:
+        if self.instance is None or "phone" not in attrs:
+            return
+
+        old_phone = (self.instance.phone or "").strip()
+        new_phone = (attrs.get("phone") or "").strip()
+
+        if old_phone == new_phone:
+            return
+
+        if not old_phone:
+            return
+
+        ensure_verified_contact(self.instance)
 
 
 def _validate_name(value: str, field_title: str) -> str:

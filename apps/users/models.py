@@ -24,6 +24,29 @@ class User(AbstractUser):
         blank=True,
         verbose_name="Телефон",
     )
+    email_verified = models.BooleanField(
+        default=True,
+        verbose_name="Email подтверждён",
+    )
+    email_verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата подтверждения email",
+    )
+    email_verification_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последней отправки подтверждения email",
+    )
+    phone_verified = models.BooleanField(
+        default=False,
+        verbose_name="Телефон подтверждён",
+    )
+    phone_verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата подтверждения телефона",
+    )
     city = models.CharField(
         max_length=120,
         blank=True,
@@ -49,6 +72,10 @@ class User(AbstractUser):
         parts = [self.last_name, self.first_name, self.middle_name]
         full_name = " ".join(part for part in parts if part).strip()
         return full_name or self.username or self.email
+
+    @property
+    def has_verified_contact(self) -> bool:
+        return bool(self.email_verified or self.phone_verified)
 
 
 class UserProfileAuditAction(models.TextChoices):

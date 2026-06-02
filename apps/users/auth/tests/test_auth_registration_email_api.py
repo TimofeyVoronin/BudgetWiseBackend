@@ -26,12 +26,9 @@ User = get_user_model()
 
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    EMAIL_VERIFICATION_SEND_ASYNC=False,
     FRONTEND_EMAIL_VERIFY_URL="http://app.budgetwise.localhost:5173/auth/verify-email",
-)
-@override_settings(
-    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
-    FRONTEND_EMAIL_VERIFY_URL="http://app.budgetwise.localhost:5173/auth/verify-email",
-    REGISTRATION_REQUIRE_EMAIL_CONFIRMATION=False,
+    EMAIL_VERIFICATION_ENABLED=False,
 )
 class RegistrationAndEmailVerificationAPITests(APITestCase):
     def setUp(self):
@@ -70,8 +67,8 @@ class RegistrationAndEmailVerificationAPITests(APITestCase):
 
         self.assertEqual(len(mail.outbox), 0)
 
-    @override_settings(REGISTRATION_REQUIRE_EMAIL_CONFIRMATION=True)
-    def test_register_with_email_confirmation_creates_inactive_user_and_sends_email(self):
+    @override_settings(EMAIL_VERIFICATION_ENABLED=True)
+    def test_register_with_email_verification_creates_active_unverified_user_and_sends_email(self):
         response = self.client.post(
             self.register_url,
             {
@@ -93,14 +90,17 @@ class RegistrationAndEmailVerificationAPITests(APITestCase):
             response.data["username"],
             "register-with-confirmation",
         )
-        self.assertFalse(response.data["is_active"])
+        self.assertTrue(response.data["is_active"])
+        self.assertFalse(response.data["isEmailVerified"])
+        self.assertTrue(response.data["emailVerificationRequired"])
         self.assertEqual(
             response.data["detail"],
-            "Пользователь зарегистрирован. Для активации аккаунта подтвердите email.",
+            "Пользователь зарегистрирован. Для защиты аккаунта подтвердите email.",
         )
 
         user = User.objects.get(email="register-with-confirmation@example.com")
-        self.assertFalse(user.is_active)
+        self.assertTrue(user.is_active)
+        self.assertFalse(user.email_verified)
         self.assertTrue(user.check_password(self.password))
 
         self.assertEqual(len(mail.outbox), 1)
@@ -241,7 +241,8 @@ class RegistrationAndEmailVerificationAPITests(APITestCase):
             username="verify_user",
             email="verify-user@example.com",
             password=self.password,
-            is_active=False,
+            is_active=True,
+            email_verified=False,
         )
         token = build_email_confirmation_token(user)
 
@@ -257,13 +258,14 @@ class RegistrationAndEmailVerificationAPITests(APITestCase):
         self.assertEqual(response.data["id"], user.id)
         self.assertEqual(response.data["email"], user.email)
         self.assertTrue(response.data["is_active"])
-        self.assertEqual(
-            response.data["detail"],
-            "Email подтверждён. Аккаунт активирован.",
-        )
+        self.assertTrue(response.data["isEmailVerified"])
+        self.assertFalse(response.data["emailVerificationRequired"])
+        self.assertEqual(response.data["detail"], "Email подтверждён.")
 
         user.refresh_from_db()
         self.assertTrue(user.is_active)
+        self.assertTrue(user.email_verified)
+        self.assertIsNotNone(user.email_verified_at)
 
     def test_verify_email_with_invalid_token_returns_400(self):
         response = self.client.post(
@@ -303,7 +305,7 @@ class RegistrationAndEmailVerificationAPITests(APITestCase):
         self.assertEqual(error["code"], "token_expired")
         self.assertIn("token", error["field_errors"])
 
-    def test_verify_email_with_already_active_user_returns_400(self):
+    def test_verify_email_with_already_verified_user_returns_200(self):
         user = User.objects.create_user(
             username="already_active_user",
             email="already-active@example.com",
@@ -320,13 +322,9 @@ class RegistrationAndEmailVerificationAPITests(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertFalse(response.data["success"])
-
-        error = response.data["error"]
-        self.assertEqual(error["status_code"], status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(error["code"], "token_already_used")
-        self.assertIn("token", error["field_errors"])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["detail"], "Email уже подтверждён.")
+        self.assertTrue(response.data["isEmailVerified"])
 
     def test_verify_email_without_token_returns_400(self):
         response = self.client.post(

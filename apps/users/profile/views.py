@@ -202,7 +202,7 @@ class UserProfileMeView(GenericAPIView):
             "Возвращает данные для страницы профиля: ФИО, email, телефон, город, "
             "краткое описание и статусы подтверждения контактных данных. "
             "Email и username являются read-only. Подтверждение email уже есть в системе, "
-            "но может быть выключено настройкой REGISTRATION_REQUIRE_EMAIL_CONFIRMATION."
+            "но может быть выключено настройкой EMAIL_VERIFICATION_ENABLED."
         ),
         responses={200: UserProfileMeSerializer},
         examples=[

@@ -43,7 +43,20 @@ class UserProfileAuditLogInline(admin.TabularInline):
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    list_display = ("id", "username", "email", "first_name", "last_name", "phone", "city", "avatar", "is_staff")
+    list_display = (
+        "id",
+        "username",
+        "email",
+        "email_verified",
+        "phone",
+        "phone_verified",
+        "first_name",
+        "last_name",
+        "city",
+        "avatar",
+        "is_staff",
+    )
+    list_filter = ("email_verified", "phone_verified", "is_staff", "is_active")
     search_fields = ("username", "email", "first_name", "last_name", "middle_name", "phone", "city")
     ordering = ("id",)
     inlines = [UserAppSettingsInline, UserProfileAuditLogInline]
@@ -54,6 +67,11 @@ class CustomUserAdmin(UserAdmin):
                 "fields": (
                     "middle_name",
                     "phone",
+                    "phone_verified",
+                    "phone_verified_at",
+                    "email_verified",
+                    "email_verified_at",
+                    "email_verification_sent_at",
                     "city",
                     "bio",
                     "avatar",
