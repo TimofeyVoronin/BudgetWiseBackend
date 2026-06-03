@@ -191,10 +191,17 @@ PHONE_VERIFICATION_CODE_SALT = env(
     default="budgetwise.phone-verification",
 )
 
-# Future SMS Aero integration settings. The console provider is used in development.
+# SMS Aero integration settings. The console provider is used in development.
 SMSAERO_EMAIL = env("SMSAERO_EMAIL", default="")
 SMSAERO_API_KEY = env("SMSAERO_API_KEY", default="")
-SMSAERO_SIGN = env("SMSAERO_SIGN", default="BudgetWise")
+SMSAERO_SIGN = env("SMSAERO_SIGN", default="SMS Aero")
+SMSAERO_BASE_URL = env("SMSAERO_BASE_URL", default="https://gate.smsaero.ru/v2")
+SMSAERO_TIMEOUT_SECONDS = env.int("SMSAERO_TIMEOUT_SECONDS", default=10)
+SMSAERO_TEST_MODE = env.bool("SMSAERO_TEST_MODE", default=False)
+PHONE_VERIFICATION_SMS_TEXT_TEMPLATE = env(
+    "PHONE_VERIFICATION_SMS_TEXT_TEMPLATE",
+    default="Код подтверждения BudgetWise: {code}. Никому не сообщайте этот код.",
+)
 
 FRONTEND_PASSWORD_RESET_URL = env(
     "FRONTEND_PASSWORD_RESET_URL",

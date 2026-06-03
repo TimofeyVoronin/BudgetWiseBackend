@@ -1,11 +1,15 @@
+import json
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import override_settings
+from django.utils import timezone
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.users.auth.phone_verification import PhoneVerificationProviderError, send_phone_verification_code
 from apps.users.models import PhoneVerificationCode, UserProfileAuditAction, UserProfileAuditLog
 
 
@@ -198,3 +202,116 @@ class PhoneVerificationAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("NewPhoneVerification123!"))
+
+
+class _FakeSmsAeroResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def read(self):
+        return json.dumps(self.payload).encode("utf-8")
+
+
+@override_settings(
+    PHONE_VERIFICATION_PROVIDER="smsaero",
+    SMSAERO_EMAIL="sms@example.com",
+    SMSAERO_API_KEY="test-api-key",
+    SMSAERO_SIGN="SMS Aero",
+    SMSAERO_BASE_URL="https://gate.smsaero.ru/v2",
+    SMSAERO_TIMEOUT_SECONDS=5,
+    SMSAERO_TEST_MODE=False,
+    PHONE_VERIFICATION_SMS_TEXT_TEMPLATE="Код BudgetWise: {code}",
+)
+class SmsAeroPhoneVerificationProviderTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="smsaero_user",
+            email="smsaero-user@example.com",
+            password="PhoneVerification123!",
+            phone="+79990000000",
+        )
+        self.verification_code = PhoneVerificationCode.objects.create(
+            user=self.user,
+            phone="+79990000000",
+            code_hash="not-used-in-provider-test",
+            expires_at=timezone.now() + timedelta(minutes=15),
+        )
+
+    @patch("apps.users.auth.phone_verification.urlopen")
+    def test_smsaero_provider_sends_json_request(self, mocked_urlopen):
+        mocked_urlopen.return_value = _FakeSmsAeroResponse(
+            {
+                "success": True,
+                "data": {
+                    "id": 12345,
+                    "from": "SMS Aero",
+                    "number": "79990000000",
+                    "status": 0,
+                },
+            }
+        )
+
+        result = send_phone_verification_code(
+            verification_code=self.verification_code,
+            code="123456",
+        )
+
+        self.assertTrue(result["sent"])
+        self.assertEqual(result["provider"], "smsaero")
+        self.assertEqual(result["sms_id"], 12345)
+
+        request = mocked_urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://gate.smsaero.ru/v2/sms/send")
+        self.assertEqual(request.get_method(), "POST")
+        self.assertIn("Basic ", request.headers["Authorization"])
+
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(payload["number"], 79990000000)
+        self.assertEqual(payload["sign"], "SMS Aero")
+        self.assertEqual(payload["text"], "Код BudgetWise: 123456")
+
+    @override_settings(SMSAERO_TEST_MODE=True)
+    @patch("apps.users.auth.phone_verification.urlopen")
+    def test_smsaero_provider_uses_test_endpoint_when_enabled(self, mocked_urlopen):
+        mocked_urlopen.return_value = _FakeSmsAeroResponse({"success": True, "data": {"id": 1}})
+
+        send_phone_verification_code(
+            verification_code=self.verification_code,
+            code="123456",
+        )
+
+        request = mocked_urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://gate.smsaero.ru/v2/sms/testsend")
+
+    @patch("apps.users.auth.phone_verification.urlopen")
+    def test_smsaero_provider_raises_error_on_unsuccessful_response(self, mocked_urlopen):
+        mocked_urlopen.return_value = _FakeSmsAeroResponse(
+            {
+                "success": False,
+                "message": "Bad auth",
+            }
+        )
+
+        with self.assertRaises(PhoneVerificationProviderError) as exc:
+            send_phone_verification_code(
+                verification_code=self.verification_code,
+                code="123456",
+            )
+
+        self.assertIn("Bad auth", str(exc.exception))
+
+    @override_settings(SMSAERO_EMAIL="", SMSAERO_API_KEY="")
+    def test_smsaero_provider_requires_credentials(self):
+        with self.assertRaises(PhoneVerificationProviderError) as exc:
+            send_phone_verification_code(
+                verification_code=self.verification_code,
+                code="123456",
+            )
+
+        self.assertIn("SMSAERO_EMAIL", str(exc.exception))
