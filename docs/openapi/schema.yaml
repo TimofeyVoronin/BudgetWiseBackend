@@ -264,6 +264,92 @@ paths:
                     detail: Выход выполнен. Refresh token добавлен в blacklist.
                   summary: Успешный ответ
           description: ''
+  /api/v1/auth/phone/verification/confirm/:
+    post:
+      operationId: auth_phone_verification_confirm_create
+      description: Подтверждает телефон текущего пользователя по 6-значному коду.
+        После успешного подтверждения phone становится доверенным каналом для чувствительных
+        действий.
+      summary: Подтвердить телефон кодом
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmPhoneVerificationRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  phone: '+79990000000'
+                  code: '123456'
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConfirmPhoneVerificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConfirmPhoneVerificationRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmPhoneVerification'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Телефон подтверждён.
+                    phoneDisplay: '+79990000000'
+                    isPhoneVerified: true
+                    hasVerifiedContact: true
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/auth/phone/verification/send/:
+    post:
+      operationId: auth_phone_verification_send_create
+      description: Отправляет код подтверждения телефона текущего пользователя. Если
+        телефон ещё не указан, его можно передать в запросе. Если телефон уже указан
+        и меняется, нужен подтверждённый email или телефон.
+      summary: Отправить код подтверждения телефона
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendPhoneVerificationRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  phone: +7 (999) 000-00-00
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SendPhoneVerificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendPhoneVerificationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendPhoneVerification'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Код подтверждения телефона отправлен.
+                    phoneDisplay: '+79990000000'
+                    queued: true
+                    isPhoneVerified: false
+                  summary: Успешный ответ
+          description: ''
   /api/v1/auth/register/:
     post:
       operationId: auth_register_create
@@ -8880,7 +8966,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this пользователь.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - users
@@ -8903,7 +8989,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this пользователь.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - users
@@ -8944,7 +9030,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this пользователь.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - users
@@ -11613,6 +11699,42 @@ components:
           type: string
       required:
       - isDuplicate
+    ConfirmPhoneVerification:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+        phoneDisplay:
+          type: string
+          readOnly: true
+        isPhoneVerified:
+          type: boolean
+          readOnly: true
+        hasVerifiedContact:
+          type: boolean
+          readOnly: true
+      required:
+      - detail
+      - hasVerifiedContact
+      - isPhoneVerified
+      - phoneDisplay
+    ConfirmPhoneVerificationRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 32
+        code:
+          type: string
+          writeOnly: true
+          minLength: 6
+          maxLength: 6
+      required:
+      - code
+      - phone
     ConflictStrategyEnum:
       enum:
       - manual_confirmation
@@ -14006,6 +14128,9 @@ components:
         emailVerificationRequired:
           type: boolean
           readOnly: true
+        phoneVerificationEnabled:
+          type: boolean
+          readOnly: true
         hasVerifiedContact:
           type: boolean
           readOnly: true
@@ -14019,6 +14144,7 @@ components:
       - isPhoneVerified
       - is_active
       - last_name
+      - phoneVerificationEnabled
       - role
       - username
     Logout:
@@ -17532,6 +17658,33 @@ components:
       required:
       - channels
       - sent
+    SendPhoneVerification:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+        phoneDisplay:
+          type: string
+          readOnly: true
+        queued:
+          type: boolean
+          readOnly: true
+        isPhoneVerified:
+          type: boolean
+          readOnly: true
+      required:
+      - detail
+      - isPhoneVerified
+      - phoneDisplay
+      - queued
+    SendPhoneVerificationRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          writeOnly: true
+          maxLength: 32
     StrategyEnum:
       enum:
       - server_wins

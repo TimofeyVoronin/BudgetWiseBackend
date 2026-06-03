@@ -9,12 +9,14 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from apps.users.auth.serializers import (
     ChangeEmailSerializer,
     ChangePasswordSerializer,
+    ConfirmPhoneVerificationSerializer,
     ForgotPasswordSerializer,
     LoginSerializer,
     LogoutSerializer,
     RegisterSerializer,
     ResendEmailVerificationSerializer,
     ResetPasswordSerializer,
+    SendPhoneVerificationSerializer,
     VerifyEmailSerializer,
 )
 from apps.users.auth.throttles import (
@@ -152,6 +154,90 @@ class ResendEmailVerificationView(APIView):
     )
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(context={"request": request})
+        result = serializer.save()
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class SendPhoneVerificationView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = SendPhoneVerificationSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Отправить код подтверждения телефона",
+        description=(
+            "Отправляет код подтверждения телефона текущего пользователя. "
+            "Если телефон ещё не указан, его можно передать в запросе. "
+            "Если телефон уже указан и меняется, нужен подтверждённый email или телефон."
+        ),
+        request=SendPhoneVerificationSerializer,
+        responses={200: SendPhoneVerificationSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={"phone": "+7 (999) 000-00-00"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "detail": "Код подтверждения телефона отправлен.",
+                    "phoneDisplay": "+79990000000",
+                    "queued": True,
+                    "isPhoneVerified": False,
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ConfirmPhoneVerificationView(APIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ConfirmPhoneVerificationSerializer
+
+    @extend_schema(
+        tags=["auth"],
+        summary="Подтвердить телефон кодом",
+        description=(
+            "Подтверждает телефон текущего пользователя по 6-значному коду. "
+            "После успешного подтверждения phone становится доверенным каналом "
+            "для чувствительных действий."
+        ),
+        request=ConfirmPhoneVerificationSerializer,
+        responses={200: ConfirmPhoneVerificationSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                value={"phone": "+79990000000", "code": "123456"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Успешный ответ",
+                value={
+                    "detail": "Телефон подтверждён.",
+                    "phoneDisplay": "+79990000000",
+                    "isPhoneVerified": True,
+                    "hasVerifiedContact": True,
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
         result = serializer.save()
         return Response(result, status=status.HTTP_200_OK)
 

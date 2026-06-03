@@ -2,6 +2,7 @@ from django.urls import path
 from apps.users.auth.views import (
     ChangeEmailView,
     ChangePasswordView,
+    ConfirmPhoneVerificationView,
     ForgotPasswordView,
     BudgetWiseTokenRefreshView,
     LoginView,
@@ -9,6 +10,7 @@ from apps.users.auth.views import (
     RegisterView,
     ResendEmailVerificationView,
     ResetPasswordView,
+    SendPhoneVerificationView,
     VerifyEmailView,
 )
 
@@ -25,6 +27,16 @@ urlpatterns = [
         "verify-email/resend/",
         ResendEmailVerificationView.as_view(),
         name="verify-email-resend",
+    ),
+    path(
+        "phone/verification/send/",
+        SendPhoneVerificationView.as_view(),
+        name="phone-verification-send",
+    ),
+    path(
+        "phone/verification/confirm/",
+        ConfirmPhoneVerificationView.as_view(),
+        name="phone-verification-confirm",
     ),
     path("change-password/", ChangePasswordView.as_view(), name="change-password"),
     path("change-email/", ChangeEmailView.as_view(), name="change-email"),

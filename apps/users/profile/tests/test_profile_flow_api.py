@@ -81,7 +81,7 @@ class UserProfileFlowAPITests(APITestCase):
 
         self.assertEqual(update_response.status_code, status.HTTP_200_OK)
         self.assertEqual(update_response.data["fullName"], "Воронин Тимофей Викторович")
-        self.assertEqual(update_response.data["phone"], "+7 (999) 111-22-33")
+        self.assertEqual(update_response.data["phone"], "+79991112233")
         self.assertEqual(update_response.data["city"], "Санкт-Петербург")
 
         upload_response = self.client.post(

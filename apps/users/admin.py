@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from apps.users.models import User, UserAppSettings, UserProfileAuditLog
+from apps.users.models import PhoneVerificationCode, User, UserAppSettings, UserProfileAuditLog
 
 
 
@@ -110,3 +110,32 @@ class UserAppSettingsAdmin(admin.ModelAdmin):
     search_fields = ("user__email", "user__username", "default_currency")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("user_id",)
+
+@admin.register(PhoneVerificationCode)
+class PhoneVerificationCodeAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "phone",
+        "attempts_count",
+        "sent_at",
+        "expires_at",
+        "confirmed_at",
+    )
+    list_filter = ("sent_at", "expires_at", "confirmed_at")
+    search_fields = ("user__email", "user__username", "phone")
+    readonly_fields = (
+        "user",
+        "phone",
+        "code_hash",
+        "attempts_count",
+        "sent_at",
+        "expires_at",
+        "confirmed_at",
+        "created_at",
+    )
+    ordering = ("-sent_at", "-id")
+
+    def has_add_permission(self, request):
+        return False
+

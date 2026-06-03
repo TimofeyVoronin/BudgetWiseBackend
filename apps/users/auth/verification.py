@@ -18,7 +18,13 @@ def is_email_verified(user) -> bool:
     return bool(getattr(user, "email_verified", False))
 
 
+def phone_verification_enabled() -> bool:
+    return bool(getattr(settings, "PHONE_VERIFICATION_ENABLED", False))
+
+
 def is_phone_verified(user) -> bool:
+    if not phone_verification_enabled():
+        return False
     return bool(getattr(user, "phone_verified", False))
 
 

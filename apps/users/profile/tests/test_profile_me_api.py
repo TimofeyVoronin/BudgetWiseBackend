@@ -31,7 +31,7 @@ class UserProfileMeAPITests(APITestCase):
         self.assertFalse(response.data["success"])
         self.assertEqual(response.data["error"]["status_code"], 401)
 
-    @override_settings(EMAIL_VERIFICATION_ENABLED=False)
+    @override_settings(EMAIL_VERIFICATION_ENABLED=False, PHONE_VERIFICATION_ENABLED=False)
     def test_get_profile_me_returns_profile_data(self):
         self.client.force_authenticate(user=self.user)
 
@@ -77,7 +77,7 @@ class UserProfileMeAPITests(APITestCase):
         self.assertEqual(response.data["lastName"], "Воронин")
         self.assertEqual(response.data["middleName"], "Викторович")
         self.assertEqual(response.data["fullName"], "Воронин Тимофей Викторович")
-        self.assertEqual(response.data["phone"], "+7 (999) 111-22-33")
+        self.assertEqual(response.data["phone"], "+79991112233")
         self.assertEqual(response.data["city"], "Красноярск")
         self.assertEqual(response.data["bio"], "Backend Python Developer")
 
@@ -85,7 +85,7 @@ class UserProfileMeAPITests(APITestCase):
         self.assertEqual(self.user.first_name, "Тимофей")
         self.assertEqual(self.user.last_name, "Воронин")
         self.assertEqual(self.user.middle_name, "Викторович")
-        self.assertEqual(self.user.phone, "+7 (999) 111-22-33")
+        self.assertEqual(self.user.phone, "+79991112233")
         self.assertEqual(self.user.city, "Красноярск")
         self.assertEqual(self.user.bio, "Backend Python Developer")
 

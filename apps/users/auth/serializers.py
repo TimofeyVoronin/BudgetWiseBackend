@@ -33,6 +33,12 @@ from apps.users.auth.password_reset import (
     get_password_reset_token_record,
     send_password_reset_email,
 )
+from apps.users.auth.phone_verification import (
+    confirm_phone_verification,
+    normalize_phone_number,
+    phone_verification_enabled,
+    request_phone_verification,
+)
 from apps.users.auth.verification import (
     EMAIL_NOT_VERIFIED_CODE,
     EMAIL_NOT_VERIFIED_MESSAGE,
@@ -628,6 +634,96 @@ class ChangeEmailSerializer(serializers.Serializer):
         }
 
 
+class SendPhoneVerificationSerializer(serializers.Serializer):
+    phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=32,
+        write_only=True,
+    )
+    detail = serializers.CharField(read_only=True)
+    phoneDisplay = serializers.CharField(read_only=True)
+    queued = serializers.BooleanField(read_only=True)
+    isPhoneVerified = serializers.BooleanField(read_only=True)
+
+    def validate_phone(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return ""
+        return normalize_phone_number(value)
+
+    def save(self, **kwargs):
+        request = self.context["request"]
+        user = request.user
+        old_phone = user.phone or ""
+        phone = self.validated_data.get("phone") or old_phone
+
+        result = request_phone_verification(user, phone=phone, force=False)
+
+        if result.get("phone_changed"):
+            user.refresh_from_db()
+            log_profile_audit_event(
+                user=user,
+                action=UserProfileAuditAction.PHONE_CHANGED,
+                changed_fields=["phone"],
+                old_values={"phone": result.get("old_phone") or ""},
+                new_values={"phone": result.get("phone") or ""},
+                metadata={"source": "phone_verification_send_api"},
+                request=request,
+            )
+
+        return {
+            "detail": result.get("detail"),
+            "phoneDisplay": result.get("phone"),
+            "queued": bool(result.get("queued", False)),
+            "isPhoneVerified": False,
+        }
+
+    def to_representation(self, instance):
+        return instance
+
+
+class ConfirmPhoneVerificationSerializer(serializers.Serializer):
+    phone = serializers.CharField(write_only=True, max_length=32)
+    code = serializers.CharField(write_only=True, min_length=6, max_length=6)
+
+    detail = serializers.CharField(read_only=True)
+    phoneDisplay = serializers.CharField(read_only=True)
+    isPhoneVerified = serializers.BooleanField(read_only=True)
+    hasVerifiedContact = serializers.BooleanField(read_only=True)
+
+    def validate_phone(self, value: str) -> str:
+        return normalize_phone_number(value)
+
+    def validate_code(self, value: str) -> str:
+        value = value.strip()
+        if not value.isdigit():
+            raise serializers.ValidationError(
+                "Код должен состоять из 6 цифр.",
+                code="invalid_code",
+            )
+        return value
+
+    def save(self, **kwargs):
+        request = self.context["request"]
+        user = request.user
+        result = confirm_phone_verification(
+            user,
+            phone=self.validated_data["phone"],
+            code=self.validated_data["code"],
+        )
+        user.refresh_from_db()
+        return {
+            "detail": result.get("detail"),
+            "phoneDisplay": result.get("phone"),
+            "isPhoneVerified": is_phone_verified(user),
+            "hasVerifiedContact": has_verified_contact(user),
+        }
+
+    def to_representation(self, instance):
+        return instance
+
+
 class LoginUserSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     username = serializers.CharField(read_only=True)
@@ -639,6 +735,7 @@ class LoginUserSerializer(serializers.Serializer):
     isEmailVerified = serializers.BooleanField(read_only=True)
     isPhoneVerified = serializers.BooleanField(read_only=True)
     emailVerificationRequired = serializers.BooleanField(read_only=True)
+    phoneVerificationEnabled = serializers.BooleanField(read_only=True)
     hasVerifiedContact = serializers.BooleanField(read_only=True)
 
 
@@ -704,6 +801,7 @@ class LoginSerializer(serializers.Serializer):
                 "isEmailVerified": is_email_verified(authenticated_user),
                 "isPhoneVerified": is_phone_verified(authenticated_user),
                 "emailVerificationRequired": email_verification_required(authenticated_user),
+                "phoneVerificationEnabled": phone_verification_enabled(),
                 "hasVerifiedContact": has_verified_contact(authenticated_user),
             },
         }

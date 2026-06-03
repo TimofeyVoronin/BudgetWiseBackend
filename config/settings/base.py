@@ -158,6 +158,44 @@ EMAIL_VERIFICATION_SEND_ASYNC = env.bool(
     default=True,
 )
 
+PHONE_VERIFICATION_ENABLED = env.bool(
+    "PHONE_VERIFICATION_ENABLED",
+    default=False,
+)
+PHONE_VERIFICATION_SEND_ASYNC = env.bool(
+    "PHONE_VERIFICATION_SEND_ASYNC",
+    default=True,
+)
+PHONE_VERIFICATION_PROVIDER = env(
+    "PHONE_VERIFICATION_PROVIDER",
+    default="console",
+)
+PHONE_DEFAULT_REGION = env(
+    "PHONE_DEFAULT_REGION",
+    default="RU",
+)
+PHONE_VERIFICATION_CODE_TTL_SECONDS = env.int(
+    "PHONE_VERIFICATION_CODE_TTL_SECONDS",
+    default=15 * 60,
+)
+PHONE_VERIFICATION_RESEND_COOLDOWN_SECONDS = env.int(
+    "PHONE_VERIFICATION_RESEND_COOLDOWN_SECONDS",
+    default=60,
+)
+PHONE_VERIFICATION_MAX_ATTEMPTS = env.int(
+    "PHONE_VERIFICATION_MAX_ATTEMPTS",
+    default=5,
+)
+PHONE_VERIFICATION_CODE_SALT = env(
+    "PHONE_VERIFICATION_CODE_SALT",
+    default="budgetwise.phone-verification",
+)
+
+# Future SMS Aero integration settings. The console provider is used in development.
+SMSAERO_EMAIL = env("SMSAERO_EMAIL", default="")
+SMSAERO_API_KEY = env("SMSAERO_API_KEY", default="")
+SMSAERO_SIGN = env("SMSAERO_SIGN", default="BudgetWise")
+
 FRONTEND_PASSWORD_RESET_URL = env(
     "FRONTEND_PASSWORD_RESET_URL",
     default="http://app.budgetwise.localhost:5173/auth/reset-password",
