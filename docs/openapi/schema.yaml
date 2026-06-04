@@ -8357,8 +8357,9 @@ paths:
     post:
       operationId: profile_me_avatar_upload
       description: Загружает аватар текущего пользователя через multipart/form-data.
-        Поддерживаются JPEG, PNG и WebP. При успешной загрузке старый файл аватара
-        удаляется из локального media storage.
+        Поддерживаются JPEG, PNG и WebP. При успешной загрузке старый аватар удаляется
+        из активного storage provider. Локально используется media storage, на production
+        можно включить Cloudinary.
       summary: Загрузить или заменить аватар текущего пользователя
       tags:
       - users-profile
@@ -8382,14 +8383,14 @@ paths:
               examples:
                 УспешныйОтвет:
                   value:
-                    avatarUrl: http://localhost:8000/media/avatars/user_1/avatar.jpg
+                    avatarUrl: https://res.cloudinary.com/example/image/upload/v1/budgetwise/avatars/user_1_avatar.jpg
                     message: Аватар обновлён.
                   summary: Успешный ответ
           description: ''
     delete:
       operationId: profile_me_avatar_delete
-      description: Удаляет файл аватара из локального media storage и очищает ссылку
-        на аватар в профиле текущего пользователя.
+      description: Удаляет аватар из активного storage provider и очищает ссылку на
+        аватар в профиле текущего пользователя.
       summary: Удалить аватар текущего пользователя
       tags:
       - users-profile

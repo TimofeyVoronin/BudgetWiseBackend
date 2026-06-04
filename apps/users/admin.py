@@ -54,6 +54,7 @@ class CustomUserAdmin(UserAdmin):
         "last_name",
         "city",
         "avatar",
+        "avatar_url",
         "is_staff",
     )
     list_filter = ("email_verified", "phone_verified", "is_staff", "is_active")
@@ -75,6 +76,8 @@ class CustomUserAdmin(UserAdmin):
                     "city",
                     "bio",
                     "avatar",
+                    "avatar_url",
+                    "avatar_public_id",
                 ),
             },
         ),

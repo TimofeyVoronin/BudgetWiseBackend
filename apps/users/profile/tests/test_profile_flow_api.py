@@ -30,6 +30,7 @@ class UserProfileFlowAPITests(APITestCase):
             MEDIA_ROOT=self.media_root,
             MEDIA_URL="/media/",
             USER_PROFILE_AVATAR_MAX_SIZE_BYTES=5 * 1024 * 1024,
+            AVATAR_STORAGE_PROVIDER="local",
             EMAIL_VERIFICATION_ENABLED=False,
         )
         self.media_override.enable()

@@ -63,6 +63,16 @@ class User(AbstractUser):
         blank=True,
         verbose_name="Аватар",
     )
+    avatar_url = models.URLField(
+        max_length=700,
+        blank=True,
+        verbose_name="URL аватара",
+    )
+    avatar_public_id = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Cloudinary public ID аватара",
+    )
 
     def __str__(self) -> str:
         return self.email or self.username

@@ -245,6 +245,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+USER_PROFILE_AVATAR_MAX_SIZE_BYTES = env.int(
+    "USER_PROFILE_AVATAR_MAX_SIZE_BYTES",
+    default=5 * 1024 * 1024,
+)
+AVATAR_STORAGE_PROVIDER = env("AVATAR_STORAGE_PROVIDER", default="local").strip().lower()
+CLOUDINARY_CLOUD_NAME = env("CLOUDINARY_CLOUD_NAME", default="")
+CLOUDINARY_API_KEY = env("CLOUDINARY_API_KEY", default="")
+CLOUDINARY_API_SECRET = env("CLOUDINARY_API_SECRET", default="")
+CLOUDINARY_AVATAR_FOLDER = env("CLOUDINARY_AVATAR_FOLDER", default="budgetwise/avatars")
+
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 

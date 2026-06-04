@@ -17,6 +17,7 @@ from apps.users.auth.verification import (
     is_email_verified,
     is_phone_verified,
 )
+from apps.users.profile.avatar_storage import get_user_avatar_url
 
 
 User = get_user_model()
@@ -220,19 +221,7 @@ class UserProfileMeSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.URI)
     def get_avatarUrl(self, obj) -> str | None:
-        if not getattr(obj, "avatar", None):
-            return None
-
-        try:
-            avatar_url = obj.avatar.url
-        except ValueError:
-            return None
-
-        request = self.context.get("request")
-        if request is not None:
-            return request.build_absolute_uri(avatar_url)
-
-        return avatar_url
+        return get_user_avatar_url(obj, request=self.context.get("request"))
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_isEmailVerified(self, obj) -> bool:

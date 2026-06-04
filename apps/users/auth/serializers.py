@@ -34,6 +34,7 @@ from apps.users.auth.password_reset import (
     send_password_reset_email,
 )
 from apps.users.auth.phone_verification import (
+    PhoneVerificationProviderError,
     confirm_phone_verification,
     normalize_phone_number,
     phone_verification_enabled,
@@ -658,7 +659,24 @@ class SendPhoneVerificationSerializer(serializers.Serializer):
         old_phone = user.phone or ""
         phone = self.validated_data.get("phone") or old_phone
 
-        result = request_phone_verification(user, phone=phone, force=False)
+        try:
+            result = request_phone_verification(user, phone=phone, force=False)
+        except PhoneVerificationProviderError as exc:
+            logger.warning(
+                "Phone verification provider failed. user_id=%s phone=%s error=%s",
+                user.id,
+                phone,
+                exc,
+            )
+            raise serializers.ValidationError(
+                {
+                    "phone": [
+                        "Не удалось отправить код подтверждения телефона. "
+                        "Попробуйте позже или обратитесь в поддержку."
+                    ]
+                },
+                code="phone_verification_provider_error",
+            ) from exc
 
         if result.get("phone_changed"):
             user.refresh_from_db()
