@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Iterable
 
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.finance.currencies.conversion import CurrencyConversionService, get_currency_conversion_service
@@ -294,16 +295,21 @@ def get_accounts_opening_balance(
     if not account_ids:
         return Decimal("0.00")
 
-    accounts = Account.objects.filter(
-        user=user,
-        id__in=account_ids,
-        is_active=True,
-        is_archived=False,
+    rows = (
+        Account.objects
+        .filter(
+            user=user,
+            id__in=account_ids,
+            is_active=True,
+            is_archived=False,
+        )
+        .values("currency")
+        .annotate(total=Sum("balance"))
     )
 
     return sum_converted_amounts(
         converter=converter,
-        items=((account.balance, account.currency) for account in accounts),
+        items=((row["total"] or Decimal("0.00"), row["currency"] or converter.primary_currency) for row in rows),
     )
 
 
@@ -318,7 +324,7 @@ def get_actual_transactions_delta(
     if not account_ids or date_from > date_to:
         return Decimal("0.00")
 
-    queryset = (
+    rows = (
         Transaction.objects
         .filter(
             user=user,
@@ -326,14 +332,15 @@ def get_actual_transactions_delta(
             operation_date__gte=date_from,
             operation_date__lte=date_to,
         )
-        .select_related("account")
+        .values("type", "account__currency")
+        .annotate(total=Sum("amount"))
     )
 
     return sum_converted_amounts(
         converter=converter,
         items=(
-            (get_signed_amount(transaction.type, transaction.amount), transaction.account.currency)
-            for transaction in queryset
+            (get_signed_amount(row["type"], row["total"] or Decimal("0.00")), row["account__currency"] or converter.primary_currency)
+            for row in rows
         ),
     )
 
@@ -349,7 +356,7 @@ def get_planned_transactions_delta(
     if not account_ids or date_from > date_to:
         return Decimal("0.00")
 
-    queryset = (
+    rows = (
         PlannedTransaction.objects
         .filter(
             user=user,
@@ -359,14 +366,15 @@ def get_planned_transactions_delta(
             include_in_forecast=True,
             status__in=[PlannedStatus.PENDING, PlannedStatus.CONFIRMED],
         )
-        .select_related("account")
+        .values("type", "account__currency")
+        .annotate(total=Sum("amount"))
     )
 
     return sum_converted_amounts(
         converter=converter,
         items=(
-            (get_signed_amount(planned.type, planned.amount), planned.account.currency)
-            for planned in queryset
+            (get_signed_amount(row["type"], row["total"] or Decimal("0.00")), row["account__currency"] or converter.primary_currency)
+            for row in rows
         ),
     )
 
@@ -793,14 +801,28 @@ def get_financial_calendar_meta(user, *, display_currency: str | None = None) ->
         user=user,
         display_currency=display_currency,
     )
-    accounts = Account.objects.filter(
-        user=user,
-        is_active=True,
-        is_archived=False,
-    ).order_by("name")
+    accounts = list(
+        Account.objects
+        .filter(
+            user=user,
+            is_active=True,
+            is_archived=False,
+        )
+        .order_by("name")
+    )
+    balance_rows = (
+        Account.objects
+        .filter(
+            user=user,
+            is_active=True,
+            is_archived=False,
+        )
+        .values("currency")
+        .annotate(total=Sum("balance"))
+    )
     opening_balance = sum_converted_amounts(
         converter=converter,
-        items=((account.balance, account.currency) for account in accounts),
+        items=((row["total"] or Decimal("0.00"), row["currency"] or converter.primary_currency) for row in balance_rows),
     )
 
     return {

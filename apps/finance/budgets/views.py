@@ -23,6 +23,7 @@ from apps.finance.budgets.services import (
     build_budget_warning_item,
     budget_duplicate_exists,
     get_budget_usage,
+    preload_budget_category_ids,
 )
 from apps.finance.currencies.conversion import get_currency_conversion_service
 from apps.finance.budgets.serializers import (
@@ -342,7 +343,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         converter = self.get_currency_converter()
         queryset = self.apply_db_filters(self.get_queryset())
-        budgets = list(queryset)
+        budgets = preload_budget_category_ids(list(queryset))
         budgets = self.apply_usage_filters(budgets, converter=converter)
 
         summary = build_budget_list_summary(budgets, converter=converter)
@@ -384,6 +385,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         budget = self.get_object()
+        preload_budget_category_ids([budget])
         converter = self.get_currency_converter()
 
         return Response(
@@ -576,7 +578,7 @@ class BudgetViewSet(viewsets.ModelViewSet):
         queryset = self.apply_db_filters(self.get_queryset())
         warning_items = []
 
-        for budget in queryset:
+        for budget in preload_budget_category_ids(list(queryset)):
             usage = get_budget_usage(budget, converter=converter)
 
             if usage.usage_status in {

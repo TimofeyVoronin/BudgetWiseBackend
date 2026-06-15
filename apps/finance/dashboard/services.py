@@ -149,22 +149,15 @@ def build_dashboard_summary(
         user=user,
         converter=converter,
     )
-    income = _get_period_amount(
+    period_totals = _get_period_amounts_by_type(
         user=user,
         converter=converter,
-        transaction_type=TransactionType.INCOME,
         date_from=resolved_date_from,
         date_to=resolved_date_to,
         tag_ids=tag_ids,
     )
-    expense = _get_period_amount(
-        user=user,
-        converter=converter,
-        transaction_type=TransactionType.EXPENSE,
-        date_from=resolved_date_from,
-        date_to=resolved_date_to,
-        tag_ids=tag_ids,
-    )
+    income = period_totals[TransactionType.INCOME]
+    expense = period_totals[TransactionType.EXPENSE]
 
     return {
         "period": {
@@ -231,15 +224,20 @@ def resolve_dashboard_period(
 
 
 def _get_accounts_balance(*, user, converter: CurrencyConversionService) -> Decimal:
-    accounts = Account.objects.filter(
-        user=user,
-        is_active=True,
-        is_archived=False,
+    rows = (
+        Account.objects
+        .filter(
+            user=user,
+            is_active=True,
+            is_archived=False,
+        )
+        .values("currency")
+        .annotate(total=Sum("balance"))
     )
 
     return _sum_converted_amounts(
         converter=converter,
-        items=((account.balance, account.currency) for account in accounts),
+        items=((row["total"] or Decimal("0.00"), row["currency"]) for row in rows),
     )
 
 
@@ -252,23 +250,68 @@ def _get_period_amount(
     date_to: date,
     tag_ids: list[int] | None = None,
 ) -> Decimal:
-    queryset = (
-        Transaction.objects
-        .filter(
-            user=user,
-            type=transaction_type,
-            operation_date__gte=date_from,
-            operation_date__lte=date_to,
-        )
-        .select_related("account")
+    queryset = Transaction.objects.filter(
+        user=user,
+        type=transaction_type,
+        operation_date__gte=date_from,
+        operation_date__lte=date_to,
     )
-
     queryset = _filter_transactions_by_tags(queryset, tag_ids)
+
+    rows = (
+        queryset
+        .values("account__currency")
+        .annotate(total=Sum("amount"))
+    )
 
     return _sum_converted_amounts(
         converter=converter,
-        items=((transaction.amount, transaction.account.currency) for transaction in queryset),
+        items=(
+            (row["total"] or Decimal("0.00"), row["account__currency"] or converter.primary_currency)
+            for row in rows
+        ),
     )
+
+
+def _get_period_amounts_by_type(
+    *,
+    user,
+    converter: CurrencyConversionService,
+    date_from: date,
+    date_to: date,
+    tag_ids: list[int] | None = None,
+) -> dict[str, Decimal]:
+    queryset = Transaction.objects.filter(
+        user=user,
+        operation_date__gte=date_from,
+        operation_date__lte=date_to,
+        type__in=[TransactionType.INCOME, TransactionType.EXPENSE],
+    )
+    queryset = _filter_transactions_by_tags(queryset, tag_ids)
+
+    rows = (
+        queryset
+        .values("type", "account__currency")
+        .annotate(total=Sum("amount"))
+    )
+    totals = {
+        TransactionType.INCOME: Decimal("0.00"),
+        TransactionType.EXPENSE: Decimal("0.00"),
+    }
+
+    for row in rows:
+        transaction_type = row["type"]
+        source_currency = row["account__currency"] or converter.primary_currency
+        totals[transaction_type] += converter.convert_to_display(
+            row["total"] or Decimal("0.00"),
+            source_currency=source_currency,
+            quantize=False,
+        ).amount
+
+    return {
+        transaction_type: amount.quantize(Decimal("0.01"))
+        for transaction_type, amount in totals.items()
+    }
 
 
 def _get_recent_transactions(
@@ -297,34 +340,43 @@ def _get_top_expense_categories(
     date_to: date,
     tag_ids: list[int] | None = None,
 ) -> list[dict]:
-    queryset = (
-        Transaction.objects
-        .filter(
-            user=user,
-            type=TransactionType.EXPENSE,
-            operation_date__gte=date_from,
-            operation_date__lte=date_to,
-        )
-        .select_related("account", "category")
+    queryset = Transaction.objects.filter(
+        user=user,
+        type=TransactionType.EXPENSE,
+        operation_date__gte=date_from,
+        operation_date__lte=date_to,
     )
 
     queryset = _filter_transactions_by_tags(queryset, tag_ids)
 
+    rows = (
+        queryset
+        .values(
+            "category_id",
+            "category__name",
+            "category__icon",
+            "category__color",
+            "account__currency",
+        )
+        .annotate(total=Sum("amount"))
+    )
+
     category_totals: dict[int, dict] = {}
-    for transaction in queryset:
-        category_id = transaction.category_id
+    for row in rows:
+        category_id = row["category_id"]
         if category_id not in category_totals:
             category_totals[category_id] = {
                 "category": category_id,
-                "category_name": transaction.category.name,
-                "category_icon": transaction.category.icon,
-                "category_color": transaction.category.color,
+                "category_name": row["category__name"],
+                "category_icon": row["category__icon"],
+                "category_color": row["category__color"],
                 "total_value": Decimal("0.00"),
             }
 
         category_totals[category_id]["total_value"] += converter.convert_to_display(
-            transaction.amount,
-            source_currency=transaction.account.currency,
+            row["total"] or Decimal("0.00"),
+            source_currency=row["account__currency"] or converter.primary_currency,
+            quantize=False,
         ).amount
 
     rows = sorted(
@@ -694,21 +746,13 @@ def _get_period_net_amount(
     date_from: date,
     date_to: date,
 ) -> Decimal:
-    income = _get_period_amount(
+    period_totals = _get_period_amounts_by_type(
         user=user,
         converter=converter,
-        transaction_type=TransactionType.INCOME,
         date_from=date_from,
         date_to=date_to,
     )
-    expense = _get_period_amount(
-        user=user,
-        converter=converter,
-        transaction_type=TransactionType.EXPENSE,
-        date_from=date_from,
-        date_to=date_to,
-    )
-    return income - expense
+    return period_totals[TransactionType.INCOME] - period_totals[TransactionType.EXPENSE]
 
 
 
