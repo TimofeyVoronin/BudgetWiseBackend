@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.db.models import Count
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
@@ -7,11 +8,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.common.pagination import StandardResultsSetPagination
 from apps.finance.currencies.conversion import get_currency_conversion_service
 from apps.finance.models import (
     Receipt,
     ReceiptAuditAction,
     ReceiptAuditStatus,
+    ReceiptItem,
     ReceiptStatus,
 )
 
@@ -24,14 +27,39 @@ def get_receipt_display_currency_query_param(request) -> str | None:
     )
 
 
-def get_receipt_serializer_context(request) -> dict:
-    return {
+def get_receipt_serializer_context(
+    request,
+    *,
+    include_items: bool | None = None,
+    items_limit: int | None = None,
+) -> dict:
+    context = {
         "request": request,
         "currency_converter": get_currency_conversion_service(
             request.user,
             display_currency=get_receipt_display_currency_query_param(request),
         ),
     }
+
+    if include_items is not None:
+        context["include_receipt_items"] = include_items
+
+    if items_limit is not None:
+        context["receipt_items_limit"] = items_limit
+
+    return context
+
+
+def get_receipt_base_queryset(user):
+    return (
+        Receipt.objects.filter(user=user)
+        .annotate(
+            items_count=Count("items", distinct=True),
+            transactions_count=Count("transactions", distinct=True),
+        )
+    )
+
+
 from apps.finance.receipts.audit import log_receipt_audit_event
 from apps.finance.receipts.duplicates import (
     check_receipt_duplicate,
@@ -43,8 +71,10 @@ from apps.finance.receipts.qr import ReceiptQRParseError, parse_receipt_qr
 from apps.finance.receipts.serializers import (
     CreateReceiptTransactionsResponseSerializer,
     CreateReceiptTransactionsSerializer,
+    ReceiptItemsResponseSerializer,
     ReceiptQRImportQuerySerializer,
     ReceiptQRImportResponseSerializer,
+    build_receipt_items_response,
     build_receipt_qr_import_response,
     build_receipt_transactions_response,
 )
@@ -89,6 +119,24 @@ class ReceiptImportByQRView(APIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Валюта отображения сумм в ответе.",
+            ),
+            OpenApiParameter(
+                name="includeItems",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description=(
+                    "Если false, позиции не встраиваются в receipt.items. "
+                    "Используйте для чеков с большим количеством строк вместе с "
+                    "GET /api/v1/finance/receipts/{id}/items/."
+                ),
+            ),
+            OpenApiParameter(
+                name="itemsLimit",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Максимум встроенных позиций receipt.items, от 1 до 100.",
             ),
         ],
         responses={
@@ -136,6 +184,8 @@ class ReceiptImportByQRView(APIView):
 
         qr_raw = serializer.validated_data["qrRaw"]
         fetch_provider = serializer.validated_data.get("fetchProvider", True)
+        include_items = serializer.validated_data.get("includeItems", True)
+        items_limit = serializer.validated_data.get("itemsLimit")
 
         try:
             qr_data = parse_receipt_qr(qr_raw)
@@ -189,7 +239,11 @@ class ReceiptImportByQRView(APIView):
                 is_duplicate=result.is_duplicate,
                 provider_status=provider_status,
                 provider_error=provider_error,
-                context=get_receipt_serializer_context(request),
+                context=get_receipt_serializer_context(
+                    request,
+                    include_items=include_items,
+                    items_limit=items_limit,
+                ),
             )
             return Response(response_data, status=status.HTTP_200_OK)
 
@@ -218,10 +272,98 @@ class ReceiptImportByQRView(APIView):
             is_duplicate=result.is_duplicate,
             provider_status=provider_status,
             provider_error=provider_error,
-            context=get_receipt_serializer_context(request),
+            context=get_receipt_serializer_context(
+                request,
+                include_items=include_items,
+                items_limit=items_limit,
+            ),
         )
         return Response(response_data, status=status.HTTP_200_OK)
 
+
+class ReceiptItemsView(APIView):
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    @extend_schema(
+        tags=["finance-receipts"],
+        operation_id="finance_receipts_items_list",
+        summary="Получить позиции чека постранично",
+        description=(
+            "Возвращает позиции сохранённого чека отдельным постраничным списком. "
+            "Endpoint нужен для больших чеков: список чеков и QR-ответ могут не встраивать "
+            "все позиции сразу, чтобы не раздувать payload и не нагружать БД."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="page",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Номер страницы.",
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Размер страницы, максимум 100.",
+            ),
+            OpenApiParameter(
+                name="limit",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Alias для page_size.",
+            ),
+            OpenApiParameter(
+                name="currency",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Валюта отображения сумм позиций.",
+            ),
+        ],
+        responses={
+            200: ReceiptItemsResponseSerializer,
+            401: {"$ref": "#/components/schemas/ApiErrorResponse"},
+            404: {"$ref": "#/components/schemas/ApiErrorResponse"},
+        },
+    )
+    def get(self, request, receipt_id: int):
+        try:
+            receipt = get_receipt_base_queryset(request.user).get(pk=receipt_id)
+        except Receipt.DoesNotExist as exc:
+            raise NotFound("Чек не найден.") from exc
+
+        queryset = (
+            ReceiptItem.objects.filter(receipt=receipt)
+            .select_related("suggested_category")
+            .order_by("line_number", "id")
+        )
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        items = list(page) if page is not None else list(queryset)
+        pagination = None
+
+        if page is not None:
+            pagination = {
+                "count": paginator.page.paginator.count,
+                "next": paginator.get_next_link(),
+                "previous": paginator.get_previous_link(),
+                "page": paginator.page.number,
+                "pageSize": paginator.get_page_size(request),
+            }
+
+        response_data = build_receipt_items_response(
+            receipt=receipt,
+            items=items,
+            context=get_receipt_serializer_context(request),
+            pagination=pagination,
+        )
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 class ReceiptCreateTransactionsView(APIView):
     permission_classes = [IsAuthenticated]

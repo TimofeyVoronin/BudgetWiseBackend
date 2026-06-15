@@ -6,6 +6,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.finance.models import Category, Receipt, ReceiptItem, TransactionType
 from apps.finance.receipts.provider import FiscalReceiptDetails, ReceiptLineItem
@@ -203,19 +204,24 @@ def map_receipt_items(
     replace_existing: bool = True,
 ) -> list[ReceiptItemMappingResult]:
     item_list = list(items)
+    categories = get_receipt_item_mapping_categories(receipt.user)
 
     with transaction.atomic():
         if replace_existing:
             receipt.items.all().delete()
 
+        now = timezone.now()
         results: list[ReceiptItemMappingResult] = []
+        receipt_items: list[ReceiptItem] = []
+
         for index, provider_item in enumerate(item_list, start=1):
             suggestion = suggest_category_for_receipt_item(
                 user=receipt.user,
                 item_name=provider_item.name,
                 receipt=receipt,
+                categories=categories,
             )
-            receipt_item = ReceiptItem.objects.create(
+            receipt_item = ReceiptItem(
                 receipt=receipt,
                 line_number=index,
                 name=provider_item.name.strip() or "Позиция чека",
@@ -226,7 +232,10 @@ def map_receipt_items(
                 mapping_confidence=suggestion.confidence,
                 mapping_reason=suggestion.reason,
                 provider_payload=dict(provider_item.raw),
+                created_at=now,
+                updated_at=now,
             )
+            receipt_items.append(receipt_item)
             results.append(
                 ReceiptItemMappingResult(
                     receipt_item=receipt_item,
@@ -234,43 +243,45 @@ def map_receipt_items(
                 )
             )
 
+        if receipt_items:
+            ReceiptItem.objects.bulk_create(receipt_items, batch_size=500)
+
     return results
 
 
 def refresh_receipt_item_mappings(receipt: Receipt) -> list[ReceiptItemMappingResult]:
+    categories = get_receipt_item_mapping_categories(receipt.user)
     results: list[ReceiptItemMappingResult] = []
+    items_to_update: list[ReceiptItem] = []
+
+    now = timezone.now()
+
     for receipt_item in receipt.items.select_related("suggested_category").order_by("line_number"):
         suggestion = suggest_category_for_receipt_item(
             user=receipt.user,
             item_name=receipt_item.name,
             receipt=receipt,
+            categories=categories,
         )
         receipt_item.suggested_category = suggestion.category
         receipt_item.mapping_confidence = suggestion.confidence
         receipt_item.mapping_reason = suggestion.reason
-        receipt_item.save(
-            update_fields=[
-                "suggested_category",
-                "mapping_confidence",
-                "mapping_reason",
-                "updated_at",
-            ]
-        )
+        receipt_item.updated_at = now
+        items_to_update.append(receipt_item)
         results.append(ReceiptItemMappingResult(receipt_item=receipt_item, suggestion=suggestion))
+
+    if items_to_update:
+        ReceiptItem.objects.bulk_update(
+            items_to_update,
+            ["suggested_category", "mapping_confidence", "mapping_reason", "updated_at"],
+            batch_size=500,
+        )
+
     return results
 
 
-def suggest_category_for_receipt_item(
-    *,
-    user,
-    item_name: str,
-    receipt: Receipt | None = None,
-) -> ReceiptItemMappingSuggestion:
-    normalized_item = normalize_mapping_text(" ".join([item_name or "", receipt.store_name if receipt else ""]))
-    if not normalized_item:
-        return _empty_suggestion("empty_item_name")
-
-    categories = list(
+def get_receipt_item_mapping_categories(user) -> list[Category]:
+    return list(
         Category.objects.filter(
             user=user,
             type=TransactionType.EXPENSE,
@@ -278,6 +289,21 @@ def suggest_category_for_receipt_item(
             is_archived=False,
         ).order_by("is_favorite", "sort_order", "name")
     )
+
+
+def suggest_category_for_receipt_item(
+    *,
+    user,
+    item_name: str,
+    receipt: Receipt | None = None,
+    categories: list[Category] | None = None,
+) -> ReceiptItemMappingSuggestion:
+    normalized_item = normalize_mapping_text(" ".join([item_name or "", receipt.store_name if receipt else ""]))
+    if not normalized_item:
+        return _empty_suggestion("empty_item_name")
+
+    if categories is None:
+        categories = get_receipt_item_mapping_categories(user)
 
     if not categories:
         return _empty_suggestion("no_expense_categories")

@@ -1517,6 +1517,14 @@ class Receipt(TimeStampedModel):
             models.Index(fields=["user", "fiscal_key"], name="idx_receipt_user_fiscal"),
             models.Index(fields=["user", "receipt_datetime"], name="idx_receipt_user_date"),
             models.Index(fields=["user", "status"], name="idx_receipt_user_status"),
+            models.Index(
+                fields=["user", "status", "receipt_datetime"],
+                name="idx_receipt_user_status_date",
+            ),
+            models.Index(
+                fields=["user", "receipt_datetime", "status"],
+                name="idx_receipt_user_date_status",
+            ),
             models.Index(fields=["seller_inn"], name="idx_receipt_seller_inn"),
         ]
 
@@ -1765,6 +1773,14 @@ class ReceiptItem(TimeStampedModel):
         ]
         indexes = [
             models.Index(fields=["receipt"], name="idx_receipt_item_receipt"),
+            models.Index(
+                fields=["receipt", "line_number"],
+                name="idx_receipt_item_receipt_line",
+            ),
+            models.Index(
+                fields=["receipt", "id"],
+                name="idx_receipt_item_receipt_id",
+            ),
             models.Index(fields=["suggested_category"], name="idx_receipt_item_category"),
             models.Index(fields=["receipt", "suggested_category"], name="idx_receipt_item_receipt_cat"),
             models.Index(fields=["name"], name="idx_receipt_item_name"),

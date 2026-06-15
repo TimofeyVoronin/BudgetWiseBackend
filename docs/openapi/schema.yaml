@@ -5277,6 +5277,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiErrorResponse'
           description: ''
+  /api/v1/finance/receipts/{receipt_id}/items/:
+    get:
+      operationId: finance_receipts_items_list
+      description: 'Возвращает позиции сохранённого чека отдельным постраничным списком.
+        Endpoint нужен для больших чеков: список чеков и QR-ответ могут не встраивать
+        все позиции сразу, чтобы не раздувать payload и не нагружать БД.'
+      summary: Получить позиции чека постранично
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм позиций.
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Alias для page_size.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Размер страницы, максимум 100.
+      - in: path
+        name: receipt_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - finance-receipts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptItemsResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+          description: ''
   /api/v1/finance/receipts/qr/:
     get:
       operationId: finance_receipts_qr_retrieve
@@ -5299,6 +5355,17 @@ paths:
           type: boolean
         description: Получать ли расширенные данные чека у внешнего провайдера. По
           умолчанию true.
+      - in: query
+        name: includeItems
+        schema:
+          type: boolean
+        description: Если false, позиции не встраиваются в receipt.items. Используйте
+          для чеков с большим количеством строк вместе с GET /api/v1/finance/receipts/{id}/items/.
+      - in: query
+        name: itemsLimit
+        schema:
+          type: integer
+        description: Максимум встроенных позиций receipt.items, от 1 до 100.
       - in: query
         name: qrRaw
         schema:
@@ -16845,10 +16912,14 @@ components:
         transactionsCount:
           type: integer
           readOnly: true
+        itemsCount:
+          type: integer
+          readOnly: true
         items:
           type: array
           items:
-            $ref: '#/components/schemas/ReceiptItemBrief'
+            type: object
+            additionalProperties: {}
           readOnly: true
       required:
       - fiscal_document_number
@@ -16856,6 +16927,7 @@ components:
       - fiscal_sign
       - id
       - items
+      - itemsCount
       - receipt_datetime
       - sourceCurrency
       - totalAmountDisplay
@@ -16954,6 +17026,34 @@ components:
       - sourceCurrency
       - suggestedCategoryId
       - suggestedCategoryName
+    ReceiptItemsResponse:
+      type: object
+      properties:
+        receiptId:
+          type: integer
+          readOnly: true
+        itemsCount:
+          type: integer
+          readOnly: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptItemBrief'
+          readOnly: true
+        pagination:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+      required:
+      - currencyContext
+      - items
+      - itemsCount
+      - pagination
+      - receiptId
     ReceiptProviderErrorBrief:
       type: object
       properties:
