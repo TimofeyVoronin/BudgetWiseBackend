@@ -2,6 +2,11 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from apps.finance.accounts.views import AccountViewSet
+from apps.finance.analytics.combined.views import (
+    CombinedAnalyticsAggregatesView,
+    CombinedAnalyticsExportView,
+    CombinedAnalyticsMetaView,
+)
 from apps.finance.budgets.views import BudgetViewSet
 from apps.finance.calculators.views import (
     CalculatorCalculateView,
@@ -118,6 +123,21 @@ urlpatterns = [
         "budget-notifications/check/",
         BudgetNotificationCheckView.as_view(),
         name="budget-notification-check",
+    ),
+    path(
+        "analytics/combined/meta/",
+        CombinedAnalyticsMetaView.as_view(),
+        name="combined-analytics-meta",
+    ),
+    path(
+        "analytics/combined/aggregates/",
+        CombinedAnalyticsAggregatesView.as_view(),
+        name="combined-analytics-aggregates",
+    ),
+    path(
+        "analytics/combined/export/",
+        CombinedAnalyticsExportView.as_view(),
+        name="combined-analytics-export",
     ),
     path(
         "dashboard/summary/",
