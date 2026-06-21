@@ -981,6 +981,214 @@ paths:
                     currency: RUB
                   summary: Сводка по счетам
           description: ''
+  /api/v1/finance/analytics/combined/aggregates/:
+    get:
+      operationId: finance_analytics_combined_aggregates_retrieve
+      description: Единый endpoint страницы комбинированной аналитики. Возвращает
+        данные для круговой диаграммы по категориям, столбчатого сравнения с предыдущим
+        периодом, линейного графика трендов и таблицы агрегатов.
+      summary: Получить агрегаты для pie, bar и line диаграмм
+      parameters:
+      - in: query
+        name: account_ids
+        schema:
+          type: array
+          items:
+            type: integer
+        description: ID счетов. Можно передать несколько раз.
+      - in: query
+        name: category_ids
+        schema:
+          type: array
+          items:
+            type: integer
+        description: ID категорий. Можно передать несколько раз.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO-код валюты отображения. По умолчанию RUB.
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+        description: Дата начала периода для custom или явного диапазона.
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+        description: Дата окончания периода для custom или явного диапазона.
+      - in: query
+        name: operation_type
+        schema:
+          type: string
+        description: expense, income или transfer.
+      - in: query
+        name: period_id
+        schema:
+          type: string
+        description: 'ID периода: YYYY-MM, YYYY-Q1, YYYY, YYYY-W23.'
+      - in: query
+        name: period_preset
+        schema:
+          type: string
+        description: week, month, quarter, year или custom.
+      tags:
+      - finance-combined-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CombinedAnalyticsAggregatesResponse'
+              examples:
+                AggregatesResponse:
+                  value:
+                    has_data: true
+                    period_label: Май 2026
+                    total_expense_rub: 128450
+                    total_income_rub: 100000
+                    pie_slices:
+                    - category_id: '1'
+                      category_name: Продукты
+                      category_color: '#4f46e5'
+                      amount_rub: 41100
+                      percent: 32
+                    bar_groups:
+                    - category_id: '1'
+                      category_name: Продукты
+                      previous_period_amount_rub: 42000
+                      current_period_amount_rub: 41100
+                    bar_legend:
+                      previous_period_label: Апрель 2026
+                      current_period_label: Май 2026
+                    line_points:
+                    - month: 2026-05
+                      label: Май 2026
+                      income_rub: 100000
+                      expense_rub: 128450
+                      balance_rub: -28450
+                    aggregate_rows:
+                    - category_id: '1'
+                      category_name: Продукты
+                      amount_rub: 41100
+                      percent: 32
+                  summary: Aggregates response
+          description: ''
+        '400':
+          description: Некорректные параметры фильтров.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/combined/export/:
+    post:
+      operationId: finance_analytics_combined_export_create
+      description: 'Формирует файл отчёта по тем же фильтрам, что и endpoint aggregates.
+        Поддерживаются форматы CSV, XLSX и PDF, а также выбор секций: pie, bar, line,
+        table.'
+      summary: Экспортировать отчёт комбинированной аналитики
+      tags:
+      - finance-combined-analytics
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CombinedAnalyticsExportRequestRequest'
+            examples:
+              ExportRequest:
+                value:
+                  format: xlsx
+                  sections:
+                  - pie
+                  - bar
+                  - line
+                  - table
+                  period_preset: month
+                  period_id: 2026-05
+                  account_ids:
+                  - 1
+                  - 2
+                  category_ids:
+                  - 3
+                  - 4
+                  operation_type: expense
+                  currency: RUB
+                summary: Export request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CombinedAnalyticsExportRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CombinedAnalyticsExportRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          description: Некорректные параметры экспорта.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/combined/meta/:
+    get:
+      operationId: finance_analytics_combined_meta_retrieve
+      description: 'Возвращает опции фильтров и значения по умолчанию для страницы
+        визуализации: пресеты периода, счета, категории, типы операций и доступные
+        секции экспорта.'
+      summary: Получить метаданные страницы комбинированной аналитики
+      tags:
+      - finance-combined-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CombinedAnalyticsMetaResponse'
+              examples:
+                MetaResponse:
+                  value:
+                    period_presets:
+                    - value: week
+                      label: Неделя
+                    - value: month
+                      label: Месяц
+                    period_options:
+                    - value: 2026-05
+                      label: Май 2026
+                    account_options:
+                    - value: all
+                      label: Все
+                    category_options:
+                    - value: all
+                      label: Все
+                    type_options:
+                    - value: expense
+                      label: Расходы
+                    filter_categories: []
+                    filter_accounts: []
+                    export_sections:
+                    - id: pie
+                      label: Включить круговую диаграмму
+                      icon: mdi-chart-donut
+                    default_period_id: 2026-05
+                    default_date_from: 01.05.2026
+                    default_date_to: 31.05.2026
+                    default_account_ids: []
+                    default_category_ids: []
+                    default_operation_type: expense
+                  summary: Meta response
+          description: ''
   /api/v1/finance/budget-notifications/check/:
     post:
       operationId: finance_budget_notifications_check_create
@@ -11767,6 +11975,291 @@ components:
           type: string
       required:
       - isDuplicate
+    CombinedAnalyticsAggregateRow:
+      type: object
+      properties:
+        category_id:
+          type: string
+        category_name:
+          type: string
+        amount_rub:
+          type: number
+          format: double
+        percent:
+          type: number
+          format: double
+      required:
+      - amount_rub
+      - category_id
+      - category_name
+      - percent
+    CombinedAnalyticsAggregatesResponse:
+      type: object
+      properties:
+        has_data:
+          type: boolean
+        period_label:
+          type: string
+        total_expense_rub:
+          type: number
+          format: double
+        total_income_rub:
+          type: number
+          format: double
+        pie_slices:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsPieSlice'
+        bar_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsBarGroup'
+        bar_legend:
+          $ref: '#/components/schemas/CombinedAnalyticsBarLegend'
+        line_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsLinePoint'
+        aggregate_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsAggregateRow'
+      required:
+      - aggregate_rows
+      - bar_groups
+      - bar_legend
+      - has_data
+      - line_points
+      - period_label
+      - pie_slices
+      - total_expense_rub
+      - total_income_rub
+    CombinedAnalyticsBarGroup:
+      type: object
+      properties:
+        category_id:
+          type: string
+        category_name:
+          type: string
+        previous_period_amount_rub:
+          type: number
+          format: double
+        current_period_amount_rub:
+          type: number
+          format: double
+      required:
+      - category_id
+      - category_name
+      - current_period_amount_rub
+      - previous_period_amount_rub
+    CombinedAnalyticsBarLegend:
+      type: object
+      properties:
+        previous_period_label:
+          type: string
+        current_period_label:
+          type: string
+      required:
+      - current_period_label
+      - previous_period_label
+    CombinedAnalyticsExportRequestFormatEnum:
+      enum:
+      - pdf
+      - csv
+      - xlsx
+      type: string
+      description: |-
+        * `pdf` - pdf
+        * `csv` - csv
+        * `xlsx` - xlsx
+    CombinedAnalyticsExportRequestRequest:
+      type: object
+      properties:
+        format:
+          $ref: '#/components/schemas/CombinedAnalyticsExportRequestFormatEnum'
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/SectionsEnum'
+        period_preset:
+          $ref: '#/components/schemas/PeriodPresetEnum'
+        period_id:
+          type: string
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        account_ids:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        category_ids:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        operation_type:
+          $ref: '#/components/schemas/OperationTypeEnum'
+        currency:
+          type: string
+      required:
+      - format
+      - sections
+    CombinedAnalyticsExportSectionOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - id
+      - label
+    CombinedAnalyticsFilterAccountOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      required:
+      - id
+      - label
+    CombinedAnalyticsFilterCategoryOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      required:
+      - id
+      - label
+    CombinedAnalyticsLinePoint:
+      type: object
+      properties:
+        month:
+          type: string
+        label:
+          type: string
+        income_rub:
+          type: number
+          format: double
+        expense_rub:
+          type: number
+          format: double
+        balance_rub:
+          type: number
+          format: double
+      required:
+      - balance_rub
+      - expense_rub
+      - income_rub
+      - label
+      - month
+    CombinedAnalyticsMetaResponse:
+      type: object
+      properties:
+        period_presets:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        period_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        account_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        category_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        type_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        filter_categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsFilterCategoryOption'
+        filter_accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsFilterAccountOption'
+        export_sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsExportSectionOption'
+        default_period_id:
+          type: string
+        default_date_from:
+          type: string
+        default_date_to:
+          type: string
+        default_account_ids:
+          type: array
+          items:
+            type: string
+        default_category_ids:
+          type: array
+          items:
+            type: string
+        default_operation_type:
+          type: string
+      required:
+      - account_options
+      - category_options
+      - default_account_ids
+      - default_category_ids
+      - default_date_from
+      - default_date_to
+      - default_operation_type
+      - default_period_id
+      - export_sections
+      - filter_accounts
+      - filter_categories
+      - period_options
+      - period_presets
+      - type_options
+    CombinedAnalyticsPieSlice:
+      type: object
+      properties:
+        category_id:
+          type: string
+        category_name:
+          type: string
+        category_color:
+          type: string
+        amount_rub:
+          type: number
+          format: double
+        percent:
+          type: number
+          format: double
+      required:
+      - amount_rub
+      - category_color
+      - category_id
+      - category_name
+      - percent
+    CombinedAnalyticsSelectOption:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+      required:
+      - label
+      - value
     ConfirmPhoneVerification:
       type: object
       properties:
@@ -13099,6 +13592,16 @@ components:
       - date
       - eventsSummary
       - forecastRub
+    FinancialCalendarExportRequestFormatEnum:
+      enum:
+      - csv
+      - pdf
+      - xlsx
+      type: string
+      description: |-
+        * `csv` - CSV
+        * `pdf` - PDF
+        * `xlsx` - XLSX
     FinancialCalendarExportRequestRequest:
       type: object
       properties:
@@ -13114,7 +13617,7 @@ components:
           description: Месяц календаря, 1-12.
         format:
           allOf:
-          - $ref: '#/components/schemas/FormatEnum'
+          - $ref: '#/components/schemas/FinancialCalendarExportRequestFormatEnum'
           default: csv
           description: |-
             Формат файла выгрузки.
@@ -13406,16 +13909,6 @@ components:
           minLength: 1
       required:
       - email
-    FormatEnum:
-      enum:
-      - csv
-      - pdf
-      - xlsx
-      type: string
-      description: |-
-        * `csv` - CSV
-        * `pdf` - PDF
-        * `xlsx` - XLSX
     Goal:
       type: object
       properties:
@@ -14955,6 +15448,16 @@ components:
     NullEnum:
       enum:
       - null
+    OperationTypeEnum:
+      enum:
+      - expense
+      - income
+      - transfer
+      type: string
+      description: |-
+        * `expense` - expense
+        * `income` - income
+        * `transfer` - transfer
     PaginatedAccountHistoryRowList:
       type: object
       required:
@@ -16098,6 +16601,20 @@ components:
       - defaultCurrency
       - defaultPeriod
       - periodOptions
+    PeriodPresetEnum:
+      enum:
+      - week
+      - month
+      - quarter
+      - year
+      - custom
+      type: string
+      description: |-
+        * `week` - week
+        * `month` - month
+        * `quarter` - quarter
+        * `year` - year
+        * `custom` - custom
     PlannedCalendarDayBadge:
       type: object
       properties:
@@ -17738,6 +18255,18 @@ components:
       - password
       - password_confirm
       - token
+    SectionsEnum:
+      enum:
+      - pie
+      - bar
+      - line
+      - table
+      type: string
+      description: |-
+        * `pie` - pie
+        * `bar` - bar
+        * `line` - line
+        * `table` - table
     SendBudgetNotificationTestRequest:
       type: object
       properties:
