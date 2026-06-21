@@ -1189,6 +1189,152 @@ paths:
                     default_operation_type: expense
                   summary: Meta response
           description: ''
+  /api/v1/finance/analytics/comparative/comparison/:
+    get:
+      operationId: finance_analytics_comparative_comparison_retrieve
+      description: 'Возвращает данные для страницы Comparative Analytics: выбранные
+        сущности в порядке drag-and-drop, grouped bar chart, line chart, карточки
+        сводки, таблицу различий и сравнение по категориям.'
+      summary: Получить сравнительные агрегаты
+      parameters:
+      - in: query
+        name: comparison_type
+        schema:
+          type: string
+        description: periods, categories или accounts.
+      - in: query
+        name: convert_to_rub
+        schema:
+          type: boolean
+        description: Приводить суммы счетов в разных валютах к RUB.
+      - in: query
+        name: entity_ids
+        schema:
+          type: array
+          items:
+            type: string
+        description: ID сравниваемых сущностей. Порядок важен.
+      - in: query
+        name: metric
+        schema:
+          type: string
+        description: income, expense или balance.
+      - in: query
+        name: year
+        schema:
+          type: string
+        description: Год сравнения, например 2026.
+      tags:
+      - finance-comparative-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparativeAnalyticsComparisonResponse'
+              examples:
+                ComparisonResponse:
+                  value:
+                    has_data: true
+                    has_mixed_currencies: false
+                    entities:
+                    - id: 2026-06
+                      label: Июнь 2026
+                      subtitle: Период
+                      amount_rub: 100000
+                      color: '#F97316'
+                      has_data: true
+                      currency_code: RUB
+                    bar_groups:
+                    - key: income
+                      label: Доходы
+                      values:
+                      - 100000
+                    bar_legend:
+                    - id: 2026-06
+                      label: Июнь 2026
+                      color: '#F97316'
+                      has_data: true
+                    summary_cards: []
+                    line_points: []
+                    category_rows: []
+                    difference_rows: []
+                  summary: Comparison response
+          description: ''
+        '400':
+          description: Некорректные параметры сравнения.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/comparative/export/:
+    post:
+      operationId: finance_analytics_comparative_export_create
+      description: Формирует файл отчёта по тем же параметрам, что и endpoint comparison.
+        Поддерживает CSV, XLSX и PDF, а также секции legend, differences и charts.
+      summary: Экспортировать отчёт сравнительной аналитики
+      tags:
+      - finance-comparative-analytics
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparativeAnalyticsExportRequestRequest'
+            examples:
+              ExportRequest:
+                value:
+                  format: xlsx
+                  sections:
+                  - legend
+                  - differences
+                  - charts
+                  comparison_type: periods
+                  year: '2026'
+                  metric: income
+                  entity_ids:
+                  - 2026-06
+                  - 2026-05
+                  - 2026-04
+                  convert_to_rub: true
+                summary: Export request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ComparativeAnalyticsExportRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ComparativeAnalyticsExportRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          description: Некорректные параметры экспорта.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/comparative/meta/:
+    get:
+      operationId: finance_analytics_comparative_meta_retrieve
+      description: Возвращает типы сравнения, годы, показатели, доступные сущности
+        для сравнения и значения фильтров по умолчанию.
+      summary: Получить метаданные страницы сравнительной аналитики
+      tags:
+      - finance-comparative-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparativeAnalyticsMetaResponse'
+          description: ''
   /api/v1/finance/budget-notifications/check/:
     post:
       operationId: finance_budget_notifications_check_create
@@ -12062,25 +12208,15 @@ components:
       required:
       - current_period_label
       - previous_period_label
-    CombinedAnalyticsExportRequestFormatEnum:
-      enum:
-      - pdf
-      - csv
-      - xlsx
-      type: string
-      description: |-
-        * `pdf` - pdf
-        * `csv` - csv
-        * `xlsx` - xlsx
     CombinedAnalyticsExportRequestRequest:
       type: object
       properties:
         format:
-          $ref: '#/components/schemas/CombinedAnalyticsExportRequestFormatEnum'
+          $ref: '#/components/schemas/FormatB6dEnum'
         sections:
           type: array
           items:
-            $ref: '#/components/schemas/SectionsEnum'
+            $ref: '#/components/schemas/CombinedAnalyticsExportRequestSectionsEnum'
         period_preset:
           $ref: '#/components/schemas/PeriodPresetEnum'
         period_id:
@@ -12108,6 +12244,18 @@ components:
       required:
       - format
       - sections
+    CombinedAnalyticsExportRequestSectionsEnum:
+      enum:
+      - pie
+      - bar
+      - line
+      - table
+      type: string
+      description: |-
+        * `pie` - pie
+        * `bar` - bar
+        * `line` - line
+        * `table` - table
     CombinedAnalyticsExportSectionOption:
       type: object
       properties:
@@ -12260,6 +12408,336 @@ components:
       required:
       - label
       - value
+    ComparativeAnalyticsBarGroup:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        values:
+          type: array
+          items:
+            type: number
+            format: double
+      required:
+      - key
+      - label
+      - values
+    ComparativeAnalyticsBarLegendItem:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        color:
+          type: string
+        has_data:
+          type: boolean
+      required:
+      - color
+      - has_data
+      - id
+      - label
+    ComparativeAnalyticsCategoryRow:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        previous_amount_rub:
+          type: number
+          format: double
+        current_amount_rub:
+          type: number
+          format: double
+        delta_percent:
+          type: number
+          format: double
+      required:
+      - current_amount_rub
+      - delta_percent
+      - id
+      - name
+      - previous_amount_rub
+    ComparativeAnalyticsComparisonResponse:
+      type: object
+      properties:
+        has_data:
+          type: boolean
+        has_mixed_currencies:
+          type: boolean
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsEntity'
+        bar_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsBarGroup'
+        bar_legend:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsBarLegendItem'
+        summary_cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSummaryCard'
+        line_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsLinePoint'
+        category_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsCategoryRow'
+        difference_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsDifferenceRow'
+      required:
+      - bar_groups
+      - bar_legend
+      - category_rows
+      - difference_rows
+      - entities
+      - has_data
+      - has_mixed_currencies
+      - line_points
+      - summary_cards
+    ComparativeAnalyticsDifferenceRow:
+      type: object
+      properties:
+        id:
+          type: string
+        metric:
+          type: string
+        value_a:
+          type: number
+          format: double
+        value_b:
+          type: number
+          format: double
+        delta_rub:
+          type: number
+          format: double
+        delta_percent:
+          type: number
+          format: double
+        positive_is_good:
+          type: boolean
+        label_a:
+          type: string
+        label_b:
+          type: string
+      required:
+      - delta_percent
+      - delta_rub
+      - id
+      - metric
+      - positive_is_good
+      - value_a
+      - value_b
+    ComparativeAnalyticsEntity:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        subtitle:
+          type: string
+        amount_rub:
+          type: number
+          format: double
+        color:
+          type: string
+        has_data:
+          type: boolean
+        currency_code:
+          type: string
+      required:
+      - amount_rub
+      - color
+      - currency_code
+      - has_data
+      - id
+      - label
+      - subtitle
+    ComparativeAnalyticsExportRequestRequest:
+      type: object
+      properties:
+        format:
+          $ref: '#/components/schemas/FormatB6dEnum'
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsExportRequestSectionsEnum'
+        comparison_type:
+          $ref: '#/components/schemas/ComparisonTypeEnum'
+        year:
+          type: string
+        metric:
+          $ref: '#/components/schemas/MetricEnum'
+        entity_ids:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        report_period_id:
+          type: string
+        convert_to_rub:
+          type: boolean
+      required:
+      - format
+      - sections
+    ComparativeAnalyticsExportRequestSectionsEnum:
+      enum:
+      - legend
+      - differences
+      - charts
+      type: string
+      description: |-
+        * `legend` - legend
+        * `differences` - differences
+        * `charts` - charts
+    ComparativeAnalyticsExportSectionOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - id
+      - label
+    ComparativeAnalyticsLinePoint:
+      type: object
+      properties:
+        month:
+          type: string
+        label:
+          type: string
+        income_rub:
+          type: number
+          format: double
+        expense_rub:
+          type: number
+          format: double
+      required:
+      - expense_rub
+      - income_rub
+      - label
+      - month
+    ComparativeAnalyticsMetaResponse:
+      type: object
+      properties:
+        max_entities:
+          type: integer
+        comparison_type_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSelectOption'
+        year_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSelectOption'
+        metric_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSelectOption'
+        report_period_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSelectOption'
+        export_sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsExportSectionOption'
+        available_entities:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/ComparativeAnalyticsEntity'
+        default_comparison_type:
+          type: string
+        default_year:
+          type: string
+        default_metric:
+          type: string
+        default_entity_ids:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        default_export_sections:
+          type: array
+          items:
+            type: string
+        default_report_period_id:
+          type: string
+      required:
+      - available_entities
+      - comparison_type_options
+      - default_comparison_type
+      - default_entity_ids
+      - default_export_sections
+      - default_metric
+      - default_report_period_id
+      - default_year
+      - export_sections
+      - max_entities
+      - metric_options
+      - report_period_options
+      - year_options
+    ComparativeAnalyticsSelectOption:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+      required:
+      - label
+      - value
+    ComparativeAnalyticsSummaryCard:
+      type: object
+      properties:
+        label:
+          type: string
+        amount_rub:
+          type: number
+          format: double
+        delta_percent:
+          type: number
+          format: double
+        delta_label:
+          type: string
+        positive_is_good:
+          type: boolean
+      required:
+      - amount_rub
+      - delta_label
+      - delta_percent
+      - label
+      - positive_is_good
+    ComparisonTypeEnum:
+      enum:
+      - periods
+      - categories
+      - accounts
+      type: string
+      description: |-
+        * `periods` - periods
+        * `categories` - categories
+        * `accounts` - accounts
     ConfirmPhoneVerification:
       type: object
       properties:
@@ -13909,6 +14387,16 @@ components:
           minLength: 1
       required:
       - email
+    FormatB6dEnum:
+      enum:
+      - pdf
+      - csv
+      - xlsx
+      type: string
+      description: |-
+        * `pdf` - pdf
+        * `csv` - csv
+        * `xlsx` - xlsx
     Goal:
       type: object
       properties:
@@ -14725,6 +15213,16 @@ components:
           minLength: 1
       required:
       - refresh
+    MetricEnum:
+      enum:
+      - income
+      - expense
+      - balance
+      type: string
+      description: |-
+        * `income` - income
+        * `expense` - expense
+        * `balance` - balance
     ModeEnum:
       enum:
       - single
@@ -18255,18 +18753,6 @@ components:
       - password
       - password_confirm
       - token
-    SectionsEnum:
-      enum:
-      - pie
-      - bar
-      - line
-      - table
-      type: string
-      description: |-
-        * `pie` - pie
-        * `bar` - bar
-        * `line` - line
-        * `table` - table
     SendBudgetNotificationTestRequest:
       type: object
       properties:

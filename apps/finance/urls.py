@@ -7,6 +7,11 @@ from apps.finance.analytics.combined.views import (
     CombinedAnalyticsExportView,
     CombinedAnalyticsMetaView,
 )
+from apps.finance.analytics.comparative.views import (
+    ComparativeAnalyticsComparisonView,
+    ComparativeAnalyticsExportView,
+    ComparativeAnalyticsMetaView,
+)
 from apps.finance.budgets.views import BudgetViewSet
 from apps.finance.calculators.views import (
     CalculatorCalculateView,
@@ -138,6 +143,21 @@ urlpatterns = [
         "analytics/combined/export/",
         CombinedAnalyticsExportView.as_view(),
         name="combined-analytics-export",
+    ),
+    path(
+        "analytics/comparative/meta/",
+        ComparativeAnalyticsMetaView.as_view(),
+        name="comparative-analytics-meta",
+    ),
+    path(
+        "analytics/comparative/comparison/",
+        ComparativeAnalyticsComparisonView.as_view(),
+        name="comparative-analytics-comparison",
+    ),
+    path(
+        "analytics/comparative/export/",
+        ComparativeAnalyticsExportView.as_view(),
+        name="comparative-analytics-export",
     ),
     path(
         "dashboard/summary/",
