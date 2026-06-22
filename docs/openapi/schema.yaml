@@ -1335,6 +1335,159 @@ paths:
               schema:
                 $ref: '#/components/schemas/ComparativeAnalyticsMetaResponse'
           description: ''
+  /api/v1/finance/analytics/forecast/export/:
+    post:
+      operationId: finance_analytics_forecast_export_create
+      description: Формирует файл отчёта по тем же параметрам, что и endpoint projection.
+        Поддерживает CSV, XLSX и PDF, а также секции history, forecast, confidence,
+        parameters.
+      summary: Экспортировать отчёт прогнозирования
+      tags:
+      - finance-forecasting-analytics
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForecastingExportRequestRequest'
+            examples:
+              ExportRequest:
+                value:
+                  format: pdf
+                  sections:
+                  - history
+                  - forecast
+                  - confidence
+                  - parameters
+                  metric: expense
+                  source: all
+                  horizon_months: 6
+                  confidence: 95
+                  model: linear
+                summary: Export request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ForecastingExportRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ForecastingExportRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          description: Некорректные параметры экспорта.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/forecast/meta/:
+    get:
+      operationId: finance_analytics_forecast_meta_retrieve
+      description: 'Возвращает опции фильтров и значения по умолчанию для страницы
+        Forecasting: метрики, источники, горизонты, уровни доверия, модели и секции
+        экспорта.'
+      summary: Получить метаданные страницы прогнозирования
+      tags:
+      - finance-forecasting-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastingMetaResponse'
+          description: ''
+  /api/v1/finance/analytics/forecast/projection/:
+    get:
+      operationId: finance_analytics_forecast_projection_retrieve
+      description: Строит прогноз на основе завершённых месяцев истории. Поддерживает
+        метрики income, expense, balance, источники all или id счёта, горизонты 1/3/6/12/24
+        месяца, доверие 80/90/95/99 и модели linear/prophet. Prophet используется
+        как опциональная модель с fallback на linear.
+      summary: Получить прогноз финансовой метрики
+      parameters:
+      - in: query
+        name: confidence
+        schema:
+          type: integer
+        description: 80, 90, 95 или 99.
+      - in: query
+        name: horizon_months
+        schema:
+          type: integer
+        description: 1, 3, 6, 12 или 24.
+      - in: query
+        name: metric
+        schema:
+          type: string
+        description: income, expense или balance.
+      - in: query
+        name: model
+        schema:
+          type: string
+        description: linear или prophet.
+      - in: query
+        name: source
+        schema:
+          type: string
+        description: all или id счёта пользователя.
+      tags:
+      - finance-forecasting-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastingProjectionResponse'
+              examples:
+                ProjectionResponse:
+                  value:
+                    has_data: true
+                    has_insufficient_data: false
+                    has_high_instability: false
+                    unstable: false
+                    chart_points:
+                    - month: 2026-05
+                      label: Май 2026
+                      value: 135000
+                      is_forecast: false
+                    - month: 2026-06
+                      label: Июн 2026
+                      value: 138000
+                      lower_bound: 124000
+                      upper_bound: 152000
+                      is_forecast: true
+                    detail_rows:
+                    - id: 2026-06
+                      month_label: Июн 2026
+                      forecast_rub: 138000
+                      lower_rub: 124000
+                      upper_rub: 152000
+                    metric_summary:
+                      total_forecast_rub: 873000
+                      delta_percent: 8.7
+                      delta_label: к среднему за предыдущий период
+                      positive_is_good: false
+                    assumptions:
+                      history_period_label: Янв 2025 — Май 2026
+                      source_label: Все счета
+                      model_label: Линейная регрессия
+                      updated_at_label: 27 мая 2026
+                    alert: null
+                  summary: Projection response
+          description: ''
+        '400':
+          description: Некорректные параметры прогноза.
+        '401':
+          description: Пользователь не авторизован.
   /api/v1/finance/budget-notifications/check/:
     post:
       operationId: finance_budget_notifications_check_create
@@ -14369,6 +14522,274 @@ components:
       - label
       - offsetHours
       - value
+    ForecastingAlert:
+      type: object
+      properties:
+        type:
+          type: string
+        icon:
+          type: string
+        title:
+          type: string
+        text:
+          type: string
+      required:
+      - icon
+      - text
+      - title
+      - type
+    ForecastingAssumptions:
+      type: object
+      properties:
+        history_period_label:
+          type: string
+        source_label:
+          type: string
+        model_label:
+          type: string
+        updated_at_label:
+          type: string
+      required:
+      - history_period_label
+      - model_label
+      - source_label
+      - updated_at_label
+    ForecastingChartPoint:
+      type: object
+      properties:
+        month:
+          type: string
+        label:
+          type: string
+        value:
+          type: number
+          format: double
+        lower_bound:
+          type: number
+          format: double
+        upper_bound:
+          type: number
+          format: double
+        is_forecast:
+          type: boolean
+      required:
+      - is_forecast
+      - label
+      - month
+      - value
+    ForecastingDetailRow:
+      type: object
+      properties:
+        id:
+          type: string
+        month_label:
+          type: string
+        forecast_rub:
+          type: number
+          format: double
+        lower_rub:
+          type: number
+          format: double
+        upper_rub:
+          type: number
+          format: double
+      required:
+      - forecast_rub
+      - id
+      - lower_rub
+      - month_label
+      - upper_rub
+    ForecastingExportRequestRequest:
+      type: object
+      properties:
+        format:
+          $ref: '#/components/schemas/FormatB6dEnum'
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingExportRequestSectionsEnum'
+        metric:
+          $ref: '#/components/schemas/MetricEnum'
+        source:
+          type: string
+        horizon_months:
+          type: integer
+        confidence:
+          type: integer
+        model:
+          $ref: '#/components/schemas/ModelEnum'
+      required:
+      - format
+      - sections
+    ForecastingExportRequestSectionsEnum:
+      enum:
+      - history
+      - forecast
+      - confidence
+      - parameters
+      type: string
+      description: |-
+        * `history` - history
+        * `forecast` - forecast
+        * `confidence` - confidence
+        * `parameters` - parameters
+    ForecastingExportSectionOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - id
+      - label
+    ForecastingMetaResponse:
+      type: object
+      properties:
+        metric_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingSelectOption'
+        source_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingSelectOption'
+        horizon_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingNumberSelectOption'
+        confidence_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingNumberSelectOption'
+        model_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingSelectOption'
+        horizon_steps:
+          type: array
+          items:
+            type: integer
+        confidence_steps:
+          type: array
+          items:
+            type: integer
+        export_sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingExportSectionOption'
+        default_metric:
+          type: string
+        default_source:
+          type: string
+        default_horizon_months:
+          type: integer
+        default_confidence:
+          type: integer
+        default_model:
+          type: string
+        default_export_sections:
+          type: array
+          items:
+            type: string
+        disclaimer:
+          type: string
+        chart_footnote:
+          type: string
+      required:
+      - chart_footnote
+      - confidence_options
+      - confidence_steps
+      - default_confidence
+      - default_export_sections
+      - default_horizon_months
+      - default_metric
+      - default_model
+      - default_source
+      - disclaimer
+      - export_sections
+      - horizon_options
+      - horizon_steps
+      - metric_options
+      - model_options
+      - source_options
+    ForecastingMetricSummary:
+      type: object
+      properties:
+        total_forecast_rub:
+          type: number
+          format: double
+        delta_percent:
+          type: number
+          format: double
+        delta_label:
+          type: string
+        positive_is_good:
+          type: boolean
+      required:
+      - delta_label
+      - delta_percent
+      - positive_is_good
+      - total_forecast_rub
+    ForecastingNumberSelectOption:
+      type: object
+      properties:
+        value:
+          type: integer
+        label:
+          type: string
+      required:
+      - label
+      - value
+    ForecastingProjectionResponse:
+      type: object
+      properties:
+        has_data:
+          type: boolean
+        has_insufficient_data:
+          type: boolean
+        has_high_instability:
+          type: boolean
+        unstable:
+          type: boolean
+        chart_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingChartPoint'
+        detail_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingDetailRow'
+        metric_summary:
+          $ref: '#/components/schemas/ForecastingMetricSummary'
+        assumptions:
+          $ref: '#/components/schemas/ForecastingAssumptions'
+        alert:
+          allOf:
+          - $ref: '#/components/schemas/ForecastingAlert'
+          nullable: true
+      required:
+      - assumptions
+      - chart_points
+      - detail_rows
+      - has_data
+      - has_high_instability
+      - has_insufficient_data
+      - metric_summary
+      - unstable
+    ForecastingSelectOption:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+      required:
+      - label
+      - value
     ForgotPassword:
       type: object
       properties:
@@ -15231,6 +15652,14 @@ components:
       description: |-
         * `single` - Одна операция на весь чек
         * `by_items` - Одна операция на каждую позицию
+    ModelEnum:
+      enum:
+      - linear
+      - prophet
+      type: string
+      description: |-
+        * `linear` - linear
+        * `prophet` - prophet
     MoneyAmount:
       type: object
       properties:
