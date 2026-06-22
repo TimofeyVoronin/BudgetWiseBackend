@@ -5,6 +5,20 @@ from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiTypes, extend_schema_field
 from rest_framework import serializers
 
+from apps.users.auth.phone_verification import (
+    ensure_phone_is_available,
+    normalize_phone_number,
+    normalize_stored_phone_number,
+    phone_verification_enabled,
+)
+from apps.users.auth.verification import (
+    email_verification_enabled,
+    ensure_verified_contact,
+    is_email_verified,
+    is_phone_verified,
+)
+from apps.users.profile.avatar_storage import get_user_avatar_url
+
 
 User = get_user_model()
 
@@ -55,6 +69,42 @@ class CurrentUserSerializer(serializers.ModelSerializer):
             return "staff"
 
         return "user"
+
+    def validate_phone(self, value: str) -> str:
+        return _validate_and_normalize_phone(value, self.instance)
+
+    def validate(self, attrs):
+        self._validate_phone_change(attrs)
+        return attrs
+
+    def update(self, instance, validated_data):
+        old_phone = normalize_stored_phone_number(instance.phone)
+        user = super().update(instance, validated_data)
+
+        if "phone" in validated_data and old_phone != normalize_stored_phone_number(user.phone):
+            user.phone_verified = False
+            user.phone_verified_at = None
+            user.save(update_fields=["phone_verified", "phone_verified_at"])
+
+        return user
+
+    def _validate_phone_change(self, attrs) -> None:
+        if self.instance is None or "phone" not in attrs:
+            return
+
+        old_phone = normalize_stored_phone_number(self.instance.phone)
+        new_phone = (attrs.get("phone") or "").strip()
+
+        if old_phone == new_phone:
+            return
+
+        if new_phone:
+            ensure_phone_is_available(new_phone, user=self.instance)
+
+        if not old_phone:
+            return
+
+        ensure_verified_contact(self.instance)
 
 
 class UserProfileMeSerializer(serializers.ModelSerializer):
@@ -171,38 +221,23 @@ class UserProfileMeSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(OpenApiTypes.URI)
     def get_avatarUrl(self, obj) -> str | None:
-        if not getattr(obj, "avatar", None):
-            return None
-
-        try:
-            avatar_url = obj.avatar.url
-        except ValueError:
-            return None
-
-        request = self.context.get("request")
-        if request is not None:
-            return request.build_absolute_uri(avatar_url)
-
-        return avatar_url
+        return get_user_avatar_url(obj, request=self.context.get("request"))
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_isEmailVerified(self, obj) -> bool:
-        if not settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION:
-            return False
-
-        return bool(obj.is_active)
+        return is_email_verified(obj)
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_isPhoneVerified(self, obj) -> bool:
-        return False
+        return is_phone_verified(obj)
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_emailVerificationEnabled(self, obj) -> bool:
-        return bool(settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION)
+        return email_verification_enabled()
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_phoneVerificationEnabled(self, obj) -> bool:
-        return False
+        return phone_verification_enabled()
 
     @extend_schema_field(OpenApiTypes.DATETIME)
     def get_updatedAt(self, obj):
@@ -218,18 +253,7 @@ class UserProfileMeSerializer(serializers.ModelSerializer):
         return _validate_name(value, "Отчество")
 
     def validate_phone(self, value: str) -> str:
-        value = value.strip()
-
-        if not value:
-            return ""
-
-        if not PHONE_PATTERN.match(value):
-            raise serializers.ValidationError(
-                "Телефон должен содержать 7-31 символ: цифры, пробелы, скобки, дефисы и опциональный + в начале.",
-                code="invalid_phone",
-            )
-
-        return value
+        return _validate_and_normalize_phone(value, self.instance)
 
     def validate_city(self, value: str) -> str:
         value = value.strip()
@@ -247,6 +271,54 @@ class UserProfileMeSerializer(serializers.ModelSerializer):
 
     def validate_bio(self, value: str) -> str:
         return value.strip()
+
+    def validate(self, attrs):
+        self._validate_phone_change(attrs)
+        return attrs
+
+    def _validate_phone_change(self, attrs) -> None:
+        if self.instance is None or "phone" not in attrs:
+            return
+
+        old_phone = normalize_stored_phone_number(self.instance.phone)
+        new_phone = (attrs.get("phone") or "").strip()
+
+        if old_phone == new_phone:
+            return
+
+        if new_phone:
+            ensure_phone_is_available(new_phone, user=self.instance)
+
+        if not old_phone:
+            return
+
+        ensure_verified_contact(self.instance)
+
+    def update(self, instance, validated_data):
+        old_phone = normalize_stored_phone_number(instance.phone)
+        user = super().update(instance, validated_data)
+
+        if "phone" in validated_data and old_phone != normalize_stored_phone_number(user.phone):
+            user.phone_verified = False
+            user.phone_verified_at = None
+            user.save(update_fields=["phone_verified", "phone_verified_at"])
+
+        return user
+
+
+def _validate_and_normalize_phone(value: str, user) -> str:
+    value = value.strip()
+
+    if not value:
+        return ""
+
+    if not PHONE_PATTERN.match(value):
+        raise serializers.ValidationError(
+            "Телефон должен содержать цифры, пробелы, скобки, дефисы и опциональный + в начале.",
+            code="invalid_phone",
+        )
+
+    return normalize_phone_number(value)
 
 
 def _validate_name(value: str, field_title: str) -> str:

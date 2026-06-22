@@ -413,6 +413,34 @@ class FinanceDashboardAPITests(FinanceAPITestCase):
                 invalid_limit_response.data["error"]["field_errors"],
             )
 
+
+    def test_dashboard_summary_uses_grouped_queries_for_many_transactions(self):
+            self.authenticate()
+
+            for index in range(60):
+                self.create_transaction(
+                    account=self.account if index % 2 == 0 else self.cash_account,
+                    category=self.expense_category if index % 3 else self.transport_category,
+                    type=TransactionType.EXPENSE if index % 4 else TransactionType.INCOME,
+                    amount=str(Decimal("100.00") + index),
+                    description=f"Dashboard transaction {index}",
+                    operation_date=self.today,
+                )
+
+            with CaptureQueriesContext(connection) as captured_queries:
+                response = self.client.get(
+                    reverse("finance:dashboard-summary"),
+                    data={
+                        "period": "month",
+                        "currency": "RUB",
+                        "limit": 5,
+                    },
+                )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(response.data["recent_transactions"]), 5)
+            self.assertLessEqual(len(captured_queries), 30)
+
     def test_dashboard_summary_uses_cache_for_same_query_params(self):
             self.authenticate()
 

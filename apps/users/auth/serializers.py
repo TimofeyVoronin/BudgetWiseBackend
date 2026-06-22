@@ -17,9 +17,11 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.users.auth.email_confirmation import (
+    EMAIL_ALREADY_CONFIRMED_MESSAGE,
+    EMAIL_CONFIRMATION_ACCEPTED_MESSAGE,
     EMAIL_CONFIRMATION_PURPOSE,
     load_email_confirmation_token,
-    send_email_confirmation,
+    request_email_confirmation,
 )
 from apps.users.auth.exceptions import (
     PasswordResetTokenAlreadyUsed,
@@ -31,6 +33,24 @@ from apps.users.auth.password_reset import (
     get_password_reset_token_record,
     send_password_reset_email,
 )
+from apps.users.auth.phone_verification import (
+    PhoneVerificationProviderError,
+    confirm_phone_verification,
+    normalize_phone_number,
+    phone_verification_enabled,
+    request_phone_verification,
+)
+from apps.users.auth.verification import (
+    EMAIL_NOT_VERIFIED_CODE,
+    EMAIL_NOT_VERIFIED_MESSAGE,
+    email_verification_required,
+    ensure_verified_contact,
+    has_verified_contact,
+    is_email_verified,
+    is_phone_verified,
+)
+from apps.users.models import UserProfileAuditAction
+from apps.users.profile.audit import log_profile_audit_event
 
 
 User = get_user_model()
@@ -64,6 +84,8 @@ class RegisterSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     username = serializers.CharField(read_only=True)
     is_active = serializers.BooleanField(read_only=True)
+    isEmailVerified = serializers.BooleanField(read_only=True)
+    emailVerificationRequired = serializers.BooleanField(read_only=True)
     detail = serializers.CharField(read_only=True)
 
     def validate_email(self, email):
@@ -103,26 +125,34 @@ class RegisterSerializer(serializers.Serializer):
 
         username = self._generate_username(email)
 
-        require_email_confirmation = settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION
+        email_verification_enabled = settings.EMAIL_VERIFICATION_ENABLED
 
         user = User(
             username=username,
             email=email,
-            is_active=not require_email_confirmation,
+            is_active=True,
+            email_verified=not email_verification_enabled,
+            email_verified_at=timezone.now() if not email_verification_enabled else None,
         )
         user.set_password(password)
         user.save()
 
-        if require_email_confirmation:
-            send_email_confirmation(user)
+        if email_verification_enabled:
+            try:
+                request_email_confirmation(user, force=True)
+            except Exception:
+                logger.exception(
+                    "User registered, but email confirmation sending failed. user_id=%s",
+                    user.id,
+                )
 
         return user
 
     def to_representation(self, instance):
-        if settings.REGISTRATION_REQUIRE_EMAIL_CONFIRMATION:
+        if settings.EMAIL_VERIFICATION_ENABLED:
             detail = (
                 "Пользователь зарегистрирован. "
-                "Для активации аккаунта подтвердите email."
+                "Для защиты аккаунта подтвердите email."
             )
         else:
             detail = "Пользователь зарегистрирован. Теперь можно войти в аккаунт."
@@ -132,6 +162,8 @@ class RegisterSerializer(serializers.Serializer):
             "username": instance.username,
             "email": instance.email,
             "is_active": instance.is_active,
+            "isEmailVerified": is_email_verified(instance),
+            "emailVerificationRequired": email_verification_required(instance),
             "detail": detail,
         }
 
@@ -230,34 +262,37 @@ class VerifyEmailSerializer(serializers.Serializer):
                 }
             )
 
-        if user.is_active:
-            raise ValidationError(
-                {
-                    "token": [
-                        serializers.ErrorDetail(
-                            "Email уже подтверждён.",
-                            code="token_already_used",
-                        )
-                    ]
-                }
-            )
-
         attrs["user"] = user
         return attrs
 
     def save(self, **kwargs):
         user = self.validated_data["user"]
+        self._already_verified = bool(user.email_verified)
+
+        if user.email_verified:
+            return user
+
         user.is_active = True
-        user.save(update_fields=["is_active"])
+        user.email_verified = True
+        user.email_verified_at = timezone.now()
+        user.save(update_fields=["is_active", "email_verified", "email_verified_at"])
 
         return user
 
     def to_representation(self, instance):
+        detail = (
+            EMAIL_ALREADY_CONFIRMED_MESSAGE
+            if getattr(self, "_already_verified", False)
+            else "Email подтверждён."
+        )
+
         return {
             "id": instance.id,
             "email": instance.email,
             "is_active": instance.is_active,
-            "detail": "Email подтверждён. Аккаунт активирован.",
+            "isEmailVerified": bool(instance.email_verified),
+            "emailVerificationRequired": email_verification_required(instance),
+            "detail": detail,
         }
 
 
@@ -289,6 +324,8 @@ class ForgotPasswordSerializer(serializers.Serializer):
             return {
                 "detail": PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE,
             }
+
+        ensure_verified_contact(user)
 
         try:
             send_password_reset_email(user=user, request=request)
@@ -366,6 +403,8 @@ class ResetPasswordSerializer(serializers.Serializer):
         if token_record.is_expired:
             raise PasswordResetTokenExpired()
 
+        ensure_verified_contact(token_record.user)
+
         validate_password(password, user=token_record.user)
 
         attrs["token_record"] = token_record
@@ -436,6 +475,273 @@ class ResetPasswordSerializer(serializers.Serializer):
         return request.META.get("REMOTE_ADDR")
 
 
+class ResendEmailVerificationSerializer(serializers.Serializer):
+    detail = serializers.CharField(read_only=True)
+    queued = serializers.BooleanField(read_only=True)
+
+    def save(self, **kwargs):
+        request = self.context["request"]
+        user = request.user
+
+        result = request_email_confirmation(user, force=False)
+        return {
+            "detail": result.get("detail") or EMAIL_CONFIRMATION_ACCEPTED_MESSAGE,
+            "queued": bool(result.get("queued", False)),
+        }
+
+    def to_representation(self, instance):
+        return instance
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    currentPassword = serializers.CharField(write_only=True, trim_whitespace=False)
+    newPassword = serializers.CharField(write_only=True, trim_whitespace=False, min_length=8)
+    newPasswordConfirm = serializers.CharField(write_only=True, trim_whitespace=False, min_length=8)
+    detail = serializers.CharField(read_only=True)
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        user = request.user
+
+        ensure_verified_contact(user)
+
+        current_password = attrs.get("currentPassword")
+        new_password = attrs.get("newPassword")
+        new_password_confirm = attrs.get("newPasswordConfirm")
+
+        if not user.check_password(current_password):
+            raise ValidationError(
+                {
+                    "currentPassword": [
+                        serializers.ErrorDetail(
+                            "Неверный текущий пароль.",
+                            code="invalid_password",
+                        )
+                    ]
+                }
+            )
+
+        if new_password != new_password_confirm:
+            raise ValidationError(
+                {
+                    "newPasswordConfirm": [
+                        serializers.ErrorDetail(
+                            "Пароли не совпадают.",
+                            code="password_mismatch",
+                        )
+                    ]
+                }
+            )
+
+        validate_password(new_password, user=user)
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.context["request"].user
+        user.set_password(self.validated_data["newPassword"])
+        user.save(update_fields=["password"])
+        return {"detail": "Пароль успешно изменён."}
+
+    def to_representation(self, instance):
+        return instance
+
+
+class ChangeEmailSerializer(serializers.Serializer):
+    newEmail = serializers.EmailField(write_only=True)
+    currentPassword = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    id = serializers.IntegerField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    isEmailVerified = serializers.BooleanField(read_only=True)
+    emailVerificationRequired = serializers.BooleanField(read_only=True)
+    detail = serializers.CharField(read_only=True)
+
+    def validate_newEmail(self, value: str) -> str:
+        normalized_email = value.strip().lower()
+
+        user = self.context["request"].user
+        if normalized_email == str(user.email).lower():
+            raise serializers.ValidationError(
+                "Новый email совпадает с текущим.",
+                code="same_email",
+            )
+
+        if User.objects.filter(email__iexact=normalized_email).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError(
+                "Пользователь с таким email уже существует.",
+                code="unique",
+            )
+
+        return normalized_email
+
+    def validate(self, attrs):
+        user = self.context["request"].user
+        ensure_verified_contact(user)
+
+        if not user.check_password(attrs.get("currentPassword")):
+            raise ValidationError(
+                {
+                    "currentPassword": [
+                        serializers.ErrorDetail(
+                            "Неверный текущий пароль.",
+                            code="invalid_password",
+                        )
+                    ]
+                }
+            )
+
+        return attrs
+
+    def save(self, **kwargs):
+        request = self.context["request"]
+        user = request.user
+        old_email = user.email
+        new_email = self.validated_data["newEmail"]
+
+        with transaction.atomic():
+            locked_user = User.objects.select_for_update().get(pk=user.pk)
+            locked_user.email = new_email
+            locked_user.email_verified = False
+            locked_user.email_verified_at = None
+            locked_user.save(update_fields=["email", "email_verified", "email_verified_at"])
+
+            log_profile_audit_event(
+                user=locked_user,
+                action=UserProfileAuditAction.EMAIL_CHANGED,
+                changed_fields=["email"],
+                old_values={"email": old_email},
+                new_values={"email": new_email},
+                metadata={"source": "auth_change_email_api"},
+                request=request,
+            )
+
+        try:
+            request_email_confirmation(locked_user, force=True)
+        except Exception:
+            logger.exception(
+                "Email changed, but email confirmation sending failed. user_id=%s",
+                locked_user.id,
+            )
+
+        return locked_user
+
+    def to_representation(self, instance):
+        return {
+            "id": instance.id,
+            "email": instance.email,
+            "isEmailVerified": is_email_verified(instance),
+            "emailVerificationRequired": email_verification_required(instance),
+            "detail": "Email изменён. Подтвердите новый email по ссылке из письма.",
+        }
+
+
+class SendPhoneVerificationSerializer(serializers.Serializer):
+    phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=32,
+        write_only=True,
+    )
+    detail = serializers.CharField(read_only=True)
+    phoneDisplay = serializers.CharField(read_only=True)
+    queued = serializers.BooleanField(read_only=True)
+    isPhoneVerified = serializers.BooleanField(read_only=True)
+
+    def validate_phone(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return ""
+        return normalize_phone_number(value)
+
+    def save(self, **kwargs):
+        request = self.context["request"]
+        user = request.user
+        old_phone = user.phone or ""
+        phone = self.validated_data.get("phone") or old_phone
+
+        try:
+            result = request_phone_verification(user, phone=phone, force=False)
+        except PhoneVerificationProviderError as exc:
+            logger.warning(
+                "Phone verification provider failed. user_id=%s phone=%s error=%s",
+                user.id,
+                phone,
+                exc,
+            )
+            raise serializers.ValidationError(
+                {
+                    "phone": [
+                        "Не удалось отправить код подтверждения телефона. "
+                        "Попробуйте позже или обратитесь в поддержку."
+                    ]
+                },
+                code="phone_verification_provider_error",
+            ) from exc
+
+        if result.get("phone_changed"):
+            user.refresh_from_db()
+            log_profile_audit_event(
+                user=user,
+                action=UserProfileAuditAction.PHONE_CHANGED,
+                changed_fields=["phone"],
+                old_values={"phone": result.get("old_phone") or ""},
+                new_values={"phone": result.get("phone") or ""},
+                metadata={"source": "phone_verification_send_api"},
+                request=request,
+            )
+
+        return {
+            "detail": result.get("detail"),
+            "phoneDisplay": result.get("phone"),
+            "queued": bool(result.get("queued", False)),
+            "isPhoneVerified": False,
+        }
+
+    def to_representation(self, instance):
+        return instance
+
+
+class ConfirmPhoneVerificationSerializer(serializers.Serializer):
+    phone = serializers.CharField(write_only=True, max_length=32)
+    code = serializers.CharField(write_only=True, min_length=6, max_length=6)
+
+    detail = serializers.CharField(read_only=True)
+    phoneDisplay = serializers.CharField(read_only=True)
+    isPhoneVerified = serializers.BooleanField(read_only=True)
+    hasVerifiedContact = serializers.BooleanField(read_only=True)
+
+    def validate_phone(self, value: str) -> str:
+        return normalize_phone_number(value)
+
+    def validate_code(self, value: str) -> str:
+        value = value.strip()
+        if not value.isdigit():
+            raise serializers.ValidationError(
+                "Код должен состоять из 6 цифр.",
+                code="invalid_code",
+            )
+        return value
+
+    def save(self, **kwargs):
+        request = self.context["request"]
+        user = request.user
+        result = confirm_phone_verification(
+            user,
+            phone=self.validated_data["phone"],
+            code=self.validated_data["code"],
+        )
+        user.refresh_from_db()
+        return {
+            "detail": result.get("detail"),
+            "phoneDisplay": result.get("phone"),
+            "isPhoneVerified": is_phone_verified(user),
+            "hasVerifiedContact": has_verified_contact(user),
+        }
+
+    def to_representation(self, instance):
+        return instance
+
+
 class LoginUserSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     username = serializers.CharField(read_only=True)
@@ -444,6 +750,11 @@ class LoginUserSerializer(serializers.Serializer):
     last_name = serializers.CharField(read_only=True, allow_blank=True)
     role = serializers.CharField(read_only=True)
     is_active = serializers.BooleanField(read_only=True)
+    isEmailVerified = serializers.BooleanField(read_only=True)
+    isPhoneVerified = serializers.BooleanField(read_only=True)
+    emailVerificationRequired = serializers.BooleanField(read_only=True)
+    phoneVerificationEnabled = serializers.BooleanField(read_only=True)
+    hasVerifiedContact = serializers.BooleanField(read_only=True)
 
 
 class LoginSerializer(serializers.Serializer):
@@ -505,6 +816,11 @@ class LoginSerializer(serializers.Serializer):
                 "last_name": authenticated_user.last_name,
                 "role": self._get_role(authenticated_user),
                 "is_active": authenticated_user.is_active,
+                "isEmailVerified": is_email_verified(authenticated_user),
+                "isPhoneVerified": is_phone_verified(authenticated_user),
+                "emailVerificationRequired": email_verification_required(authenticated_user),
+                "phoneVerificationEnabled": phone_verification_enabled(),
+                "hasVerifiedContact": has_verified_contact(authenticated_user),
             },
         }
 

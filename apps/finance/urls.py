@@ -2,6 +2,21 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from apps.finance.accounts.views import AccountViewSet
+from apps.finance.analytics.combined.views import (
+    CombinedAnalyticsAggregatesView,
+    CombinedAnalyticsExportView,
+    CombinedAnalyticsMetaView,
+)
+from apps.finance.analytics.comparative.views import (
+    ComparativeAnalyticsComparisonView,
+    ComparativeAnalyticsExportView,
+    ComparativeAnalyticsMetaView,
+)
+from apps.finance.analytics.forecast.views import (
+    ForecastingAnalyticsExportView,
+    ForecastingAnalyticsMetaView,
+    ForecastingAnalyticsProjectionView,
+)
 from apps.finance.budgets.views import BudgetViewSet
 from apps.finance.calculators.views import (
     CalculatorCalculateView,
@@ -38,7 +53,11 @@ from apps.finance.goals.views import GoalViewSet
 from apps.finance.notifications.views import NotificationViewSet
 from apps.finance.planned_transactions.views import PlannedTransactionViewSet
 from apps.finance.recurring_transactions.views import RecurringTransactionViewSet
-from apps.finance.receipts.views import ReceiptCreateTransactionsView, ReceiptImportByQRView
+from apps.finance.receipts.views import (
+    ReceiptCreateTransactionsView,
+    ReceiptImportByQRView,
+    ReceiptItemsView,
+)
 from apps.finance.tags.views import TagViewSet
 from apps.finance.transaction_templates.views import TransactionTemplateViewSet
 from apps.finance.transactions.views import (
@@ -116,6 +135,51 @@ urlpatterns = [
         name="budget-notification-check",
     ),
     path(
+        "analytics/combined/meta/",
+        CombinedAnalyticsMetaView.as_view(),
+        name="combined-analytics-meta",
+    ),
+    path(
+        "analytics/combined/aggregates/",
+        CombinedAnalyticsAggregatesView.as_view(),
+        name="combined-analytics-aggregates",
+    ),
+    path(
+        "analytics/combined/export/",
+        CombinedAnalyticsExportView.as_view(),
+        name="combined-analytics-export",
+    ),
+    path(
+        "analytics/comparative/meta/",
+        ComparativeAnalyticsMetaView.as_view(),
+        name="comparative-analytics-meta",
+    ),
+    path(
+        "analytics/comparative/comparison/",
+        ComparativeAnalyticsComparisonView.as_view(),
+        name="comparative-analytics-comparison",
+    ),
+    path(
+        "analytics/comparative/export/",
+        ComparativeAnalyticsExportView.as_view(),
+        name="comparative-analytics-export",
+    ),
+    path(
+        "analytics/forecast/meta/",
+        ForecastingAnalyticsMetaView.as_view(),
+        name="forecasting-analytics-meta",
+    ),
+    path(
+        "analytics/forecast/projection/",
+        ForecastingAnalyticsProjectionView.as_view(),
+        name="forecasting-analytics-projection",
+    ),
+    path(
+        "analytics/forecast/export/",
+        ForecastingAnalyticsExportView.as_view(),
+        name="forecasting-analytics-export",
+    ),
+    path(
         "dashboard/summary/",
         DashboardSummaryView.as_view(),
         name="dashboard-summary",
@@ -180,6 +244,11 @@ urlpatterns = [
         "receipts/qr/",
         ReceiptImportByQRView.as_view(),
         name="receipt-qr",
+    ),
+    path(
+        "receipts/<int:receipt_id>/items/",
+        ReceiptItemsView.as_view(),
+        name="receipt-items",
     ),
     path(
         "receipts/<int:receipt_id>/create-transactions/",

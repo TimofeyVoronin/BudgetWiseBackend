@@ -28,6 +28,7 @@ class UserProfileAvatarAPITests(APITestCase):
             MEDIA_ROOT=self.media_root,
             MEDIA_URL="/media/",
             USER_PROFILE_AVATAR_MAX_SIZE_BYTES=5 * 1024 * 1024,
+            AVATAR_STORAGE_PROVIDER="local",
         )
         self.media_override.enable()
 
@@ -172,3 +173,117 @@ class UserProfileAvatarAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         field_errors = response.data["error"]["field_errors"]
         self.assertIn("avatar", field_errors)
+
+
+@override_settings(
+    AVATAR_STORAGE_PROVIDER="cloudinary",
+    CLOUDINARY_CLOUD_NAME="demo-cloud",
+    CLOUDINARY_API_KEY="demo-key",
+    CLOUDINARY_API_SECRET="demo-secret",
+    CLOUDINARY_AVATAR_FOLDER="budgetwise/avatars",
+    USER_PROFILE_AVATAR_MAX_SIZE_BYTES=5 * 1024 * 1024,
+)
+class UserProfileCloudinaryAvatarAPITests(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.avatar_url = reverse("profile-me-avatar")
+        self.profile_url = reverse("profile-me")
+        self.user = User.objects.create_user(
+            username="cloudinary_avatar_user",
+            email="cloudinary-avatar@example.com",
+            password="profile-password-123",
+        )
+
+    def authenticate(self):
+        self.client.force_authenticate(user=self.user)
+
+    def test_upload_avatar_to_cloudinary_stores_url_and_public_id(self):
+        self.authenticate()
+
+        with self.settings(AVATAR_STORAGE_PROVIDER="cloudinary"):
+            from unittest.mock import patch
+
+            with patch(
+                "cloudinary.uploader.upload",
+                return_value={
+                    "secure_url": "https://res.cloudinary.com/demo/image/upload/v1/budgetwise/avatars/user_1_avatar.jpg",
+                    "public_id": "budgetwise/avatars/user_1_avatar",
+                },
+            ) as upload_mock:
+                response = self.client.post(
+                    self.avatar_url,
+                    {"avatar": make_avatar_file("avatar.jpg")},
+                    format="multipart",
+                )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["avatarUrl"],
+            "https://res.cloudinary.com/demo/image/upload/v1/budgetwise/avatars/user_1_avatar.jpg",
+        )
+        upload_mock.assert_called_once()
+
+        self.user.refresh_from_db()
+        self.assertFalse(bool(self.user.avatar))
+        self.assertEqual(
+            self.user.avatar_url,
+            "https://res.cloudinary.com/demo/image/upload/v1/budgetwise/avatars/user_1_avatar.jpg",
+        )
+        self.assertEqual(self.user.avatar_public_id, "budgetwise/avatars/user_1_avatar")
+
+        profile_response = self.client.get(self.profile_url)
+        self.assertEqual(profile_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(profile_response.data["avatarUrl"], response.data["avatarUrl"])
+
+    def test_upload_avatar_to_cloudinary_replaces_previous_cloudinary_avatar(self):
+        self.authenticate()
+        self.user.avatar_url = "https://res.cloudinary.com/demo/image/upload/v1/budgetwise/avatars/old.jpg"
+        self.user.avatar_public_id = "budgetwise/avatars/old_avatar"
+        self.user.save(update_fields=["avatar_url", "avatar_public_id"])
+
+        from unittest.mock import patch
+
+        with patch(
+            "cloudinary.uploader.upload",
+            return_value={
+                "secure_url": "https://res.cloudinary.com/demo/image/upload/v1/budgetwise/avatars/new.jpg",
+                "public_id": "budgetwise/avatars/new_avatar",
+            },
+        ), patch("cloudinary.uploader.destroy", return_value={"result": "ok"}) as destroy_mock:
+            response = self.client.post(
+                self.avatar_url,
+                {"avatar": make_avatar_file("new.png", content_type="image/png")},
+                format="multipart",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["avatarUrl"], "https://res.cloudinary.com/demo/image/upload/v1/budgetwise/avatars/new.jpg")
+        destroy_mock.assert_called_once_with(
+            "budgetwise/avatars/old_avatar",
+            resource_type="image",
+            invalidate=True,
+        )
+
+    def test_delete_cloudinary_avatar_clears_url_and_public_id(self):
+        self.authenticate()
+        self.user.avatar_url = "https://res.cloudinary.com/demo/image/upload/v1/budgetwise/avatars/avatar.jpg"
+        self.user.avatar_public_id = "budgetwise/avatars/avatar"
+        self.user.save(update_fields=["avatar_url", "avatar_public_id"])
+
+        from unittest.mock import patch
+
+        with patch("cloudinary.uploader.destroy", return_value={"result": "ok"}) as destroy_mock:
+            response = self.client.delete(self.avatar_url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {"deleted": True, "avatarUrl": None})
+        destroy_mock.assert_called_once_with(
+            "budgetwise/avatars/avatar",
+            resource_type="image",
+            invalidate=True,
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.avatar_url, "")
+        self.assertEqual(self.user.avatar_public_id, "")
+        self.assertFalse(bool(self.user.avatar))

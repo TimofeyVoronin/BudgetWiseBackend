@@ -52,19 +52,21 @@ class HealthCheckResponseSerializer(serializers.Serializer):
                         },
                     },
                     "redis": {
-                        "status": "skipped",
+                        "status": "ok",
                         "required": False,
-                        "latency_ms": None,
+                        "latency_ms": 1.25,
                         "details": {
-                            "reason": "Redis is not configured yet.",
+                            "url": "redis://redis:6379/0",
                         },
                     },
                     "celery": {
-                        "status": "skipped",
+                        "status": "ok",
                         "required": False,
-                        "latency_ms": None,
+                        "latency_ms": 8.42,
                         "details": {
-                            "reason": "Celery health-check is not configured yet.",
+                            "brokerUrl": "redis://redis:6379/0",
+                            "workersOnline": 1,
+                            "workers": ["celery@worker"],
                         },
                     },
                     "external_services": {

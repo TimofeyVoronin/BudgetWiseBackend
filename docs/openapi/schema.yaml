@@ -45,6 +45,92 @@ paths:
                       metrics: /metrics/
                   summary: Успешный ответ
           description: ''
+  /api/v1/auth/change-email/:
+    post:
+      operationId: auth_change_email_create
+      description: Меняет email текущего пользователя после проверки текущего пароля.
+        Для действия нужен подтверждённый email или телефон. После смены email подтверждение
+        сбрасывается и отправляется новое письмо.
+      summary: Изменить email текущего пользователя
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeEmailRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  newEmail: new-email@example.com
+                  currentPassword: Password123!
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChangeEmailRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChangeEmailRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeEmail'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    id: 1
+                    email: new-email@example.com
+                    isEmailVerified: false
+                    emailVerificationRequired: true
+                    detail: Email изменён. Подтвердите новый email по ссылке из письма.
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/auth/change-password/:
+    post:
+      operationId: auth_change_password_create
+      description: Меняет пароль авторизованного пользователя. Для действия нужен
+        подтверждённый email или телефон.
+      summary: Изменить пароль текущего пользователя
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  currentPassword: OldPassword123!
+                  newPassword: NewPassword123!
+                  newPasswordConfirm: NewPassword123!
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangePassword'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Пароль успешно изменён.
+                  summary: Успешный ответ
+          description: ''
   /api/v1/auth/forgot-password/check/:
     post:
       operationId: auth_forgot_password_check_create
@@ -178,11 +264,98 @@ paths:
                     detail: Выход выполнен. Refresh token добавлен в blacklist.
                   summary: Успешный ответ
           description: ''
+  /api/v1/auth/phone/verification/confirm/:
+    post:
+      operationId: auth_phone_verification_confirm_create
+      description: Подтверждает телефон текущего пользователя по 6-значному коду.
+        После успешного подтверждения phone становится доверенным каналом для чувствительных
+        действий.
+      summary: Подтвердить телефон кодом
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmPhoneVerificationRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  phone: '+79990000000'
+                  code: '123456'
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConfirmPhoneVerificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConfirmPhoneVerificationRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmPhoneVerification'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Телефон подтверждён.
+                    phoneDisplay: '+79990000000'
+                    isPhoneVerified: true
+                    hasVerifiedContact: true
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/auth/phone/verification/send/:
+    post:
+      operationId: auth_phone_verification_send_create
+      description: Отправляет код подтверждения телефона текущего пользователя. Если
+        телефон ещё не указан, его можно передать в запросе. Если телефон уже указан
+        и меняется, нужен подтверждённый email или телефон.
+      summary: Отправить код подтверждения телефона
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendPhoneVerificationRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  phone: +7 (999) 000-00-00
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SendPhoneVerificationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendPhoneVerificationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendPhoneVerification'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Код подтверждения телефона отправлен.
+                    phoneDisplay: '+79990000000'
+                    queued: true
+                    isPhoneVerified: false
+                  summary: Успешный ответ
+          description: ''
   /api/v1/auth/register/:
     post:
       operationId: auth_register_create
-      description: Создаёт нового неактивного пользователя по email и password. После
-        регистрации backend отправляет письмо со ссылкой подтверждения email.
+      description: Создаёт нового активного пользователя по email и password. Если
+        email-верификация включена, backend отправляет письмо подтверждения, но вход
+        в систему остаётся доступным сразу после регистрации.
       summary: Зарегистрировать пользователя
       tags:
       - auth
@@ -220,8 +393,10 @@ paths:
                     id: 1
                     username: user
                     email: user@example.com
-                    is_active: false
-                    detail: Пользователь зарегистрирован. Для активации аккаунта подтвердите
+                    is_active: true
+                    isEmailVerified: false
+                    emailVerificationRequired: true
+                    detail: Пользователь зарегистрирован. Для защиты аккаунта подтвердите
                       email.
                   summary: Успешный ответ
           description: ''
@@ -311,8 +486,9 @@ paths:
   /api/v1/auth/verify-email/:
     post:
       operationId: auth_verify_email_create
-      description: Проверяет token подтверждения email. Если token действителен, активирует
-        аккаунт пользователя. Повторное использование token после активации запрещено.
+      description: Проверяет token подтверждения email. Если token действителен, подтверждает
+        email пользователя. Повторное использование token для уже подтверждённого
+        email возвращает успешный ответ.
       summary: Подтвердить email пользователя
       tags:
       - auth
@@ -348,7 +524,32 @@ paths:
                     id: 1
                     email: user@example.com
                     is_active: true
-                    detail: Email подтверждён. Аккаунт активирован.
+                    isEmailVerified: true
+                    emailVerificationRequired: false
+                    detail: Email подтверждён.
+                  summary: Успешный ответ
+          description: ''
+  /api/v1/auth/verify-email/resend/:
+    post:
+      operationId: auth_verify_email_resend_create
+      description: Отправляет новое письмо подтверждения email текущему пользователю.
+        Если email уже подтверждён, возвращает успешный ответ без отправки письма.
+      summary: Повторно отправить письмо подтверждения email
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResendEmailVerification'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    detail: Письмо подтверждения email отправлено.
+                    queued: true
                   summary: Успешный ответ
           description: ''
   /api/v1/finance/accounts/:
@@ -780,6 +981,513 @@ paths:
                     currency: RUB
                   summary: Сводка по счетам
           description: ''
+  /api/v1/finance/analytics/combined/aggregates/:
+    get:
+      operationId: finance_analytics_combined_aggregates_retrieve
+      description: Единый endpoint страницы комбинированной аналитики. Возвращает
+        данные для круговой диаграммы по категориям, столбчатого сравнения с предыдущим
+        периодом, линейного графика трендов и таблицы агрегатов.
+      summary: Получить агрегаты для pie, bar и line диаграмм
+      parameters:
+      - in: query
+        name: account_ids
+        schema:
+          type: array
+          items:
+            type: integer
+        description: ID счетов. Можно передать несколько раз.
+      - in: query
+        name: category_ids
+        schema:
+          type: array
+          items:
+            type: integer
+        description: ID категорий. Можно передать несколько раз.
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: ISO-код валюты отображения. По умолчанию RUB.
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+        description: Дата начала периода для custom или явного диапазона.
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+        description: Дата окончания периода для custom или явного диапазона.
+      - in: query
+        name: operation_type
+        schema:
+          type: string
+        description: expense, income или transfer.
+      - in: query
+        name: period_id
+        schema:
+          type: string
+        description: 'ID периода: YYYY-MM, YYYY-Q1, YYYY, YYYY-W23.'
+      - in: query
+        name: period_preset
+        schema:
+          type: string
+        description: week, month, quarter, year или custom.
+      tags:
+      - finance-combined-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CombinedAnalyticsAggregatesResponse'
+              examples:
+                AggregatesResponse:
+                  value:
+                    has_data: true
+                    period_label: Май 2026
+                    total_expense_rub: 128450
+                    total_income_rub: 100000
+                    pie_slices:
+                    - category_id: '1'
+                      category_name: Продукты
+                      category_color: '#4f46e5'
+                      amount_rub: 41100
+                      percent: 32
+                    bar_groups:
+                    - category_id: '1'
+                      category_name: Продукты
+                      previous_period_amount_rub: 42000
+                      current_period_amount_rub: 41100
+                    bar_legend:
+                      previous_period_label: Апрель 2026
+                      current_period_label: Май 2026
+                    line_points:
+                    - month: 2026-05
+                      label: Май 2026
+                      income_rub: 100000
+                      expense_rub: 128450
+                      balance_rub: -28450
+                    aggregate_rows:
+                    - category_id: '1'
+                      category_name: Продукты
+                      amount_rub: 41100
+                      percent: 32
+                  summary: Aggregates response
+          description: ''
+        '400':
+          description: Некорректные параметры фильтров.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/combined/export/:
+    post:
+      operationId: finance_analytics_combined_export_create
+      description: 'Формирует файл отчёта по тем же фильтрам, что и endpoint aggregates.
+        Поддерживаются форматы CSV, XLSX и PDF, а также выбор секций: pie, bar, line,
+        table.'
+      summary: Экспортировать отчёт комбинированной аналитики
+      tags:
+      - finance-combined-analytics
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CombinedAnalyticsExportRequestRequest'
+            examples:
+              ExportRequest:
+                value:
+                  format: xlsx
+                  sections:
+                  - pie
+                  - bar
+                  - line
+                  - table
+                  period_preset: month
+                  period_id: 2026-05
+                  account_ids:
+                  - 1
+                  - 2
+                  category_ids:
+                  - 3
+                  - 4
+                  operation_type: expense
+                  currency: RUB
+                summary: Export request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CombinedAnalyticsExportRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CombinedAnalyticsExportRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          description: Некорректные параметры экспорта.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/combined/meta/:
+    get:
+      operationId: finance_analytics_combined_meta_retrieve
+      description: 'Возвращает опции фильтров и значения по умолчанию для страницы
+        визуализации: пресеты периода, счета, категории, типы операций и доступные
+        секции экспорта.'
+      summary: Получить метаданные страницы комбинированной аналитики
+      tags:
+      - finance-combined-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CombinedAnalyticsMetaResponse'
+              examples:
+                MetaResponse:
+                  value:
+                    period_presets:
+                    - value: week
+                      label: Неделя
+                    - value: month
+                      label: Месяц
+                    period_options:
+                    - value: 2026-05
+                      label: Май 2026
+                    account_options:
+                    - value: all
+                      label: Все
+                    category_options:
+                    - value: all
+                      label: Все
+                    type_options:
+                    - value: expense
+                      label: Расходы
+                    filter_categories: []
+                    filter_accounts: []
+                    export_sections:
+                    - id: pie
+                      label: Включить круговую диаграмму
+                      icon: mdi-chart-donut
+                    default_period_id: 2026-05
+                    default_date_from: 01.05.2026
+                    default_date_to: 31.05.2026
+                    default_account_ids: []
+                    default_category_ids: []
+                    default_operation_type: expense
+                  summary: Meta response
+          description: ''
+  /api/v1/finance/analytics/comparative/comparison/:
+    get:
+      operationId: finance_analytics_comparative_comparison_retrieve
+      description: 'Возвращает данные для страницы Comparative Analytics: выбранные
+        сущности в порядке drag-and-drop, grouped bar chart, line chart, карточки
+        сводки, таблицу различий и сравнение по категориям.'
+      summary: Получить сравнительные агрегаты
+      parameters:
+      - in: query
+        name: comparison_type
+        schema:
+          type: string
+        description: periods, categories или accounts.
+      - in: query
+        name: convert_to_rub
+        schema:
+          type: boolean
+        description: Приводить суммы счетов в разных валютах к RUB.
+      - in: query
+        name: entity_ids
+        schema:
+          type: array
+          items:
+            type: string
+        description: ID сравниваемых сущностей. Порядок важен.
+      - in: query
+        name: metric
+        schema:
+          type: string
+        description: income, expense или balance.
+      - in: query
+        name: year
+        schema:
+          type: string
+        description: Год сравнения, например 2026.
+      tags:
+      - finance-comparative-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparativeAnalyticsComparisonResponse'
+              examples:
+                ComparisonResponse:
+                  value:
+                    has_data: true
+                    has_mixed_currencies: false
+                    entities:
+                    - id: 2026-06
+                      label: Июнь 2026
+                      subtitle: Период
+                      amount_rub: 100000
+                      color: '#F97316'
+                      has_data: true
+                      currency_code: RUB
+                    bar_groups:
+                    - key: income
+                      label: Доходы
+                      values:
+                      - 100000
+                    bar_legend:
+                    - id: 2026-06
+                      label: Июнь 2026
+                      color: '#F97316'
+                      has_data: true
+                    summary_cards: []
+                    line_points: []
+                    category_rows: []
+                    difference_rows: []
+                  summary: Comparison response
+          description: ''
+        '400':
+          description: Некорректные параметры сравнения.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/comparative/export/:
+    post:
+      operationId: finance_analytics_comparative_export_create
+      description: Формирует файл отчёта по тем же параметрам, что и endpoint comparison.
+        Поддерживает CSV, XLSX и PDF, а также секции legend, differences и charts.
+      summary: Экспортировать отчёт сравнительной аналитики
+      tags:
+      - finance-comparative-analytics
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComparativeAnalyticsExportRequestRequest'
+            examples:
+              ExportRequest:
+                value:
+                  format: xlsx
+                  sections:
+                  - legend
+                  - differences
+                  - charts
+                  comparison_type: periods
+                  year: '2026'
+                  metric: income
+                  entity_ids:
+                  - 2026-06
+                  - 2026-05
+                  - 2026-04
+                  convert_to_rub: true
+                summary: Export request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ComparativeAnalyticsExportRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ComparativeAnalyticsExportRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          description: Некорректные параметры экспорта.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/comparative/meta/:
+    get:
+      operationId: finance_analytics_comparative_meta_retrieve
+      description: Возвращает типы сравнения, годы, показатели, доступные сущности
+        для сравнения и значения фильтров по умолчанию.
+      summary: Получить метаданные страницы сравнительной аналитики
+      tags:
+      - finance-comparative-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparativeAnalyticsMetaResponse'
+          description: ''
+  /api/v1/finance/analytics/forecast/export/:
+    post:
+      operationId: finance_analytics_forecast_export_create
+      description: Формирует файл отчёта по тем же параметрам, что и endpoint projection.
+        Поддерживает CSV, XLSX и PDF, а также секции history, forecast, confidence,
+        parameters.
+      summary: Экспортировать отчёт прогнозирования
+      tags:
+      - finance-forecasting-analytics
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForecastingExportRequestRequest'
+            examples:
+              ExportRequest:
+                value:
+                  format: pdf
+                  sections:
+                  - history
+                  - forecast
+                  - confidence
+                  - parameters
+                  metric: expense
+                  source: all
+                  horizon_months: 6
+                  confidence: 95
+                  model: linear
+                summary: Export request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ForecastingExportRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ForecastingExportRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          description: Некорректные параметры экспорта.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/analytics/forecast/meta/:
+    get:
+      operationId: finance_analytics_forecast_meta_retrieve
+      description: 'Возвращает опции фильтров и значения по умолчанию для страницы
+        Forecasting: метрики, источники, горизонты, уровни доверия, модели и секции
+        экспорта.'
+      summary: Получить метаданные страницы прогнозирования
+      tags:
+      - finance-forecasting-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastingMetaResponse'
+          description: ''
+  /api/v1/finance/analytics/forecast/projection/:
+    get:
+      operationId: finance_analytics_forecast_projection_retrieve
+      description: Строит прогноз на основе завершённых месяцев истории. Поддерживает
+        метрики income, expense, balance, источники all или id счёта, горизонты 1/3/6/12/24
+        месяца, доверие 80/90/95/99 и модели linear/prophet. Prophet используется
+        как опциональная модель с fallback на linear.
+      summary: Получить прогноз финансовой метрики
+      parameters:
+      - in: query
+        name: confidence
+        schema:
+          type: integer
+        description: 80, 90, 95 или 99.
+      - in: query
+        name: horizon_months
+        schema:
+          type: integer
+        description: 1, 3, 6, 12 или 24.
+      - in: query
+        name: metric
+        schema:
+          type: string
+        description: income, expense или balance.
+      - in: query
+        name: model
+        schema:
+          type: string
+        description: linear или prophet.
+      - in: query
+        name: source
+        schema:
+          type: string
+        description: all или id счёта пользователя.
+      tags:
+      - finance-forecasting-analytics
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForecastingProjectionResponse'
+              examples:
+                ProjectionResponse:
+                  value:
+                    has_data: true
+                    has_insufficient_data: false
+                    has_high_instability: false
+                    unstable: false
+                    chart_points:
+                    - month: 2026-05
+                      label: Май 2026
+                      value: 135000
+                      is_forecast: false
+                    - month: 2026-06
+                      label: Июн 2026
+                      value: 138000
+                      lower_bound: 124000
+                      upper_bound: 152000
+                      is_forecast: true
+                    detail_rows:
+                    - id: 2026-06
+                      month_label: Июн 2026
+                      forecast_rub: 138000
+                      lower_rub: 124000
+                      upper_rub: 152000
+                    metric_summary:
+                      total_forecast_rub: 873000
+                      delta_percent: 8.7
+                      delta_label: к среднему за предыдущий период
+                      positive_is_good: false
+                    assumptions:
+                      history_period_label: Янв 2025 — Май 2026
+                      source_label: Все счета
+                      model_label: Линейная регрессия
+                      updated_at_label: 27 мая 2026
+                    alert: null
+                  summary: Projection response
+          description: ''
+        '400':
+          description: Некорректные параметры прогноза.
+        '401':
+          description: Пользователь не авторизован.
   /api/v1/finance/budget-notifications/check/:
     post:
       operationId: finance_budget_notifications_check_create
@@ -5076,6 +5784,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiErrorResponse'
           description: ''
+  /api/v1/finance/receipts/{receipt_id}/items/:
+    get:
+      operationId: finance_receipts_items_list
+      description: 'Возвращает позиции сохранённого чека отдельным постраничным списком.
+        Endpoint нужен для больших чеков: список чеков и QR-ответ могут не встраивать
+        все позиции сразу, чтобы не раздувать payload и не нагружать БД.'
+      summary: Получить позиции чека постранично
+      parameters:
+      - in: query
+        name: currency
+        schema:
+          type: string
+        description: Валюта отображения сумм позиций.
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Alias для page_size.
+      - in: query
+        name: page
+        schema:
+          type: integer
+        description: Номер страницы.
+      - in: query
+        name: page_size
+        schema:
+          type: integer
+        description: Размер страницы, максимум 100.
+      - in: path
+        name: receipt_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - finance-receipts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReceiptItemsResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+          description: ''
   /api/v1/finance/receipts/qr/:
     get:
       operationId: finance_receipts_qr_retrieve
@@ -5098,6 +5862,17 @@ paths:
           type: boolean
         description: Получать ли расширенные данные чека у внешнего провайдера. По
           умолчанию true.
+      - in: query
+        name: includeItems
+        schema:
+          type: boolean
+        description: Если false, позиции не встраиваются в receipt.items. Используйте
+          для чеков с большим количеством строк вместе с GET /api/v1/finance/receipts/{id}/items/.
+      - in: query
+        name: itemsLimit
+        schema:
+          type: integer
+        description: Максимум встроенных позиций receipt.items, от 1 до 100.
       - in: query
         name: qrRaw
         schema:
@@ -8045,7 +8820,7 @@ paths:
       description: 'Возвращает данные для страницы профиля: ФИО, email, телефон, город,
         краткое описание и статусы подтверждения контактных данных. Email и username
         являются read-only. Подтверждение email уже есть в системе, но может быть
-        выключено настройкой REGISTRATION_REQUIRE_EMAIL_CONFIRMATION.'
+        выключено настройкой EMAIL_VERIFICATION_ENABLED.'
       summary: Получить полный профиль текущего пользователя
       tags:
       - users-profile
@@ -8156,8 +8931,9 @@ paths:
     post:
       operationId: profile_me_avatar_upload
       description: Загружает аватар текущего пользователя через multipart/form-data.
-        Поддерживаются JPEG, PNG и WebP. При успешной загрузке старый файл аватара
-        удаляется из локального media storage.
+        Поддерживаются JPEG, PNG и WebP. При успешной загрузке старый аватар удаляется
+        из активного storage provider. Локально используется media storage, на production
+        можно включить Cloudinary.
       summary: Загрузить или заменить аватар текущего пользователя
       tags:
       - users-profile
@@ -8181,14 +8957,14 @@ paths:
               examples:
                 УспешныйОтвет:
                   value:
-                    avatarUrl: http://localhost:8000/media/avatars/user_1/avatar.jpg
+                    avatarUrl: https://res.cloudinary.com/example/image/upload/v1/budgetwise/avatars/user_1_avatar.jpg
                     message: Аватар обновлён.
                   summary: Успешный ответ
           description: ''
     delete:
       operationId: profile_me_avatar_delete
-      description: Удаляет файл аватара из локального media storage и очищает ссылку
-        на аватар в профиле текущего пользователя.
+      description: Удаляет аватар из активного storage provider и очищает ссылку на
+        аватар в профиле текущего пользователя.
       summary: Удалить аватар текущего пользователя
       tags:
       - users-profile
@@ -8765,7 +9541,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this пользователь.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - users
@@ -8788,7 +9564,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this пользователь.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - users
@@ -8829,7 +9605,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: A unique integer value identifying this пользователь.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - users
@@ -8957,17 +9733,20 @@ paths:
                           alias: default
                           vendor: postgresql
                       redis:
-                        status: skipped
+                        status: ok
                         required: false
-                        latency_ms: null
+                        latency_ms: 1.25
                         details:
-                          reason: Redis is not configured yet.
+                          url: redis://redis:6379/0
                       celery:
-                        status: skipped
+                        status: ok
                         required: false
-                        latency_ms: null
+                        latency_ms: 8.42
                         details:
-                          reason: Celery health-check is not configured yet.
+                          brokerUrl: redis://redis:6379/0
+                          workersOnline: 1
+                          workers:
+                          - celery@worker
                       external_services:
                         status: skipped
                         required: false
@@ -11342,6 +12121,73 @@ components:
       - name
       - type
       - updated_at
+    ChangeEmail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        isEmailVerified:
+          type: boolean
+          readOnly: true
+        emailVerificationRequired:
+          type: boolean
+          readOnly: true
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+      - email
+      - emailVerificationRequired
+      - id
+      - isEmailVerified
+    ChangeEmailRequest:
+      type: object
+      properties:
+        newEmail:
+          type: string
+          format: email
+          writeOnly: true
+          minLength: 1
+        currentPassword:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - currentPassword
+      - newEmail
+    ChangePassword:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+      required:
+      - detail
+    ChangePasswordRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          writeOnly: true
+          minLength: 1
+        newPassword:
+          type: string
+          writeOnly: true
+          minLength: 8
+        newPasswordConfirm:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - currentPassword
+      - newPassword
+      - newPasswordConfirm
     CheckBudgetDuplicateRequest:
       type: object
       properties:
@@ -11428,6 +12274,659 @@ components:
           type: string
       required:
       - isDuplicate
+    CombinedAnalyticsAggregateRow:
+      type: object
+      properties:
+        category_id:
+          type: string
+        category_name:
+          type: string
+        amount_rub:
+          type: number
+          format: double
+        percent:
+          type: number
+          format: double
+      required:
+      - amount_rub
+      - category_id
+      - category_name
+      - percent
+    CombinedAnalyticsAggregatesResponse:
+      type: object
+      properties:
+        has_data:
+          type: boolean
+        period_label:
+          type: string
+        total_expense_rub:
+          type: number
+          format: double
+        total_income_rub:
+          type: number
+          format: double
+        pie_slices:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsPieSlice'
+        bar_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsBarGroup'
+        bar_legend:
+          $ref: '#/components/schemas/CombinedAnalyticsBarLegend'
+        line_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsLinePoint'
+        aggregate_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsAggregateRow'
+      required:
+      - aggregate_rows
+      - bar_groups
+      - bar_legend
+      - has_data
+      - line_points
+      - period_label
+      - pie_slices
+      - total_expense_rub
+      - total_income_rub
+    CombinedAnalyticsBarGroup:
+      type: object
+      properties:
+        category_id:
+          type: string
+        category_name:
+          type: string
+        previous_period_amount_rub:
+          type: number
+          format: double
+        current_period_amount_rub:
+          type: number
+          format: double
+      required:
+      - category_id
+      - category_name
+      - current_period_amount_rub
+      - previous_period_amount_rub
+    CombinedAnalyticsBarLegend:
+      type: object
+      properties:
+        previous_period_label:
+          type: string
+        current_period_label:
+          type: string
+      required:
+      - current_period_label
+      - previous_period_label
+    CombinedAnalyticsExportRequestRequest:
+      type: object
+      properties:
+        format:
+          $ref: '#/components/schemas/FormatB6dEnum'
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsExportRequestSectionsEnum'
+        period_preset:
+          $ref: '#/components/schemas/PeriodPresetEnum'
+        period_id:
+          type: string
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        account_ids:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        category_ids:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        operation_type:
+          $ref: '#/components/schemas/OperationTypeEnum'
+        currency:
+          type: string
+      required:
+      - format
+      - sections
+    CombinedAnalyticsExportRequestSectionsEnum:
+      enum:
+      - pie
+      - bar
+      - line
+      - table
+      type: string
+      description: |-
+        * `pie` - pie
+        * `bar` - bar
+        * `line` - line
+        * `table` - table
+    CombinedAnalyticsExportSectionOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - id
+      - label
+    CombinedAnalyticsFilterAccountOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      required:
+      - id
+      - label
+    CombinedAnalyticsFilterCategoryOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      required:
+      - id
+      - label
+    CombinedAnalyticsLinePoint:
+      type: object
+      properties:
+        month:
+          type: string
+        label:
+          type: string
+        income_rub:
+          type: number
+          format: double
+        expense_rub:
+          type: number
+          format: double
+        balance_rub:
+          type: number
+          format: double
+      required:
+      - balance_rub
+      - expense_rub
+      - income_rub
+      - label
+      - month
+    CombinedAnalyticsMetaResponse:
+      type: object
+      properties:
+        period_presets:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        period_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        account_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        category_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        type_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsSelectOption'
+        filter_categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsFilterCategoryOption'
+        filter_accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsFilterAccountOption'
+        export_sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CombinedAnalyticsExportSectionOption'
+        default_period_id:
+          type: string
+        default_date_from:
+          type: string
+        default_date_to:
+          type: string
+        default_account_ids:
+          type: array
+          items:
+            type: string
+        default_category_ids:
+          type: array
+          items:
+            type: string
+        default_operation_type:
+          type: string
+      required:
+      - account_options
+      - category_options
+      - default_account_ids
+      - default_category_ids
+      - default_date_from
+      - default_date_to
+      - default_operation_type
+      - default_period_id
+      - export_sections
+      - filter_accounts
+      - filter_categories
+      - period_options
+      - period_presets
+      - type_options
+    CombinedAnalyticsPieSlice:
+      type: object
+      properties:
+        category_id:
+          type: string
+        category_name:
+          type: string
+        category_color:
+          type: string
+        amount_rub:
+          type: number
+          format: double
+        percent:
+          type: number
+          format: double
+      required:
+      - amount_rub
+      - category_color
+      - category_id
+      - category_name
+      - percent
+    CombinedAnalyticsSelectOption:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+      required:
+      - label
+      - value
+    ComparativeAnalyticsBarGroup:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        values:
+          type: array
+          items:
+            type: number
+            format: double
+      required:
+      - key
+      - label
+      - values
+    ComparativeAnalyticsBarLegendItem:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        color:
+          type: string
+        has_data:
+          type: boolean
+      required:
+      - color
+      - has_data
+      - id
+      - label
+    ComparativeAnalyticsCategoryRow:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        previous_amount_rub:
+          type: number
+          format: double
+        current_amount_rub:
+          type: number
+          format: double
+        delta_percent:
+          type: number
+          format: double
+      required:
+      - current_amount_rub
+      - delta_percent
+      - id
+      - name
+      - previous_amount_rub
+    ComparativeAnalyticsComparisonResponse:
+      type: object
+      properties:
+        has_data:
+          type: boolean
+        has_mixed_currencies:
+          type: boolean
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsEntity'
+        bar_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsBarGroup'
+        bar_legend:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsBarLegendItem'
+        summary_cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSummaryCard'
+        line_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsLinePoint'
+        category_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsCategoryRow'
+        difference_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsDifferenceRow'
+      required:
+      - bar_groups
+      - bar_legend
+      - category_rows
+      - difference_rows
+      - entities
+      - has_data
+      - has_mixed_currencies
+      - line_points
+      - summary_cards
+    ComparativeAnalyticsDifferenceRow:
+      type: object
+      properties:
+        id:
+          type: string
+        metric:
+          type: string
+        value_a:
+          type: number
+          format: double
+        value_b:
+          type: number
+          format: double
+        delta_rub:
+          type: number
+          format: double
+        delta_percent:
+          type: number
+          format: double
+        positive_is_good:
+          type: boolean
+        label_a:
+          type: string
+        label_b:
+          type: string
+      required:
+      - delta_percent
+      - delta_rub
+      - id
+      - metric
+      - positive_is_good
+      - value_a
+      - value_b
+    ComparativeAnalyticsEntity:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        subtitle:
+          type: string
+        amount_rub:
+          type: number
+          format: double
+        color:
+          type: string
+        has_data:
+          type: boolean
+        currency_code:
+          type: string
+      required:
+      - amount_rub
+      - color
+      - currency_code
+      - has_data
+      - id
+      - label
+      - subtitle
+    ComparativeAnalyticsExportRequestRequest:
+      type: object
+      properties:
+        format:
+          $ref: '#/components/schemas/FormatB6dEnum'
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsExportRequestSectionsEnum'
+        comparison_type:
+          $ref: '#/components/schemas/ComparisonTypeEnum'
+        year:
+          type: string
+        metric:
+          $ref: '#/components/schemas/MetricEnum'
+        entity_ids:
+          type: array
+          items:
+            type: string
+            minLength: 1
+        report_period_id:
+          type: string
+        convert_to_rub:
+          type: boolean
+      required:
+      - format
+      - sections
+    ComparativeAnalyticsExportRequestSectionsEnum:
+      enum:
+      - legend
+      - differences
+      - charts
+      type: string
+      description: |-
+        * `legend` - legend
+        * `differences` - differences
+        * `charts` - charts
+    ComparativeAnalyticsExportSectionOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - id
+      - label
+    ComparativeAnalyticsLinePoint:
+      type: object
+      properties:
+        month:
+          type: string
+        label:
+          type: string
+        income_rub:
+          type: number
+          format: double
+        expense_rub:
+          type: number
+          format: double
+      required:
+      - expense_rub
+      - income_rub
+      - label
+      - month
+    ComparativeAnalyticsMetaResponse:
+      type: object
+      properties:
+        max_entities:
+          type: integer
+        comparison_type_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSelectOption'
+        year_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSelectOption'
+        metric_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSelectOption'
+        report_period_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsSelectOption'
+        export_sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComparativeAnalyticsExportSectionOption'
+        available_entities:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/ComparativeAnalyticsEntity'
+        default_comparison_type:
+          type: string
+        default_year:
+          type: string
+        default_metric:
+          type: string
+        default_entity_ids:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        default_export_sections:
+          type: array
+          items:
+            type: string
+        default_report_period_id:
+          type: string
+      required:
+      - available_entities
+      - comparison_type_options
+      - default_comparison_type
+      - default_entity_ids
+      - default_export_sections
+      - default_metric
+      - default_report_period_id
+      - default_year
+      - export_sections
+      - max_entities
+      - metric_options
+      - report_period_options
+      - year_options
+    ComparativeAnalyticsSelectOption:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+      required:
+      - label
+      - value
+    ComparativeAnalyticsSummaryCard:
+      type: object
+      properties:
+        label:
+          type: string
+        amount_rub:
+          type: number
+          format: double
+        delta_percent:
+          type: number
+          format: double
+        delta_label:
+          type: string
+        positive_is_good:
+          type: boolean
+      required:
+      - amount_rub
+      - delta_label
+      - delta_percent
+      - label
+      - positive_is_good
+    ComparisonTypeEnum:
+      enum:
+      - periods
+      - categories
+      - accounts
+      type: string
+      description: |-
+        * `periods` - periods
+        * `categories` - categories
+        * `accounts` - accounts
+    ConfirmPhoneVerification:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+        phoneDisplay:
+          type: string
+          readOnly: true
+        isPhoneVerified:
+          type: boolean
+          readOnly: true
+        hasVerifiedContact:
+          type: boolean
+          readOnly: true
+      required:
+      - detail
+      - hasVerifiedContact
+      - isPhoneVerified
+      - phoneDisplay
+    ConfirmPhoneVerificationRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          writeOnly: true
+          minLength: 1
+          maxLength: 32
+        code:
+          type: string
+          writeOnly: true
+          minLength: 6
+          maxLength: 6
+      required:
+      - code
+      - phone
     ConflictStrategyEnum:
       enum:
       - manual_confirmation
@@ -12724,6 +14223,16 @@ components:
       - date
       - eventsSummary
       - forecastRub
+    FinancialCalendarExportRequestFormatEnum:
+      enum:
+      - csv
+      - pdf
+      - xlsx
+      type: string
+      description: |-
+        * `csv` - CSV
+        * `pdf` - PDF
+        * `xlsx` - XLSX
     FinancialCalendarExportRequestRequest:
       type: object
       properties:
@@ -12739,7 +14248,7 @@ components:
           description: Месяц календаря, 1-12.
         format:
           allOf:
-          - $ref: '#/components/schemas/FormatEnum'
+          - $ref: '#/components/schemas/FinancialCalendarExportRequestFormatEnum'
           default: csv
           description: |-
             Формат файла выгрузки.
@@ -13013,6 +14522,274 @@ components:
       - label
       - offsetHours
       - value
+    ForecastingAlert:
+      type: object
+      properties:
+        type:
+          type: string
+        icon:
+          type: string
+        title:
+          type: string
+        text:
+          type: string
+      required:
+      - icon
+      - text
+      - title
+      - type
+    ForecastingAssumptions:
+      type: object
+      properties:
+        history_period_label:
+          type: string
+        source_label:
+          type: string
+        model_label:
+          type: string
+        updated_at_label:
+          type: string
+      required:
+      - history_period_label
+      - model_label
+      - source_label
+      - updated_at_label
+    ForecastingChartPoint:
+      type: object
+      properties:
+        month:
+          type: string
+        label:
+          type: string
+        value:
+          type: number
+          format: double
+        lower_bound:
+          type: number
+          format: double
+        upper_bound:
+          type: number
+          format: double
+        is_forecast:
+          type: boolean
+      required:
+      - is_forecast
+      - label
+      - month
+      - value
+    ForecastingDetailRow:
+      type: object
+      properties:
+        id:
+          type: string
+        month_label:
+          type: string
+        forecast_rub:
+          type: number
+          format: double
+        lower_rub:
+          type: number
+          format: double
+        upper_rub:
+          type: number
+          format: double
+      required:
+      - forecast_rub
+      - id
+      - lower_rub
+      - month_label
+      - upper_rub
+    ForecastingExportRequestRequest:
+      type: object
+      properties:
+        format:
+          $ref: '#/components/schemas/FormatB6dEnum'
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingExportRequestSectionsEnum'
+        metric:
+          $ref: '#/components/schemas/MetricEnum'
+        source:
+          type: string
+        horizon_months:
+          type: integer
+        confidence:
+          type: integer
+        model:
+          $ref: '#/components/schemas/ModelEnum'
+      required:
+      - format
+      - sections
+    ForecastingExportRequestSectionsEnum:
+      enum:
+      - history
+      - forecast
+      - confidence
+      - parameters
+      type: string
+      description: |-
+        * `history` - history
+        * `forecast` - forecast
+        * `confidence` - confidence
+        * `parameters` - parameters
+    ForecastingExportSectionOption:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - id
+      - label
+    ForecastingMetaResponse:
+      type: object
+      properties:
+        metric_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingSelectOption'
+        source_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingSelectOption'
+        horizon_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingNumberSelectOption'
+        confidence_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingNumberSelectOption'
+        model_options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingSelectOption'
+        horizon_steps:
+          type: array
+          items:
+            type: integer
+        confidence_steps:
+          type: array
+          items:
+            type: integer
+        export_sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingExportSectionOption'
+        default_metric:
+          type: string
+        default_source:
+          type: string
+        default_horizon_months:
+          type: integer
+        default_confidence:
+          type: integer
+        default_model:
+          type: string
+        default_export_sections:
+          type: array
+          items:
+            type: string
+        disclaimer:
+          type: string
+        chart_footnote:
+          type: string
+      required:
+      - chart_footnote
+      - confidence_options
+      - confidence_steps
+      - default_confidence
+      - default_export_sections
+      - default_horizon_months
+      - default_metric
+      - default_model
+      - default_source
+      - disclaimer
+      - export_sections
+      - horizon_options
+      - horizon_steps
+      - metric_options
+      - model_options
+      - source_options
+    ForecastingMetricSummary:
+      type: object
+      properties:
+        total_forecast_rub:
+          type: number
+          format: double
+        delta_percent:
+          type: number
+          format: double
+        delta_label:
+          type: string
+        positive_is_good:
+          type: boolean
+      required:
+      - delta_label
+      - delta_percent
+      - positive_is_good
+      - total_forecast_rub
+    ForecastingNumberSelectOption:
+      type: object
+      properties:
+        value:
+          type: integer
+        label:
+          type: string
+      required:
+      - label
+      - value
+    ForecastingProjectionResponse:
+      type: object
+      properties:
+        has_data:
+          type: boolean
+        has_insufficient_data:
+          type: boolean
+        has_high_instability:
+          type: boolean
+        unstable:
+          type: boolean
+        chart_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingChartPoint'
+        detail_rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForecastingDetailRow'
+        metric_summary:
+          $ref: '#/components/schemas/ForecastingMetricSummary'
+        assumptions:
+          $ref: '#/components/schemas/ForecastingAssumptions'
+        alert:
+          allOf:
+          - $ref: '#/components/schemas/ForecastingAlert'
+          nullable: true
+      required:
+      - assumptions
+      - chart_points
+      - detail_rows
+      - has_data
+      - has_high_instability
+      - has_insufficient_data
+      - metric_summary
+      - unstable
+    ForecastingSelectOption:
+      type: object
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+      required:
+      - label
+      - value
     ForgotPassword:
       type: object
       properties:
@@ -13031,16 +14808,16 @@ components:
           minLength: 1
       required:
       - email
-    FormatEnum:
+    FormatB6dEnum:
       enum:
-      - csv
       - pdf
+      - csv
       - xlsx
       type: string
       description: |-
-        * `csv` - CSV
-        * `pdf` - PDF
-        * `xlsx` - XLSX
+        * `pdf` - pdf
+        * `csv` - csv
+        * `xlsx` - xlsx
     Goal:
       type: object
       properties:
@@ -13812,12 +15589,32 @@ components:
         is_active:
           type: boolean
           readOnly: true
+        isEmailVerified:
+          type: boolean
+          readOnly: true
+        isPhoneVerified:
+          type: boolean
+          readOnly: true
+        emailVerificationRequired:
+          type: boolean
+          readOnly: true
+        phoneVerificationEnabled:
+          type: boolean
+          readOnly: true
+        hasVerifiedContact:
+          type: boolean
+          readOnly: true
       required:
       - email
+      - emailVerificationRequired
       - first_name
+      - hasVerifiedContact
       - id
+      - isEmailVerified
+      - isPhoneVerified
       - is_active
       - last_name
+      - phoneVerificationEnabled
       - role
       - username
     Logout:
@@ -13837,6 +15634,16 @@ components:
           minLength: 1
       required:
       - refresh
+    MetricEnum:
+      enum:
+      - income
+      - expense
+      - balance
+      type: string
+      description: |-
+        * `income` - income
+        * `expense` - expense
+        * `balance` - balance
     ModeEnum:
       enum:
       - single
@@ -13845,6 +15652,14 @@ components:
       description: |-
         * `single` - Одна операция на весь чек
         * `by_items` - Одна операция на каждую позицию
+    ModelEnum:
+      enum:
+      - linear
+      - prophet
+      type: string
+      description: |-
+        * `linear` - linear
+        * `prophet` - prophet
     MoneyAmount:
       type: object
       properties:
@@ -14560,6 +16375,16 @@ components:
     NullEnum:
       enum:
       - null
+    OperationTypeEnum:
+      enum:
+      - expense
+      - income
+      - transfer
+      type: string
+      description: |-
+        * `expense` - expense
+        * `income` - income
+        * `transfer` - transfer
     PaginatedAccountHistoryRowList:
       type: object
       required:
@@ -15703,6 +17528,20 @@ components:
       - defaultCurrency
       - defaultPeriod
       - periodOptions
+    PeriodPresetEnum:
+      enum:
+      - week
+      - month
+      - quarter
+      - year
+      - custom
+      type: string
+      description: |-
+        * `week` - week
+        * `month` - month
+        * `quarter` - quarter
+        * `year` - year
+        * `custom` - custom
     PlannedCalendarDayBadge:
       type: object
       properties:
@@ -16517,10 +18356,14 @@ components:
         transactionsCount:
           type: integer
           readOnly: true
+        itemsCount:
+          type: integer
+          readOnly: true
         items:
           type: array
           items:
-            $ref: '#/components/schemas/ReceiptItemBrief'
+            type: object
+            additionalProperties: {}
           readOnly: true
       required:
       - fiscal_document_number
@@ -16528,6 +18371,7 @@ components:
       - fiscal_sign
       - id
       - items
+      - itemsCount
       - receipt_datetime
       - sourceCurrency
       - totalAmountDisplay
@@ -16626,6 +18470,34 @@ components:
       - sourceCurrency
       - suggestedCategoryId
       - suggestedCategoryName
+    ReceiptItemsResponse:
+      type: object
+      properties:
+        receiptId:
+          type: integer
+          readOnly: true
+        itemsCount:
+          type: integer
+          readOnly: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptItemBrief'
+          readOnly: true
+        pagination:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        currencyContext:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+      required:
+      - currencyContext
+      - items
+      - itemsCount
+      - pagination
+      - receiptId
     ReceiptProviderErrorBrief:
       type: object
       properties:
@@ -17225,12 +19097,20 @@ components:
         is_active:
           type: boolean
           readOnly: true
+        isEmailVerified:
+          type: boolean
+          readOnly: true
+        emailVerificationRequired:
+          type: boolean
+          readOnly: true
         detail:
           type: string
           readOnly: true
       required:
       - detail
+      - emailVerificationRequired
       - id
+      - isEmailVerified
       - is_active
       - username
     RegisterRequest:
@@ -17263,6 +19143,18 @@ components:
       required:
       - operationsCount
       - tag
+    ResendEmailVerification:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+        queued:
+          type: boolean
+          readOnly: true
+      required:
+      - detail
+      - queued
     ResetPassword:
       type: object
       properties:
@@ -17311,6 +19203,33 @@ components:
       required:
       - channels
       - sent
+    SendPhoneVerification:
+      type: object
+      properties:
+        detail:
+          type: string
+          readOnly: true
+        phoneDisplay:
+          type: string
+          readOnly: true
+        queued:
+          type: boolean
+          readOnly: true
+        isPhoneVerified:
+          type: boolean
+          readOnly: true
+      required:
+      - detail
+      - isPhoneVerified
+      - phoneDisplay
+      - queued
+    SendPhoneVerificationRequest:
+      type: object
+      properties:
+        phone:
+          type: string
+          writeOnly: true
+          maxLength: 32
     StrategyEnum:
       enum:
       - server_wins

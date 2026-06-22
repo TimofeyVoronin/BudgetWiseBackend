@@ -27,24 +27,93 @@ DEFAULT_FROM_EMAIL = env(
     default="BudgetWise <noreply@budgetwise.local>",
 )
 
+FRONTEND_BASE_URL = env(
+    "FRONTEND_BASE_URL",
+    default="http://localhost:5173",
+).rstrip("/")
+
+EMAIL_VERIFICATION_PATH = env(
+    "EMAIL_VERIFICATION_PATH",
+    default="/verify-email",
+)
+if not EMAIL_VERIFICATION_PATH.startswith("/"):
+    EMAIL_VERIFICATION_PATH = f"/{EMAIL_VERIFICATION_PATH}"
+
 FRONTEND_EMAIL_VERIFY_URL = env(
     "FRONTEND_EMAIL_VERIFY_URL",
-    default="http://app.budgetwise.localhost:5173/auth/verify-email",
+    default=f"{FRONTEND_BASE_URL}{EMAIL_VERIFICATION_PATH}",
 )
 
-EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS = env.int(
-    "EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS",
-    default=60 * 60 * 24,
+EMAIL_VERIFICATION_TOKEN_TIMEOUT_SECONDS = env.int(
+    "EMAIL_VERIFICATION_TOKEN_TIMEOUT_SECONDS",
+    default=env.int("EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS", default=60 * 60 * 24),
 )
+EMAIL_CONFIRMATION_TOKEN_TIMEOUT_SECONDS = EMAIL_VERIFICATION_TOKEN_TIMEOUT_SECONDS
 
 EMAIL_CONFIRMATION_TOKEN_SALT = env(
     "EMAIL_CONFIRMATION_TOKEN_SALT",
     default="budgetwise.email-confirmation",
 )
 
-REGISTRATION_REQUIRE_EMAIL_CONFIRMATION = env.bool(
-    "REGISTRATION_REQUIRE_EMAIL_CONFIRMATION",
+EMAIL_VERIFICATION_ENABLED = env.bool(
+    "EMAIL_VERIFICATION_ENABLED",
+    default=env.bool("REGISTRATION_REQUIRE_EMAIL_CONFIRMATION", default=False),
+)
+REGISTRATION_REQUIRE_EMAIL_CONFIRMATION = EMAIL_VERIFICATION_ENABLED
+
+EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = env.int(
+    "EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS",
+    default=60,
+)
+
+EMAIL_VERIFICATION_SEND_ASYNC = env.bool(
+    "EMAIL_VERIFICATION_SEND_ASYNC",
+    default=True,
+)
+
+PHONE_VERIFICATION_ENABLED = env.bool(
+    "PHONE_VERIFICATION_ENABLED",
     default=False,
+)
+PHONE_VERIFICATION_SEND_ASYNC = env.bool(
+    "PHONE_VERIFICATION_SEND_ASYNC",
+    default=True,
+)
+PHONE_VERIFICATION_PROVIDER = env(
+    "PHONE_VERIFICATION_PROVIDER",
+    default="console",
+)
+PHONE_DEFAULT_REGION = env(
+    "PHONE_DEFAULT_REGION",
+    default="RU",
+)
+PHONE_VERIFICATION_CODE_TTL_SECONDS = env.int(
+    "PHONE_VERIFICATION_CODE_TTL_SECONDS",
+    default=15 * 60,
+)
+PHONE_VERIFICATION_RESEND_COOLDOWN_SECONDS = env.int(
+    "PHONE_VERIFICATION_RESEND_COOLDOWN_SECONDS",
+    default=60,
+)
+PHONE_VERIFICATION_MAX_ATTEMPTS = env.int(
+    "PHONE_VERIFICATION_MAX_ATTEMPTS",
+    default=5,
+)
+PHONE_VERIFICATION_CODE_SALT = env(
+    "PHONE_VERIFICATION_CODE_SALT",
+    default="budgetwise.phone-verification",
+)
+
+# SMS Aero integration settings. The console provider is used in development.
+SMSAERO_EMAIL = env("SMSAERO_EMAIL", default="")
+SMSAERO_API_KEY = env("SMSAERO_API_KEY", default="")
+SMSAERO_SIGN = env("SMSAERO_SIGN", default="SMS Aero")
+SMSAERO_BASE_URL = env("SMSAERO_BASE_URL", default="https://gate.smsaero.ru/v2")
+SMSAERO_TIMEOUT_SECONDS = env.int("SMSAERO_TIMEOUT_SECONDS", default=10)
+SMSAERO_TEST_MODE = env.bool("SMSAERO_TEST_MODE", default=False)
+PHONE_VERIFICATION_SMS_TEXT_TEMPLATE = env(
+    "PHONE_VERIFICATION_SMS_TEXT_TEMPLATE",
+    default="Код подтверждения BudgetWise: {code}. Никому не сообщайте этот код.",
 )
 
 FRONTEND_PASSWORD_RESET_URL = env(
@@ -175,6 +244,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+USER_PROFILE_AVATAR_MAX_SIZE_BYTES = env.int(
+    "USER_PROFILE_AVATAR_MAX_SIZE_BYTES",
+    default=5 * 1024 * 1024,
+)
+AVATAR_STORAGE_PROVIDER = env("AVATAR_STORAGE_PROVIDER", default="local").strip().lower()
+CLOUDINARY_CLOUD_NAME = env("CLOUDINARY_CLOUD_NAME", default="")
+CLOUDINARY_API_KEY = env("CLOUDINARY_API_KEY", default="")
+CLOUDINARY_API_SECRET = env("CLOUDINARY_API_SECRET", default="")
+CLOUDINARY_AVATAR_FOLDER = env("CLOUDINARY_AVATAR_FOLDER", default="budgetwise/avatars")
 
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)

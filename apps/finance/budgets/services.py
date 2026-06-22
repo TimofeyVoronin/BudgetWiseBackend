@@ -120,24 +120,71 @@ def percent_to_number(value: Decimal | int | float | None) -> float:
 
 def get_budget_category_ids(budget: Budget) -> list[int]:
     """Return budget category id and ids of its direct/indirect children."""
-    category_ids = [budget.category_id]
-    queue = [budget.category_id]
+    cached_category_ids = getattr(budget, "_category_ids_cache", None)
+    if cached_category_ids is not None:
+        return list(cached_category_ids)
+
+    descendants_by_parent = getattr(budget, "_category_children_cache", None)
+    if descendants_by_parent is None:
+        descendants_by_parent = _build_category_children_map(user_id=budget.user_id)
+
+    category_ids = _collect_category_tree_ids(
+        root_id=budget.category_id,
+        descendants_by_parent=descendants_by_parent,
+    )
+    budget._category_ids_cache = category_ids
+    return list(category_ids)
+
+
+def preload_budget_category_ids(budgets: list[Budget]) -> list[Budget]:
+    if not budgets:
+        return budgets
+
+    user_id = budgets[0].user_id
+    descendants_by_parent = _build_category_children_map(user_id=user_id)
+
+    for budget in budgets:
+        budget._category_children_cache = descendants_by_parent
+        budget._category_ids_cache = _collect_category_tree_ids(
+            root_id=budget.category_id,
+            descendants_by_parent=descendants_by_parent,
+        )
+
+    return budgets
+
+
+def _build_category_children_map(*, user=None, user_id: int | None = None) -> dict[int | None, list[int]]:
+    if user_id is None and user is not None:
+        user_id = user.id
+
+    rows = Category.objects.filter(user_id=user_id).values_list("parent_id", "id")
+    descendants_by_parent: dict[int | None, list[int]] = {}
+
+    for parent_id, category_id in rows:
+        descendants_by_parent.setdefault(parent_id, []).append(category_id)
+
+    return descendants_by_parent
+
+
+def _collect_category_tree_ids(
+    *,
+    root_id: int,
+    descendants_by_parent: dict[int | None, list[int]],
+) -> list[int]:
+    category_ids = [root_id]
+    queue = [root_id]
+    seen = {root_id}
 
     while queue:
         parent_id = queue.pop(0)
-        child_ids = list(
-            Category.objects
-            .filter(user=budget.user, parent_id=parent_id)
-            .values_list("id", flat=True)
-        )
-
-        for child_id in child_ids:
-            if child_id not in category_ids:
-                category_ids.append(child_id)
-                queue.append(child_id)
+        for child_id in descendants_by_parent.get(parent_id, []):
+            if child_id in seen:
+                continue
+            seen.add(child_id)
+            category_ids.append(child_id)
+            queue.append(child_id)
 
     return category_ids
-
 
 def get_budget_transactions_queryset(budget: Budget):
     return (
@@ -178,14 +225,16 @@ def get_budget_spent_amount(
 
     total = Decimal("0.00")
     target_code = target_currency or budget.currency
+    rows = (
+        queryset
+        .values("account__currency")
+        .annotate(total=Sum("amount"))
+    )
 
-    for transaction in queryset:
-        source_currency = get_transaction_source_currency(
-            transaction,
-            fallback_currency=budget.currency,
-        )
+    for row in rows:
+        source_currency = row["account__currency"] or budget.currency
         total += converter.convert(
-            transaction.amount,
+            row["total"] or Decimal("0.00"),
             source_currency=source_currency,
             target_currency=target_code,
             quantize=False,
@@ -233,6 +282,12 @@ def get_budget_total_days(budget: Budget) -> int:
 
 
 def get_budget_usage(budget: Budget, *, converter=None) -> BudgetUsage:
+    cache_key = _get_budget_usage_cache_key(converter=converter)
+    usage_cache = getattr(budget, "_budget_usage_cache", {})
+
+    if cache_key in usage_cache:
+        return usage_cache[cache_key]
+
     spent_amount = get_budget_spent_amount(
         budget,
         converter=converter,
@@ -270,7 +325,7 @@ def get_budget_usage(budget: Budget, *, converter=None) -> BudgetUsage:
         rounding=ROUND_HALF_UP,
     )
 
-    return BudgetUsage(
+    usage = BudgetUsage(
         spent_amount=spent_amount,
         remaining_amount=remaining_amount,
         usage_percent=usage_percent,
@@ -279,7 +334,20 @@ def get_budget_usage(budget: Budget, *, converter=None) -> BudgetUsage:
         forecast_within_limit=forecast_amount <= budget.amount_limit,
         average_daily_amount=average_daily_amount,
     )
+    usage_cache[cache_key] = usage
+    budget._budget_usage_cache = usage_cache
+    return usage
 
+
+def _get_budget_usage_cache_key(*, converter=None) -> tuple[str | None, str | None, bool | None]:
+    if converter is None:
+        return (None, None, None)
+
+    return (
+        getattr(converter, "display_currency", None),
+        getattr(converter, "primary_currency", None),
+        getattr(converter, "using_cached_rates", None),
+    )
 
 def get_period_label(budget: Budget) -> str:
     if budget.period_type == BudgetPeriodType.YEAR:

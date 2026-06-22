@@ -1259,6 +1259,10 @@ class Transaction(TimeStampedModel):
                 name="idx_tx_user_type_date",
             ),
             models.Index(
+                fields=["user", "type", "operation_date", "account"],
+                name="idx_tx_dash_type_date_acct",
+            ),
+            models.Index(
                 fields=["user", "amount"],
                 name="idx_tx_user_amount",
             ),
@@ -1517,6 +1521,14 @@ class Receipt(TimeStampedModel):
             models.Index(fields=["user", "fiscal_key"], name="idx_receipt_user_fiscal"),
             models.Index(fields=["user", "receipt_datetime"], name="idx_receipt_user_date"),
             models.Index(fields=["user", "status"], name="idx_receipt_user_status"),
+            models.Index(
+                fields=["user", "status", "receipt_datetime"],
+                name="idx_receipt_user_status_date",
+            ),
+            models.Index(
+                fields=["user", "receipt_datetime", "status"],
+                name="idx_receipt_user_date_status",
+            ),
             models.Index(fields=["seller_inn"], name="idx_receipt_seller_inn"),
         ]
 
@@ -1765,6 +1777,14 @@ class ReceiptItem(TimeStampedModel):
         ]
         indexes = [
             models.Index(fields=["receipt"], name="idx_receipt_item_receipt"),
+            models.Index(
+                fields=["receipt", "line_number"],
+                name="idx_receipt_item_receipt_line",
+            ),
+            models.Index(
+                fields=["receipt", "id"],
+                name="idx_receipt_item_receipt_id",
+            ),
             models.Index(fields=["suggested_category"], name="idx_receipt_item_category"),
             models.Index(fields=["receipt", "suggested_category"], name="idx_receipt_item_receipt_cat"),
             models.Index(fields=["name"], name="idx_receipt_item_name"),
@@ -2131,6 +2151,10 @@ class Budget(TimeStampedModel):
                 fields=["user", "kind", "period_type", "period_start"],
                 name="idx_budget_kind_period",
             ),
+            models.Index(
+                fields=["user", "-period_start", "category"],
+                name="idx_budget_user_sort_cat",
+            ),
         ]
 
     @property
@@ -2307,6 +2331,10 @@ class Goal(TimeStampedModel):
             models.Index(
                 fields=["user", "status", "deadline"],
                 name="idx_goal_user_status_deadline",
+            ),
+            models.Index(
+                fields=["user", "status", "deadline", "name"],
+                name="idx_goal_status_deadline_name",
             ),
         ]
 
@@ -3726,6 +3754,10 @@ class PlannedTransaction(TimeStampedModel):
             models.Index(fields=["user", "category"], name="idx_ptx_user_category"),
             models.Index(fields=["user", "include_in_forecast"], name="idx_ptx_user_forecast"),
             models.Index(fields=["user", "status", "planned_date"], name="idx_ptx_status_date"),
+            models.Index(
+                fields=["user", "account", "planned_date", "status"],
+                name="idx_ptx_cal_account_date",
+            ),
             models.Index(fields=["converted_transaction"], name="idx_ptx_converted_tx"),
         ]
 

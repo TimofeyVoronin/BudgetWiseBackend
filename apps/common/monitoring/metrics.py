@@ -76,6 +76,35 @@ DATABASE_CHECK_DURATION_SECONDS = Histogram(
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5),
 )
 
+REDIS_UP = Gauge(
+    "redis_up",
+    "Redis availability status. 1 means available, 0 means unavailable.",
+    ["url"],
+)
+
+REDIS_CHECK_DURATION_SECONDS = Histogram(
+    "redis_check_duration_seconds",
+    "Redis health-check duration in seconds.",
+    ["url"],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5),
+)
+
+CELERY_UP = Gauge(
+    "celery_up",
+    "Celery availability status. 1 means at least one worker answered ping.",
+)
+
+CELERY_WORKERS_ONLINE = Gauge(
+    "celery_workers_online",
+    "Number of Celery workers that answered health-check ping.",
+)
+
+CELERY_CHECK_DURATION_SECONDS = Histogram(
+    "celery_check_duration_seconds",
+    "Celery health-check duration in seconds.",
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5),
+)
+
 HEALTH_STATUS = Gauge(
     "health_status",
     "Overall backend health status. 1 means ok, 0 means degraded.",
@@ -297,3 +326,23 @@ def record_database_health_check(
 
 def record_health_status(*, is_ok: bool) -> None:
     HEALTH_STATUS.set(1 if is_ok else 0)
+
+def record_redis_health_check(
+    *,
+    is_available: bool,
+    duration_seconds: float,
+    url: str,
+) -> None:
+    REDIS_UP.labels(url=url).set(1 if is_available else 0)
+    REDIS_CHECK_DURATION_SECONDS.labels(url=url).observe(duration_seconds)
+
+
+def record_celery_health_check(
+    *,
+    is_available: bool,
+    duration_seconds: float,
+    worker_count: int,
+) -> None:
+    CELERY_UP.set(1 if is_available else 0)
+    CELERY_WORKERS_ONLINE.set(worker_count)
+    CELERY_CHECK_DURATION_SECONDS.observe(duration_seconds)

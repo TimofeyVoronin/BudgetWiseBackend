@@ -159,5 +159,66 @@ class ReceiptQRImportAPITests(TestCase):
         self.assertEqual(response.data["receipt"]["status"], ReceiptStatus.FETCHED)
         self.assertEqual(response.data["receipt"]["store_name"], "ООО Ромашка")
         self.assertEqual(response.data["receipt"]["seller_inn"], "7700000000")
+        self.assertEqual(response.data["receipt"]["itemsCount"], 2)
         self.assertEqual(len(response.data["receipt"]["items"]), 2)
         self.assertEqual(Receipt.objects.get(user=self.user).total_amount, Decimal("270.00"))
+
+    @patch("apps.finance.receipts.views.get_receipt_provider_client")
+    def test_qr_endpoint_can_omit_embedded_items_for_large_receipts(self, mocked_get_client):
+        self.authenticate()
+        details = normalize_proverkacheka_response(self.provider_payload())
+        mocked_get_client.return_value = MockReceiptProviderClient(receipt=details)
+
+        response = self.client.get(
+            self.url,
+            {"qrRaw": VALID_QR, "includeItems": "false"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["receipt"]["itemsCount"], 2)
+        self.assertEqual(response.data["receipt"]["items"], [])
+
+    @patch("apps.finance.receipts.views.get_receipt_provider_client")
+    def test_qr_endpoint_limits_embedded_items_preview(self, mocked_get_client):
+        self.authenticate()
+        details = normalize_proverkacheka_response(self.provider_payload())
+        mocked_get_client.return_value = MockReceiptProviderClient(receipt=details)
+
+        response = self.client.get(
+            self.url,
+            {"qrRaw": VALID_QR, "itemsLimit": "1"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["receipt"]["itemsCount"], 2)
+        self.assertEqual(len(response.data["receipt"]["items"]), 1)
+        self.assertEqual(response.data["receipt"]["items"][0]["name"], "Молоко")
+
+    @patch("apps.finance.receipts.views.get_receipt_provider_client")
+    def test_receipt_items_endpoint_returns_paginated_items(self, mocked_get_client):
+        self.authenticate()
+        details = normalize_proverkacheka_response(self.provider_payload())
+        mocked_get_client.return_value = MockReceiptProviderClient(receipt=details)
+        qr_response = self.client.get(self.url, {"qrRaw": VALID_QR, "includeItems": "false"})
+        receipt_id = qr_response.data["receipt"]["id"]
+
+        response = self.client.get(
+            f"/api/v1/finance/receipts/{receipt_id}/items/",
+            {"page_size": "1"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["receiptId"], receipt_id)
+        self.assertEqual(response.data["itemsCount"], 2)
+        self.assertEqual(response.data["pagination"]["count"], 2)
+        self.assertEqual(response.data["pagination"]["page"], 1)
+        self.assertEqual(response.data["pagination"]["pageSize"], 1)
+        self.assertEqual(len(response.data["items"]), 1)
+        self.assertEqual(response.data["items"][0]["name"], "Молоко")
+
+    def test_receipt_items_endpoint_rejects_unknown_receipt(self):
+        self.authenticate()
+
+        response = self.client.get("/api/v1/finance/receipts/999/items/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

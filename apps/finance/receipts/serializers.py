@@ -251,7 +251,8 @@ class ReceiptItemBriefSerializer(serializers.ModelSerializer):
 
 
 class ReceiptBriefSerializer(serializers.ModelSerializer):
-    items = ReceiptItemBriefSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField(read_only=True)
+    itemsCount = serializers.SerializerMethodField(read_only=True)
     transactionsCount = serializers.SerializerMethodField(read_only=True)
     sourceCurrency = serializers.SerializerMethodField(read_only=True)
     totalAmountRub = serializers.SerializerMethodField(read_only=True)
@@ -273,10 +274,37 @@ class ReceiptBriefSerializer(serializers.ModelSerializer):
             "fiscal_document_number",
             "fiscal_sign",
             "transactionsCount",
+            "itemsCount",
             "items",
         ]
 
+    def get_items(self, obj: Receipt) -> list[dict]:
+        if not self.context.get("include_receipt_items", True):
+            return []
+
+        items = self._get_prefetched_items(obj)
+        limit = self.context.get("receipt_items_limit")
+
+        if limit is not None:
+            items = items[:limit]
+
+        return ReceiptItemBriefSerializer(items, many=True, context=self.context).data
+
+    def get_itemsCount(self, obj: Receipt) -> int:
+        annotated_count = getattr(obj, "items_count", None)
+        if annotated_count is not None:
+            return annotated_count
+
+        prefetched_cache = getattr(obj, "_prefetched_objects_cache", {})
+        if "items" in prefetched_cache:
+            return len(prefetched_cache["items"])
+
+        return obj.items.count()
+
     def get_transactionsCount(self, obj: Receipt) -> int:
+        annotated_count = getattr(obj, "transactions_count", None)
+        if annotated_count is not None:
+            return annotated_count
         return obj.transactions.count()
 
     def get_sourceCurrency(self, obj: Receipt) -> str:
@@ -299,6 +327,16 @@ class ReceiptBriefSerializer(serializers.ModelSerializer):
             source_currency=RECEIPT_SOURCE_CURRENCY,
         )
 
+    def _get_prefetched_items(self, obj: Receipt):
+        prefetched_cache = getattr(obj, "_prefetched_objects_cache", {})
+        if "items" in prefetched_cache:
+            return list(prefetched_cache["items"])
+
+        return list(
+            obj.items.select_related("suggested_category")
+            .order_by("line_number", "id")
+        )
+
 
 class ReceiptQRImportQuerySerializer(serializers.Serializer):
     qrRaw = serializers.CharField(
@@ -312,6 +350,25 @@ class ReceiptQRImportQuerySerializer(serializers.Serializer):
         default=True,
         help_text="Если true, backend попробует получить расширенные данные чека у внешнего провайдера.",
     )
+    includeItems = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text=(
+            "Если false, backend не будет встраивать позиции чека в ответ. "
+            "Это полезно для чеков с большим количеством строк: позиции можно получить "
+            "постранично через /receipts/{id}/items/."
+        ),
+    )
+    itemsLimit = serializers.IntegerField(
+        min_value=1,
+        max_value=100,
+        required=False,
+        allow_null=True,
+        help_text=(
+            "Ограничивает количество встроенных позиций в receipt.items. "
+            "Полный список позиций доступен через /receipts/{id}/items/."
+        ),
+    )
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -319,6 +376,8 @@ class ReceiptQRImportQuerySerializer(serializers.Serializer):
             "qr_raw": "qrRaw",
             "qr": "qrRaw",
             "fetch_provider": "fetchProvider",
+            "include_items": "includeItems",
+            "items_limit": "itemsLimit",
         }
         for alias, field_name in alias_map.items():
             if alias in mutable_data and field_name not in mutable_data:
@@ -330,6 +389,40 @@ class ReceiptProviderErrorBriefSerializer(serializers.Serializer):
     code = serializers.CharField(read_only=True)
     message = serializers.CharField(read_only=True)
     fieldErrors = serializers.DictField(read_only=True, required=False)
+
+
+class ReceiptItemsResponseSerializer(serializers.Serializer):
+    receiptId = serializers.IntegerField(read_only=True)
+    itemsCount = serializers.IntegerField(read_only=True)
+    items = ReceiptItemBriefSerializer(many=True, read_only=True)
+    pagination = serializers.DictField(read_only=True, required=False)
+    currencyContext = serializers.DictField(read_only=True)
+
+
+def build_receipt_items_response(
+    *,
+    receipt: Receipt,
+    items: list[ReceiptItem],
+    context: dict | None = None,
+    pagination: dict | None = None,
+) -> dict:
+    context = context or {}
+    converter = context.get("currency_converter")
+    items_count = getattr(receipt, "items_count", None)
+    if items_count is None:
+        items_count = receipt.items.count()
+
+    response_data = {
+        "receiptId": receipt.id,
+        "itemsCount": items_count,
+        "items": ReceiptItemBriefSerializer(items, many=True, context=context).data,
+        "currencyContext": converter.context_payload() if converter is not None else {},
+    }
+
+    if pagination is not None:
+        response_data["pagination"] = pagination
+
+    return response_data
 
 
 class ReceiptQRImportResponseSerializer(serializers.Serializer):

@@ -1,4 +1,3 @@
-from django.core.files.storage import default_storage
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework.generics import GenericAPIView
@@ -11,6 +10,7 @@ from apps.users.profile.audit import (
     log_profile_avatar_audit,
     log_profile_update_audit,
 )
+from apps.users.profile.avatar_storage import delete_user_avatar, upload_user_avatar
 from apps.users.models import UserProfileAuditAction
 from apps.users.profile.serializers import (
     CurrentUserSerializer,
@@ -202,7 +202,7 @@ class UserProfileMeView(GenericAPIView):
             "Возвращает данные для страницы профиля: ФИО, email, телефон, город, "
             "краткое описание и статусы подтверждения контактных данных. "
             "Email и username являются read-only. Подтверждение email уже есть в системе, "
-            "но может быть выключено настройкой REGISTRATION_REQUIRE_EMAIL_CONFIRMATION."
+            "но может быть выключено настройкой EMAIL_VERIFICATION_ENABLED."
         ),
         responses={200: UserProfileMeSerializer},
         examples=[
@@ -334,8 +334,9 @@ class UserProfileAvatarView(GenericAPIView):
         summary="Загрузить или заменить аватар текущего пользователя",
         description=(
             "Загружает аватар текущего пользователя через multipart/form-data. "
-            "Поддерживаются JPEG, PNG и WebP. При успешной загрузке старый файл "
-            "аватара удаляется из локального media storage."
+            "Поддерживаются JPEG, PNG и WebP. При успешной загрузке старый аватар "
+            "удаляется из активного storage provider. Локально используется media storage, "
+            "на production можно включить Cloudinary."
         ),
         request=UserProfileAvatarUploadSerializer,
         responses={200: UserProfileAvatarResponseSerializer},
@@ -343,7 +344,7 @@ class UserProfileAvatarView(GenericAPIView):
             OpenApiExample(
                 "Успешный ответ",
                 value={
-                    "avatarUrl": "http://localhost:8000/media/avatars/user_1/avatar.jpg",
+                    "avatarUrl": "https://res.cloudinary.com/example/image/upload/v1/budgetwise/avatars/user_1_avatar.jpg",
                     "message": "Аватар обновлён.",
                 },
                 response_only=True,
@@ -355,17 +356,16 @@ class UserProfileAvatarView(GenericAPIView):
         serializer.is_valid(raise_exception=True)
 
         user = request.user
-        old_avatar_name = user.avatar.name if user.avatar else ""
+        upload_result = upload_user_avatar(
+            user=user,
+            uploaded_file=serializer.validated_data["avatar"],
+        )
 
-        user.avatar = serializer.validated_data["avatar"]
-        user.save(update_fields=["avatar"])
-
-        _delete_storage_file_if_unused(old_avatar_name, user.avatar.name)
         log_profile_avatar_audit(
             user=user,
             action=UserProfileAuditAction.AVATAR_UPLOADED,
-            old_avatar_name=old_avatar_name,
-            new_avatar_name=user.avatar.name,
+            old_avatar_name=upload_result.old_reference,
+            new_avatar_name=upload_result.new_reference,
             request=request,
         )
 
@@ -381,7 +381,7 @@ class UserProfileAvatarView(GenericAPIView):
         operation_id="profile_me_avatar_delete",
         summary="Удалить аватар текущего пользователя",
         description=(
-            "Удаляет файл аватара из локального media storage и очищает ссылку "
+            "Удаляет аватар из активного storage provider и очищает ссылку "
             "на аватар в профиле текущего пользователя."
         ),
         responses={200: UserProfileAvatarDeleteResponseSerializer},
@@ -395,26 +395,15 @@ class UserProfileAvatarView(GenericAPIView):
     )
     def delete(self, request, *args, **kwargs):
         user = request.user
-        avatar_name = user.avatar.name if user.avatar else ""
+        delete_result = delete_user_avatar(user=user)
 
-        if avatar_name:
-            user.avatar = None
-            user.save(update_fields=["avatar"])
-            _delete_storage_file_if_unused(avatar_name, "")
+        if delete_result.old_reference:
             log_profile_avatar_audit(
                 user=user,
                 action=UserProfileAuditAction.AVATAR_DELETED,
-                old_avatar_name=avatar_name,
+                old_avatar_name=delete_result.old_reference,
                 new_avatar_name="",
                 request=request,
             )
 
         return Response({"deleted": True, "avatarUrl": None})
-
-
-def _delete_storage_file_if_unused(file_name: str, current_file_name: str) -> None:
-    if not file_name or file_name == current_file_name:
-        return
-
-    if default_storage.exists(file_name):
-        default_storage.delete(file_name)

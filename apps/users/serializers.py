@@ -1,11 +1,14 @@
 from apps.users.admin_api.serializers import UserSerializer
 from apps.users.auth.serializers import (
+    ChangeEmailSerializer,
+    ChangePasswordSerializer,
     ForgotPasswordSerializer,
     LoginSerializer,
     LoginUserSerializer,
     PASSWORD_RESET_REQUEST_ACCEPTED_MESSAGE,
     PASSWORD_RESET_SUCCESS_MESSAGE,
     RegisterSerializer,
+    ResendEmailVerificationSerializer,
     ResetPasswordSerializer,
     VerifyEmailSerializer,
 )
@@ -27,6 +30,9 @@ __all__ = [
     "UserSerializer",
     "RegisterSerializer",
     "VerifyEmailSerializer",
+    "ResendEmailVerificationSerializer",
+    "ChangePasswordSerializer",
+    "ChangeEmailSerializer",
     "ForgotPasswordSerializer",
     "ResetPasswordSerializer",
     "LoginUserSerializer",

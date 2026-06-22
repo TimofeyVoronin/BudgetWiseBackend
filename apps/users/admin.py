@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from apps.users.models import User, UserAppSettings, UserProfileAuditLog
+from apps.users.models import PhoneVerificationCode, User, UserAppSettings, UserProfileAuditLog
 
 
 
@@ -43,7 +43,21 @@ class UserProfileAuditLogInline(admin.TabularInline):
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    list_display = ("id", "username", "email", "first_name", "last_name", "phone", "city", "avatar", "is_staff")
+    list_display = (
+        "id",
+        "username",
+        "email",
+        "email_verified",
+        "phone",
+        "phone_verified",
+        "first_name",
+        "last_name",
+        "city",
+        "avatar",
+        "avatar_url",
+        "is_staff",
+    )
+    list_filter = ("email_verified", "phone_verified", "is_staff", "is_active")
     search_fields = ("username", "email", "first_name", "last_name", "middle_name", "phone", "city")
     ordering = ("id",)
     inlines = [UserAppSettingsInline, UserProfileAuditLogInline]
@@ -54,9 +68,16 @@ class CustomUserAdmin(UserAdmin):
                 "fields": (
                     "middle_name",
                     "phone",
+                    "phone_verified",
+                    "phone_verified_at",
+                    "email_verified",
+                    "email_verified_at",
+                    "email_verification_sent_at",
                     "city",
                     "bio",
                     "avatar",
+                    "avatar_url",
+                    "avatar_public_id",
                 ),
             },
         ),
@@ -92,3 +113,32 @@ class UserAppSettingsAdmin(admin.ModelAdmin):
     search_fields = ("user__email", "user__username", "default_currency")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("user_id",)
+
+@admin.register(PhoneVerificationCode)
+class PhoneVerificationCodeAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "phone",
+        "attempts_count",
+        "sent_at",
+        "expires_at",
+        "confirmed_at",
+    )
+    list_filter = ("sent_at", "expires_at", "confirmed_at")
+    search_fields = ("user__email", "user__username", "phone")
+    readonly_fields = (
+        "user",
+        "phone",
+        "code_hash",
+        "attempts_count",
+        "sent_at",
+        "expires_at",
+        "confirmed_at",
+        "created_at",
+    )
+    ordering = ("-sent_at", "-id")
+
+    def has_add_permission(self, request):
+        return False
+

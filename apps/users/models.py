@@ -24,6 +24,29 @@ class User(AbstractUser):
         blank=True,
         verbose_name="Телефон",
     )
+    email_verified = models.BooleanField(
+        default=True,
+        verbose_name="Email подтверждён",
+    )
+    email_verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата подтверждения email",
+    )
+    email_verification_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата последней отправки подтверждения email",
+    )
+    phone_verified = models.BooleanField(
+        default=False,
+        verbose_name="Телефон подтверждён",
+    )
+    phone_verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата подтверждения телефона",
+    )
     city = models.CharField(
         max_length=120,
         blank=True,
@@ -40,6 +63,16 @@ class User(AbstractUser):
         blank=True,
         verbose_name="Аватар",
     )
+    avatar_url = models.URLField(
+        max_length=700,
+        blank=True,
+        verbose_name="URL аватара",
+    )
+    avatar_public_id = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Cloudinary public ID аватара",
+    )
 
     def __str__(self) -> str:
         return self.email or self.username
@@ -49,6 +82,19 @@ class User(AbstractUser):
         parts = [self.last_name, self.first_name, self.middle_name]
         full_name = " ".join(part for part in parts if part).strip()
         return full_name or self.username or self.email
+
+    @property
+    def has_verified_contact(self) -> bool:
+        return bool(self.email_verified or self.phone_verified)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["phone"],
+                condition=~models.Q(phone=""),
+                name="uniq_user_non_empty_phone",
+            ),
+        ]
 
 
 class UserProfileAuditAction(models.TextChoices):
@@ -278,3 +324,66 @@ class PasswordResetToken(models.Model):
     def mark_used(self) -> None:
         self.used_at = timezone.now()
         self.save(update_fields=["used_at"])
+
+
+class PhoneVerificationCode(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="phone_verification_codes",
+        verbose_name="Пользователь",
+    )
+    phone = models.CharField(
+        max_length=32,
+        verbose_name="Телефон",
+    )
+    code_hash = models.CharField(
+        max_length=128,
+        verbose_name="Hash кода",
+    )
+    attempts_count = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Количество попыток",
+    )
+    expires_at = models.DateTimeField(
+        verbose_name="Действителен до",
+    )
+    sent_at = models.DateTimeField(
+        default=timezone.now,
+        verbose_name="Дата отправки",
+    )
+    confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата подтверждения",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания",
+    )
+
+    class Meta:
+        verbose_name = "Код подтверждения телефона"
+        verbose_name_plural = "Коды подтверждения телефона"
+        ordering = ["-sent_at", "-id"]
+        indexes = [
+            models.Index(fields=["user", "phone", "confirmed_at"], name="idx_phone_verif_user_phone"),
+            models.Index(fields=["expires_at"], name="idx_phone_verif_expires"),
+            models.Index(fields=["sent_at"], name="idx_phone_verif_sent"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Phone verification for user_id={self.user_id} phone={self.phone}"
+
+    @property
+    def is_confirmed(self) -> bool:
+        return self.confirmed_at is not None
+
+    @property
+    def is_expired(self) -> bool:
+        return timezone.now() >= self.expires_at
+
+    @property
+    def can_be_used(self) -> bool:
+        return not self.is_confirmed and not self.is_expired
+

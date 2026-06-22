@@ -184,7 +184,7 @@ def run_due_recurring_transactions(
             run_date=run_date,
         )
 
-    summary = RecurringRunSummary(processed_count=len(recurring_ids))
+    summary = RecurringRunSummary()
 
     for recurring_id in recurring_ids:
         try:
