@@ -87,8 +87,9 @@ class OnboardingAnswersView(GenericAPIView):
         summary="Отправить ответы onboarding-анкеты",
         description=(
             "Принимает ответы пользователя, проверяет обязательные вопросы и допустимые значения, "
-            "сохраняет ответы в OnboardingSurvey и переводит анкету в статус completed. "
-            "Создание стартовых категорий, целей, бюджетов и рекомендаций будет расширено в BUD-1057."
+            "сохраняет ответы в OnboardingSurvey, применяет начальную конфигурацию пользователя "
+            "и переводит анкету в статус completed. Стартовая конфигурация создаёт только "
+            "недостающие категории, цели и бюджеты, поэтому повторная отправка не создаёт дубли."
         ),
         request=OnboardingAnswersSubmitSerializer,
         responses={200: OnboardingAnswersResponseSerializer, 400: OnboardingAnswersSubmitSerializer},
@@ -123,14 +124,33 @@ class OnboardingAnswersView(GenericAPIView):
                         "defaultCurrency": "RUB",
                     },
                     "result": {
-                        "configurationApplied": False,
-                        "nextStep": "initial_configuration",
+                        "configurationApplied": True,
+                        "nextStep": "dashboard",
                         "created": {
-                            "categories": 0,
-                            "goals": 0,
-                            "budgets": 0,
-                            "recommendations": 0,
+                            "categories": 4,
+                            "goals": 1,
+                            "budgets": 3,
+                            "recommendations": 2,
                         },
+                        "createdIds": {
+                            "categories": [1, 2, 3, 4],
+                            "goals": [1],
+                            "budgets": [1, 2, 3],
+                        },
+                        "appliedSettings": {
+                            "defaultCurrency": "RUB",
+                            "defaultCurrencyChanged": False,
+                        },
+                        "recommendations": [
+                            {
+                                "id": "review-top-expenses",
+                                "title": "Проверьте крупные расходы за месяц",
+                                "description": (
+                                    "Начните с регулярного просмотра категорий, "
+                                    "где расходы растут быстрее всего."
+                                ),
+                            }
+                        ],
                     },
                 },
                 response_only=True,

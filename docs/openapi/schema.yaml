@@ -9918,9 +9918,10 @@ paths:
     post:
       operationId: users_onboarding_answers_create
       description: Принимает ответы пользователя, проверяет обязательные вопросы и
-        допустимые значения, сохраняет ответы в OnboardingSurvey и переводит анкету
-        в статус completed. Создание стартовых категорий, целей, бюджетов и рекомендаций
-        будет расширено в BUD-1057.
+        допустимые значения, сохраняет ответы в OnboardingSurvey, применяет начальную
+        конфигурацию пользователя и переводит анкету в статус completed. Стартовая
+        конфигурация создаёт только недостающие категории, цели и бюджеты, поэтому
+        повторная отправка не создаёт дубли.
       summary: Отправить ответы onboarding-анкеты
       tags:
       - users-onboarding
@@ -9976,13 +9977,33 @@ paths:
                       hasSavingsGoal: true
                       defaultCurrency: RUB
                     result:
-                      configurationApplied: false
-                      nextStep: initial_configuration
+                      configurationApplied: true
+                      nextStep: dashboard
                       created:
-                        categories: 0
-                        goals: 0
-                        budgets: 0
-                        recommendations: 0
+                        categories: 4
+                        goals: 1
+                        budgets: 3
+                        recommendations: 2
+                      createdIds:
+                        categories:
+                        - 1
+                        - 2
+                        - 3
+                        - 4
+                        goals:
+                        - 1
+                        budgets:
+                        - 1
+                        - 2
+                        - 3
+                      appliedSettings:
+                        defaultCurrency: RUB
+                        defaultCurrencyChanged: false
+                      recommendations:
+                      - id: review-top-expenses
+                        title: Проверьте крупные расходы за месяц
+                        description: Начните с регулярного просмотра категорий, где
+                          расходы растут быстрее всего.
                   summary: Успешный ответ
           description: ''
         '400':
@@ -17177,6 +17198,22 @@ components:
       - title
       - totalQuestions
       - version
+    OnboardingRecommendation:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Машинный идентификатор рекомендации.
+        title:
+          type: string
+          description: Заголовок рекомендации для интерфейса.
+        description:
+          type: string
+          description: Короткое описание рекомендации.
+      required:
+      - description
+      - id
+      - title
     OnboardingStatus:
       type: object
       properties:
@@ -17242,13 +17279,28 @@ components:
           description: Применена ли начальная конфигурация по ответам анкеты.
         nextStep:
           type: string
-          description: Следующий backend-шаг после сохранения ответов.
+          description: Следующий frontend/backend-шаг после сохранения ответов.
         created:
           type: object
           additionalProperties:
             type: integer
-          description: Количество созданных стартовых сущностей. До BUD-1057 значения
-            равны нулю.
+          description: Количество созданных стартовых сущностей и подготовленных рекомендаций.
+        createdIds:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: integer
+          description: ID созданных категорий, целей и бюджетов.
+        appliedSettings:
+          type: object
+          additionalProperties: {}
+          description: Настройки пользователя, применённые на основе ответов анкеты.
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardingRecommendation'
+          description: Базовые рекомендации, подготовленные после onboarding.
       required:
       - configurationApplied
       - created

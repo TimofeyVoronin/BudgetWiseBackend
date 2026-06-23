@@ -179,16 +179,36 @@ class OnboardingAnswersSubmitSerializer(serializers.Serializer):
         return value, None
 
 
+class OnboardingRecommendationSerializer(serializers.Serializer):
+    id = serializers.CharField(help_text="Машинный идентификатор рекомендации.")
+    title = serializers.CharField(help_text="Заголовок рекомендации для интерфейса.")
+    description = serializers.CharField(help_text="Короткое описание рекомендации.")
+
+
 class OnboardingSubmitResultSerializer(serializers.Serializer):
     configurationApplied = serializers.BooleanField(
         help_text="Применена ли начальная конфигурация по ответам анкеты.",
     )
     nextStep = serializers.CharField(
-        help_text="Следующий backend-шаг после сохранения ответов.",
+        help_text="Следующий frontend/backend-шаг после сохранения ответов.",
     )
     created = serializers.DictField(
         child=serializers.IntegerField(),
-        help_text="Количество созданных стартовых сущностей. До BUD-1057 значения равны нулю.",
+        help_text="Количество созданных стартовых сущностей и подготовленных рекомендаций.",
+    )
+    createdIds = serializers.DictField(
+        child=serializers.ListField(child=serializers.IntegerField()),
+        required=False,
+        help_text="ID созданных категорий, целей и бюджетов.",
+    )
+    appliedSettings = serializers.DictField(
+        required=False,
+        help_text="Настройки пользователя, применённые на основе ответов анкеты.",
+    )
+    recommendations = OnboardingRecommendationSerializer(
+        many=True,
+        required=False,
+        help_text="Базовые рекомендации, подготовленные после onboarding.",
     )
 
 

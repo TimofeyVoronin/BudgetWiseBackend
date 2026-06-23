@@ -1,27 +1,20 @@
 from __future__ import annotations
 
-from copy import deepcopy
-
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
 from apps.users.models import OnboardingSurvey, OnboardingSurveyStatus
+from apps.users.onboarding.configuration import (
+    apply_onboarding_initial_configuration,
+    build_default_onboarding_result,
+)
 
 
 User = get_user_model()
 
 
-DEFAULT_ONBOARDING_RESULT = {
-    "configurationApplied": False,
-    "nextStep": "initial_configuration",
-    "created": {
-        "categories": 0,
-        "goals": 0,
-        "budgets": 0,
-        "recommendations": 0,
-    },
-}
+DEFAULT_ONBOARDING_RESULT = build_default_onboarding_result()
 
 
 def get_user_onboarding_survey(user: User) -> OnboardingSurvey | None:
@@ -69,7 +62,7 @@ def build_onboarding_answers_payload(survey: OnboardingSurvey) -> dict:
         "startedAt": survey.started_at,
         "completedAt": survey.completed_at,
         "answers": survey.answers,
-        "result": survey.result or DEFAULT_ONBOARDING_RESULT,
+        "result": survey.result or build_default_onboarding_result(),
     }
 
 
@@ -77,13 +70,18 @@ def build_onboarding_answers_payload(survey: OnboardingSurvey) -> dict:
 def save_onboarding_answers(user: User, answers: dict) -> OnboardingSurvey:
     survey, _ = OnboardingSurvey.objects.select_for_update().get_or_create(user=user)
     now = timezone.now()
+    result = apply_onboarding_initial_configuration(
+        user,
+        answers,
+        previous_result=survey.result,
+    )
 
     survey.answers = answers
     survey.status = OnboardingSurveyStatus.COMPLETED
     if survey.started_at is None:
         survey.started_at = now
     survey.completed_at = now
-    survey.result = deepcopy(DEFAULT_ONBOARDING_RESULT)
+    survey.result = result
     survey.save(
         update_fields=[
             "answers",

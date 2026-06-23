@@ -90,12 +90,16 @@ class OnboardingAnswersAPITests(APITestCase):
         self.assertIsNotNone(response.data["startedAt"])
         self.assertIsNotNone(response.data["completedAt"])
         self.assertEqual(response.data["answers"]["mainGoal"], "expense_control")
-        self.assertFalse(response.data["result"]["configurationApplied"])
-        self.assertEqual(response.data["result"]["created"]["categories"], 0)
+        self.assertTrue(response.data["result"]["configurationApplied"])
+        self.assertEqual(response.data["result"]["nextStep"], "dashboard")
+        self.assertGreaterEqual(response.data["result"]["created"]["categories"], 1)
+        self.assertGreaterEqual(response.data["result"]["created"]["budgets"], 1)
+        self.assertGreaterEqual(response.data["result"]["created"]["recommendations"], 1)
 
         survey = OnboardingSurvey.objects.get(user=self.user)
         self.assertEqual(survey.status, OnboardingSurveyStatus.COMPLETED)
         self.assertEqual(survey.answers["defaultCurrency"], "RUB")
+        self.assertTrue(survey.result["configurationApplied"])
 
     def test_onboarding_answers_update_existing_survey_without_duplicate(self):
         self.client.force_authenticate(user=self.user)
