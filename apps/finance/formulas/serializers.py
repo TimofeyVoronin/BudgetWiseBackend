@@ -71,3 +71,24 @@ class FormulaIdeMetaResponseSerializer(serializers.Serializer):
     constructor_variables = FormulaIdeConstructorVariableSerializer(many=True)
     constructor_operators = FormulaIdeConstructorOperatorSerializer(many=True)
     autocomplete_items = FormulaIdeAutocompleteItemSerializer(many=True)
+
+
+class FormulaIdeValidationRequestSerializer(serializers.Serializer):
+    code = serializers.CharField(
+        allow_blank=True,
+        trim_whitespace=False,
+        help_text="DSL-код формулы для проверки.",
+    )
+
+
+class FormulaIdeDiagnosticSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    line = serializers.IntegerField(min_value=1)
+    message = serializers.CharField()
+    severity = serializers.ChoiceField(choices=["error", "warning"], default="error")
+
+
+class FormulaIdeValidationResponseSerializer(serializers.Serializer):
+    is_valid = serializers.BooleanField()
+    errors = FormulaIdeDiagnosticSerializer(many=True)
+

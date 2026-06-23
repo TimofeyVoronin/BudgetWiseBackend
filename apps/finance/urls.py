@@ -44,6 +44,7 @@ from apps.finance.dashboard.views import (
 from apps.finance.formulas.views import (
     FormulaIdeMetaView,
     FormulaIdeStateView,
+    FormulaIdeValidateView,
 )
 from apps.finance.financial_calendar.views import (
     FinancialCalendarDayView,
@@ -148,6 +149,11 @@ urlpatterns = [
         "formulas/ide/meta/",
         FormulaIdeMetaView.as_view(),
         name="formula-ide-meta",
+    ),
+    path(
+        "formulas/ide/validate/",
+        FormulaIdeValidateView.as_view(),
+        name="formula-ide-validate",
     ),
     path(
         "analytics/combined/meta/",

@@ -11,11 +11,14 @@ from apps.finance.formulas.serializers import (
     FormulaIdeStateResponseSerializer,
     FormulaIdeStateSaveResponseSerializer,
     FormulaIdeStateUpdateSerializer,
+    FormulaIdeValidationRequestSerializer,
+    FormulaIdeValidationResponseSerializer,
 )
 from apps.finance.formulas.services import (
     get_formula_ide_meta,
     get_formula_ide_state,
     save_formula_ide_state,
+    validate_formula_ide_code,
 )
 
 
@@ -106,3 +109,56 @@ class FormulaIdeMetaView(APIView):
     )
     def get(self, request):
         return Response(get_formula_ide_meta())
+
+
+class FormulaIdeValidateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=[FORMULA_IDE_TAG],
+        summary="Проверить DSL-код формулы",
+        description=(
+            "Проверяет DSL-код финансовой формулы без выполнения выражения и без доступа "
+            "к пользовательским финансовым данным. Возвращает is_valid=true, если ошибок нет. "
+            "Ошибки DSL возвращаются в ответе 200 с is_valid=false, чтобы интерфейс мог "
+            "показать их в панели редактора."
+        ),
+        request=FormulaIdeValidationRequestSerializer,
+        responses={
+            200: FormulaIdeValidationResponseSerializer,
+            400: OpenApiResponse(description="Некорректное тело запроса."),
+            401: OpenApiResponse(description="Пользователь не авторизован."),
+        },
+        examples=[
+            OpenApiExample(
+                "Valid formula request",
+                value={"code": "RETURN start_balance + income - expenses;"},
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Valid formula response",
+                value={"is_valid": True, "errors": []},
+                response_only=True,
+            ),
+            OpenApiExample(
+                "Invalid formula response",
+                value={
+                    "is_valid": False,
+                    "errors": [
+                        {
+                            "id": "missing-return",
+                            "line": 1,
+                            "message": "В формуле должен быть оператор RETURN.",
+                            "severity": "error",
+                        }
+                    ],
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def post(self, request):
+        serializer = FormulaIdeValidationRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = validate_formula_ide_code(code=serializer.validated_data["code"])
+        return Response(payload)

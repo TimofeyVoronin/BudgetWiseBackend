@@ -4309,6 +4309,61 @@ paths:
           description: ''
         '401':
           description: Пользователь не авторизован.
+  /api/v1/finance/formulas/ide/validate/:
+    post:
+      operationId: finance_formulas_ide_validate_create
+      description: Проверяет DSL-код финансовой формулы без выполнения выражения и
+        без доступа к пользовательским финансовым данным. Возвращает is_valid=true,
+        если ошибок нет. Ошибки DSL возвращаются в ответе 200 с is_valid=false, чтобы
+        интерфейс мог показать их в панели редактора.
+      summary: Проверить DSL-код формулы
+      tags:
+      - finance-formula-ide
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeValidationRequestRequest'
+            examples:
+              ValidFormulaRequest:
+                value:
+                  code: RETURN start_balance + income - expenses;
+                summary: Valid formula request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeValidationRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeValidationRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdeValidationResponse'
+              examples:
+                ValidFormulaResponse:
+                  value:
+                    is_valid: true
+                    errors: []
+                  summary: Valid formula response
+                InvalidFormulaResponse:
+                  value:
+                    is_valid: false
+                    errors:
+                    - id: missing-return
+                      line: 1
+                      message: В формуле должен быть оператор RETURN.
+                      severity: error
+                  summary: Invalid formula response
+          description: ''
+        '400':
+          description: Некорректное тело запроса.
+        '401':
+          description: Пользователь не авторизован.
   /api/v1/finance/goals/:
     get:
       operationId: finance_goals_list
@@ -15002,6 +15057,24 @@ components:
       - icon
       - id
       - title
+    FormulaIdeDiagnostic:
+      type: object
+      properties:
+        id:
+          type: string
+        line:
+          type: integer
+          minimum: 1
+        message:
+          type: string
+        severity:
+          allOf:
+          - $ref: '#/components/schemas/SeverityEnum'
+          default: error
+      required:
+      - id
+      - line
+      - message
     FormulaIdeMetaResponse:
       type: object
       properties:
@@ -15093,6 +15166,26 @@ components:
           maxItems: 200
       required:
       - code
+    FormulaIdeValidationRequestRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          description: DSL-код формулы для проверки.
+      required:
+      - code
+    FormulaIdeValidationResponse:
+      type: object
+      properties:
+        is_valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeDiagnostic'
+      required:
+      - errors
+      - is_valid
     Goal:
       type: object
       properties:
@@ -19505,6 +19598,14 @@ components:
           type: string
           writeOnly: true
           maxLength: 32
+    SeverityEnum:
+      enum:
+      - error
+      - warning
+      type: string
+      description: |-
+        * `error` - error
+        * `warning` - warning
     StrategyEnum:
       enum:
       - server_wins
