@@ -215,3 +215,40 @@ class OnboardingSubmitResultSerializer(serializers.Serializer):
 class OnboardingAnswersResponseSerializer(OnboardingStatusSerializer):
     answers = serializers.JSONField(help_text="Сохранённые ответы пользователя.")
     result = OnboardingSubmitResultSerializer(help_text="Результат обработки onboarding-ответов.")
+
+
+class OnboardingSkippedQuestionSerializer(serializers.Serializer):
+    questionId = serializers.CharField(help_text="ID вопроса onboarding-анкеты.")
+    stepId = serializers.CharField(help_text="ID шага, к которому относится вопрос.")
+    title = serializers.CharField(help_text="Текст вопроса.")
+    skippedCount = serializers.IntegerField(help_text="Сколько раз вопрос был пропущен.")
+    skippedRate = serializers.FloatField(help_text="Доля пропусков вопроса в процентах.")
+
+
+class OnboardingDropOffStepSerializer(serializers.Serializer):
+    stepId = serializers.CharField(help_text="ID шага onboarding-анкеты.")
+    title = serializers.CharField(help_text="Название шага.")
+    dropOffCount = serializers.IntegerField(help_text="Сколько пользователей остановилось на этом шаге.")
+    dropOffRate = serializers.FloatField(help_text="Доля остановок на шаге в процентах.")
+
+
+class OnboardingAnalyticsSerializer(serializers.Serializer):
+    totalSurveys = serializers.IntegerField(help_text="Общее количество созданных onboarding-анкет.")
+    startedCount = serializers.IntegerField(help_text="Количество пользователей, начавших onboarding.")
+    completedCount = serializers.IntegerField(help_text="Количество завершённых onboarding-анкет.")
+    inProgressCount = serializers.IntegerField(help_text="Количество onboarding-анкет в процессе заполнения.")
+    failedCount = serializers.IntegerField(help_text="Количество onboarding-анкет со статусом failed.")
+    notStartedCount = serializers.IntegerField(help_text="Количество созданных, но ещё не начатых onboarding-анкет.")
+    completionRate = serializers.FloatField(help_text="Процент завершения onboarding среди начавших пользователей.")
+    statusCounts = serializers.DictField(
+        child=serializers.IntegerField(),
+        help_text="Количество onboarding-анкет по статусам.",
+    )
+    mostSkippedQuestions = OnboardingSkippedQuestionSerializer(
+        many=True,
+        help_text="Вопросы, которые чаще всего остаются без ответа.",
+    )
+    dropOffSteps = OnboardingDropOffStepSerializer(
+        many=True,
+        help_text="Шаги, на которых пользователи чаще всего останавливаются.",
+    )

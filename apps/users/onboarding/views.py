@@ -3,17 +3,19 @@ from __future__ import annotations
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.users.onboarding.questions import get_onboarding_quiz_config
 from apps.users.onboarding.serializers import (
     OnboardingAnswersResponseSerializer,
+    OnboardingAnalyticsSerializer,
     OnboardingAnswersSubmitSerializer,
     OnboardingQuestionsResponseSerializer,
     OnboardingStatusSerializer,
 )
 from apps.users.onboarding.services import (
+    build_onboarding_analytics_payload,
     build_onboarding_answers_payload,
     build_onboarding_status_payload,
     save_onboarding_answers,
@@ -208,4 +210,64 @@ class OnboardingStatusView(GenericAPIView):
     )
     def get(self, request, *args, **kwargs):
         serializer = self.get_serializer(build_onboarding_status_payload(request.user))
+        return Response(serializer.data)
+
+
+
+class OnboardingAnalyticsView(GenericAPIView):
+    serializer_class = OnboardingAnalyticsSerializer
+    permission_classes = [IsAdminUser]
+
+    @extend_schema(
+        tags=["users-onboarding"],
+        operation_id="users_onboarding_analytics_retrieve",
+        summary="Получить базовую аналитику onboarding",
+        description=(
+            "Возвращает агрегированную аналитику по onboarding-анкетам: "
+            "количество начатых и завершённых анкет, процент завершения, "
+            "часто пропускаемые вопросы и шаги, на которых пользователи "
+            "чаще всего останавливаются. Endpoint доступен только admin/staff пользователям."
+        ),
+        responses={200: OnboardingAnalyticsSerializer},
+        examples=[
+            OpenApiExample(
+                "Пример ответа",
+                value={
+                    "totalSurveys": 10,
+                    "startedCount": 8,
+                    "completedCount": 6,
+                    "inProgressCount": 1,
+                    "failedCount": 1,
+                    "notStartedCount": 2,
+                    "completionRate": 75.0,
+                    "statusCounts": {
+                        "not_started": 2,
+                        "in_progress": 1,
+                        "completed": 6,
+                        "failed": 1,
+                    },
+                    "mostSkippedQuestions": [
+                        {
+                            "questionId": "defaultCurrency",
+                            "stepId": "preferences",
+                            "title": "Какая валюта будет основной?",
+                            "skippedCount": 2,
+                            "skippedRate": 20.0,
+                        }
+                    ],
+                    "dropOffSteps": [
+                        {
+                            "stepId": "goals",
+                            "title": "Цели",
+                            "dropOffCount": 1,
+                            "dropOffRate": 50.0,
+                        }
+                    ],
+                },
+                response_only=True,
+            )
+        ],
+    )
+    def get(self, request, *args, **kwargs):
+        serializer = self.get_serializer(build_onboarding_analytics_payload())
         return Response(serializer.data)

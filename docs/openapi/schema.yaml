@@ -9914,6 +9914,52 @@ paths:
                     date_joined: 2026-05-15T12:00:00+0300
                   summary: Успешный ответ
           description: ''
+  /api/v1/users/onboarding/analytics/:
+    get:
+      operationId: users_onboarding_analytics_retrieve
+      description: 'Возвращает агрегированную аналитику по onboarding-анкетам: количество
+        начатых и завершённых анкет, процент завершения, часто пропускаемые вопросы
+        и шаги, на которых пользователи чаще всего останавливаются. Endpoint доступен
+        только admin/staff пользователям.'
+      summary: Получить базовую аналитику onboarding
+      tags:
+      - users-onboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingAnalytics'
+              examples:
+                ПримерОтвета:
+                  value:
+                    totalSurveys: 10
+                    startedCount: 8
+                    completedCount: 6
+                    inProgressCount: 1
+                    failedCount: 1
+                    notStartedCount: 2
+                    completionRate: 75.0
+                    statusCounts:
+                      not_started: 2
+                      in_progress: 1
+                      completed: 6
+                      failed: 1
+                    mostSkippedQuestions:
+                    - questionId: defaultCurrency
+                      stepId: preferences
+                      title: Какая валюта будет основной?
+                      skippedCount: 2
+                      skippedRate: 20.0
+                    dropOffSteps:
+                    - stepId: goals
+                      title: Цели
+                      dropOffCount: 1
+                      dropOffRate: 50.0
+                  summary: Пример ответа
+          description: ''
   /api/v1/users/onboarding/answers/:
     post:
       operationId: users_onboarding_answers_create
@@ -17040,6 +17086,57 @@ components:
     NullEnum:
       enum:
       - null
+    OnboardingAnalytics:
+      type: object
+      properties:
+        totalSurveys:
+          type: integer
+          description: Общее количество созданных onboarding-анкет.
+        startedCount:
+          type: integer
+          description: Количество пользователей, начавших onboarding.
+        completedCount:
+          type: integer
+          description: Количество завершённых onboarding-анкет.
+        inProgressCount:
+          type: integer
+          description: Количество onboarding-анкет в процессе заполнения.
+        failedCount:
+          type: integer
+          description: Количество onboarding-анкет со статусом failed.
+        notStartedCount:
+          type: integer
+          description: Количество созданных, но ещё не начатых onboarding-анкет.
+        completionRate:
+          type: number
+          format: double
+          description: Процент завершения onboarding среди начавших пользователей.
+        statusCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Количество onboarding-анкет по статусам.
+        mostSkippedQuestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardingSkippedQuestion'
+          description: Вопросы, которые чаще всего остаются без ответа.
+        dropOffSteps:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardingDropOffStep'
+          description: Шаги, на которых пользователи чаще всего останавливаются.
+      required:
+      - completedCount
+      - completionRate
+      - dropOffSteps
+      - failedCount
+      - inProgressCount
+      - mostSkippedQuestions
+      - notStartedCount
+      - startedCount
+      - statusCounts
+      - totalSurveys
     OnboardingAnswersResponse:
       type: object
       properties:
@@ -17095,6 +17192,27 @@ components:
             с id вопросов.
       required:
       - answers
+    OnboardingDropOffStep:
+      type: object
+      properties:
+        stepId:
+          type: string
+          description: ID шага onboarding-анкеты.
+        title:
+          type: string
+          description: Название шага.
+        dropOffCount:
+          type: integer
+          description: Сколько пользователей остановилось на этом шаге.
+        dropOffRate:
+          type: number
+          format: double
+          description: Доля остановок на шаге в процентах.
+      required:
+      - dropOffCount
+      - dropOffRate
+      - stepId
+      - title
     OnboardingQuestion:
       type: object
       properties:
@@ -17213,6 +17331,31 @@ components:
       required:
       - description
       - id
+      - title
+    OnboardingSkippedQuestion:
+      type: object
+      properties:
+        questionId:
+          type: string
+          description: ID вопроса onboarding-анкеты.
+        stepId:
+          type: string
+          description: ID шага, к которому относится вопрос.
+        title:
+          type: string
+          description: Текст вопроса.
+        skippedCount:
+          type: integer
+          description: Сколько раз вопрос был пропущен.
+        skippedRate:
+          type: number
+          format: double
+          description: Доля пропусков вопроса в процентах.
+      required:
+      - questionId
+      - skippedCount
+      - skippedRate
+      - stepId
       - title
     OnboardingStatus:
       type: object
