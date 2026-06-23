@@ -41,6 +41,12 @@ from apps.finance.dashboard.views import (
     DashboardPeriodCurrencyView,
     DashboardSummaryView,
 )
+from apps.finance.formulas.views import (
+    FormulaIdeMetaView,
+    FormulaIdePreviewView,
+    FormulaIdeStateView,
+    FormulaIdeValidateView,
+)
 from apps.finance.financial_calendar.views import (
     FinancialCalendarDayView,
     FinancialCalendarExportPreviewView,
@@ -133,6 +139,27 @@ urlpatterns = [
         "budget-notifications/check/",
         BudgetNotificationCheckView.as_view(),
         name="budget-notification-check",
+    ),
+
+    path(
+        "formulas/ide/",
+        FormulaIdeStateView.as_view(),
+        name="formula-ide-state",
+    ),
+    path(
+        "formulas/ide/meta/",
+        FormulaIdeMetaView.as_view(),
+        name="formula-ide-meta",
+    ),
+    path(
+        "formulas/ide/validate/",
+        FormulaIdeValidateView.as_view(),
+        name="formula-ide-validate",
+    ),
+    path(
+        "formulas/ide/preview/",
+        FormulaIdePreviewView.as_view(),
+        name="formula-ide-preview",
     ),
     path(
         "analytics/combined/meta/",

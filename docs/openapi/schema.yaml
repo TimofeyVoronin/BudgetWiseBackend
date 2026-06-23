@@ -4217,6 +4217,218 @@ paths:
               schema:
                 $ref: '#/components/schemas/FinancialCalendarMetaResponse'
           description: ''
+  /api/v1/finance/formulas/ide/:
+    get:
+      operationId: finance_formulas_ide_retrieve
+      description: Возвращает сохранённый черновик текущего пользователя для редактора
+        формул. Если черновик ещё не создан, возвращает дефолтный пример с is_saved=false.
+      summary: Получить состояние редактора формул
+      tags:
+      - finance-formula-ide
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdeStateResponse'
+              examples:
+                СостояниеРедактора:
+                  value:
+                    formula_id: draft-default
+                    code: RETURN start_balance + income - expenses;
+                    constructor_blocks:
+                    - id: b1
+                      kind: function
+                      label: SUM
+                    updated_at: '2026-06-13T10:00:00Z'
+                    is_saved: true
+                  summary: Состояние редактора
+          description: ''
+        '401':
+          description: Пользователь не авторизован.
+    put:
+      operationId: finance_formulas_ide_update
+      description: Сохраняет код формулы и блоки конструктора для текущего пользователя.
+        Валидация DSL и предпросмотр результата реализуются отдельными endpoint'ами.
+      summary: Сохранить черновик редактора формул
+      tags:
+      - finance-formula-ide
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeStateUpdateRequest'
+            examples:
+              SaveDraftRequest:
+                value:
+                  code: RETURN start_balance + income - expenses;
+                  constructor_blocks:
+                  - id: b1
+                    kind: function
+                    label: SUM
+                summary: Save draft request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeStateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeStateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdeStateSaveResponse'
+          description: ''
+        '400':
+          description: Некорректное тело запроса.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/formulas/ide/meta/:
+    get:
+      operationId: finance_formulas_ide_meta_retrieve
+      description: Возвращает справочник палитр, переменных, операторов и элементов
+        автодополнения для IDE финансовых формул. Данные можно кэшировать на стороне
+        клиента.
+      summary: Получить метаданные редактора формул
+      tags:
+      - finance-formula-ide
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdeMetaResponse'
+          description: ''
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/formulas/ide/preview/:
+    post:
+      operationId: finance_formulas_ide_preview_create
+      description: Проверяет DSL-код, безопасно выполняет поддерживаемую часть формулы
+        на финансовых данных текущего пользователя и возвращает строки результата
+        и точки графика для интерфейса редактора.
+      summary: Выполнить предпросмотр формулы
+      tags:
+      - finance-formula-ide
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormulaIdePreviewRequestRequest'
+            examples:
+              PreviewRequest:
+                value:
+                  code: 'LET income = SUM(TRANSACTIONS(type: INCOME, date: $period));
+                    RETURN income;'
+                  constructor_blocks: []
+                summary: Preview request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FormulaIdePreviewRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FormulaIdePreviewRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdePreviewResponse'
+              examples:
+                PreviewResponse:
+                  value:
+                    rows:
+                    - id: income
+                      label: Итого доход
+                      value: 125 400 ₽
+                      highlight: false
+                    - id: expense
+                      label: Итого расход
+                      value: 89 200 ₽
+                      highlight: false
+                    - id: net
+                      label: Чистый поток
+                      value: 36 200 ₽
+                      highlight: true
+                    chart_points:
+                    - month: Янв
+                      value: 12000
+                    - month: Фев
+                      value: 18000
+                  summary: Preview response
+          description: ''
+        '400':
+          description: Некорректное тело запроса.
+        '401':
+          description: Пользователь не авторизован.
+        '422':
+          description: Ошибки DSL или неподдерживаемая конструкция формулы.
+  /api/v1/finance/formulas/ide/validate/:
+    post:
+      operationId: finance_formulas_ide_validate_create
+      description: Проверяет DSL-код финансовой формулы без выполнения выражения и
+        без доступа к пользовательским финансовым данным. Возвращает is_valid=true,
+        если ошибок нет. Ошибки DSL возвращаются в ответе 200 с is_valid=false, чтобы
+        интерфейс мог показать их в панели редактора.
+      summary: Проверить DSL-код формулы
+      tags:
+      - finance-formula-ide
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeValidationRequestRequest'
+            examples:
+              ValidFormulaRequest:
+                value:
+                  code: RETURN start_balance + income - expenses;
+                summary: Valid formula request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeValidationRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeValidationRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdeValidationResponse'
+              examples:
+                ValidFormulaResponse:
+                  value:
+                    is_valid: true
+                    errors: []
+                  summary: Valid formula response
+                InvalidFormulaResponse:
+                  value:
+                    is_valid: false
+                    errors:
+                    - id: missing-return
+                      line: 1
+                      message: В формуле должен быть оператор RETURN.
+                      severity: error
+                  summary: Invalid formula response
+          description: ''
+        '400':
+          description: Некорректное тело запроса.
+        '401':
+          description: Пользователь не авторизован.
   /api/v1/finance/goals/:
     get:
       operationId: finance_goals_list
@@ -12274,6 +12486,18 @@ components:
           type: string
       required:
       - isDuplicate
+    ChipClassEnum:
+      enum:
+      - period
+      - function
+      - operator
+      - constant
+      type: string
+      description: |-
+        * `period` - period
+        * `function` - function
+        * `operator` - operator
+        * `constant` - constant
     CombinedAnalyticsAggregateRow:
       type: object
       properties:
@@ -14818,6 +15042,271 @@ components:
         * `pdf` - pdf
         * `csv` - csv
         * `xlsx` - xlsx
+    FormulaIdeAutocompleteItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+      required:
+      - description
+      - id
+      - name
+    FormulaIdeCanvasBlock:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 80
+        kind:
+          $ref: '#/components/schemas/FormulaIdeCanvasBlockKindEnum'
+        label:
+          type: string
+          maxLength: 200
+      required:
+      - id
+      - kind
+      - label
+    FormulaIdeCanvasBlockKindEnum:
+      enum:
+      - function
+      - variable
+      - operator
+      - condition
+      type: string
+      description: |-
+        * `function` - function
+        * `variable` - variable
+        * `operator` - operator
+        * `condition` - condition
+    FormulaIdeCanvasBlockRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 80
+        kind:
+          $ref: '#/components/schemas/FormulaIdeCanvasBlockKindEnum'
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - id
+      - kind
+      - label
+    FormulaIdeConstructorOperator:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      required:
+      - id
+      - label
+    FormulaIdeConstructorVariable:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - id
+      - title
+    FormulaIdeDiagnostic:
+      type: object
+      properties:
+        id:
+          type: string
+        line:
+          type: integer
+          minimum: 1
+        message:
+          type: string
+        severity:
+          allOf:
+          - $ref: '#/components/schemas/SeverityEnum'
+          default: error
+      required:
+      - id
+      - line
+      - message
+    FormulaIdeMetaResponse:
+      type: object
+      properties:
+        variable_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdePaletteGroup'
+        constructor_variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeConstructorVariable'
+        constructor_operators:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeConstructorOperator'
+        autocomplete_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeAutocompleteItem'
+      required:
+      - autocomplete_items
+      - constructor_operators
+      - constructor_variables
+      - variable_groups
+    FormulaIdePaletteGroup:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        chip_class:
+          $ref: '#/components/schemas/ChipClassEnum'
+        items:
+          type: array
+          items:
+            type: string
+      required:
+      - chip_class
+      - id
+      - items
+      - title
+    FormulaIdePreviewChartPoint:
+      type: object
+      properties:
+        month:
+          type: string
+        value:
+          type: number
+          format: double
+      required:
+      - month
+      - value
+    FormulaIdePreviewRequestRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          description: DSL-код формулы для предпросмотра.
+        constructor_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeCanvasBlockRequest'
+          description: Блоки визуального конструктора. На текущем этапе используются
+            для хранения и совместимости с FE.
+          maxItems: 200
+      required:
+      - code
+    FormulaIdePreviewResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdePreviewRow'
+        chart_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdePreviewChartPoint'
+      required:
+      - chart_points
+      - rows
+    FormulaIdePreviewRow:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        highlight:
+          type: boolean
+          default: false
+      required:
+      - id
+      - label
+      - value
+    FormulaIdeStateResponse:
+      type: object
+      properties:
+        formula_id:
+          type: string
+        code:
+          type: string
+        constructor_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeCanvasBlock'
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_saved:
+          type: boolean
+      required:
+      - code
+      - constructor_blocks
+      - formula_id
+      - is_saved
+    FormulaIdeStateSaveResponse:
+      type: object
+      properties:
+        formula_id:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        is_saved:
+          type: boolean
+      required:
+      - formula_id
+      - is_saved
+      - updated_at
+    FormulaIdeStateUpdateRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          maxLength: 10000
+        constructor_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeCanvasBlockRequest'
+          maxItems: 200
+      required:
+      - code
+    FormulaIdeValidationRequestRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          description: DSL-код формулы для проверки.
+      required:
+      - code
+    FormulaIdeValidationResponse:
+      type: object
+      properties:
+        is_valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeDiagnostic'
+      required:
+      - errors
+      - is_valid
     Goal:
       type: object
       properties:
@@ -19230,6 +19719,14 @@ components:
           type: string
           writeOnly: true
           maxLength: 32
+    SeverityEnum:
+      enum:
+      - error
+      - warning
+      type: string
+      description: |-
+        * `error` - error
+        * `warning` - warning
     StrategyEnum:
       enum:
       - server_wins
