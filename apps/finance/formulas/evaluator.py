@@ -27,7 +27,7 @@ from apps.finance.formulas.ast_nodes import (
     UnaryExpression,
     VariableExpression,
 )
-from apps.finance.formulas.diagnostics import FormulaDiagnostic
+from apps.finance.formulas.diagnostics import FormulaDiagnostic, MAX_DIAGNOSTICS
 from apps.finance.formulas.parser import parse_formula_code
 from apps.finance.models import Account, Transaction, TransactionType
 from apps.users.app_settings.formatting import (
@@ -203,27 +203,55 @@ class FormulaEvaluator:
             left = self.to_decimal(left, line=line)
             right = self.to_decimal(right, line=line)
 
-        if operator == "==":
-            return left == right
-        if operator == "!=":
-            return left != right
-        if operator == ">":
-            return left > right
-        if operator == "<":
-            return left < right
-        if operator == ">=":
-            return left >= right
-        if operator == "<=":
-            return left <= right
+        try:
+            if operator == "==":
+                return left == right
+            if operator == "!=":
+                return left != right
+            if operator == ">":
+                return left > right
+            if operator == "<":
+                return left < right
+            if operator == ">=":
+                return left >= right
+            if operator == "<=":
+                return left <= right
+        except TypeError:
+            self.add_error(
+                id="invalid-comparison",
+                line=line,
+                message="Нельзя сравнить значения разных типов в формуле.",
+            )
+            return False
         return False
 
     def evaluate_function_call(self, node: FunctionCallExpression) -> Any:
-        positional, named = self.resolve_arguments(node.arguments)
         function_name = node.name.upper()
 
+        # IF is evaluated lazily so that the unused branch does not trigger
+        # execution errors such as division by zero.
+        if function_name == "IF":
+            return self.evaluate_if_function(node)
+
+        positional, named = self.resolve_arguments(node.arguments)
+
         if function_name == "TRANSACTIONS":
+            self.validate_positional_arguments(function_name=function_name, positional=positional, line=node.line)
+            self.validate_named_arguments(
+                function_name=function_name,
+                named=named,
+                allowed={"account", "type", "date"},
+                line=node.line,
+            )
             return self.function_transactions(named=node_named_to_mapping(named), line=node.line)
         if function_name == "BALANCE":
+            self.validate_positional_arguments(function_name=function_name, positional=positional, line=node.line)
+            self.validate_named_arguments(
+                function_name=function_name,
+                named=named,
+                allowed={"account", "date"},
+                line=node.line,
+            )
             return self.function_balance(named=node_named_to_mapping(named), line=node.line)
         if function_name == "SUM":
             return sum_decimal_values(positional)
@@ -242,25 +270,56 @@ class FormulaEvaluator:
             values = flatten_decimal_values(positional)
             return max(values) if values else Decimal("0.00")
         if function_name == "ROUND":
-            value = self.to_decimal(positional[0] if positional else Decimal("0.00"), line=node.line)
-            places = int(self.to_decimal(positional[1], line=node.line)) if len(positional) > 1 else 0
-            quant = Decimal("1") if places <= 0 else Decimal("1").scaleb(-places)
-            return value.quantize(quant, rounding=ROUND_HALF_UP)
-        if function_name == "TODAY":
-            return get_user_app_today(self.context.user)
-        if function_name == "START_OF":
-            return self.resolve_period_start(positional[0] if positional else self.context.period)
-        if function_name == "END_OF":
-            return self.resolve_period_end(positional[0] if positional else self.context.period)
-        if function_name == "IF":
-            if len(positional) < 3:
+            if not positional:
                 self.add_error(
                     id="invalid-function-arguments",
                     line=node.line,
-                    message="Функция IF ожидает три аргумента: условие, значение если истина, значение если ложь.",
+                    message="Функция ROUND ожидает минимум один аргумент.",
                 )
                 return Decimal("0.00")
-            return positional[1] if bool(positional[0]) else positional[2]
+            value = self.to_decimal(positional[0], line=node.line)
+            places = int(self.to_decimal(positional[1], line=node.line)) if len(positional) > 1 else 0
+            if places < 0 or places > 6:
+                self.add_error(
+                    id="invalid-function-arguments",
+                    line=node.line,
+                    message="Второй аргумент ROUND должен быть числом от 0 до 6.",
+                )
+                places = min(max(places, 0), 6)
+            quant = Decimal("1") if places <= 0 else Decimal("1").scaleb(-places)
+            try:
+                return value.quantize(quant, rounding=ROUND_HALF_UP)
+            except (InvalidOperation, ValueError):
+                self.add_error(
+                    id="invalid-rounding",
+                    line=node.line,
+                    message="Не удалось округлить значение в функции ROUND.",
+                )
+                return Decimal("0.00")
+        if function_name == "TODAY":
+            if positional or named:
+                self.add_error(
+                    id="invalid-function-arguments",
+                    line=node.line,
+                    message="Функция TODAY не принимает аргументы.",
+                )
+            return get_user_app_today(self.context.user)
+        if function_name == "START_OF":
+            if len(positional) > 1:
+                self.add_error(
+                    id="invalid-function-arguments",
+                    line=node.line,
+                    message="Функция START_OF принимает не более одного аргумента.",
+                )
+            return self.resolve_period_start(positional[0] if positional else self.context.period, line=node.line)
+        if function_name == "END_OF":
+            if len(positional) > 1:
+                self.add_error(
+                    id="invalid-function-arguments",
+                    line=node.line,
+                    message="Функция END_OF принимает не более одного аргумента.",
+                )
+            return self.resolve_period_end(positional[0] if positional else self.context.period, line=node.line)
 
         self.add_error(
             id="unsupported-function",
@@ -268,6 +327,41 @@ class FormulaEvaluator:
             message=f"Функция {node.name} пока не поддерживается при предпросмотре.",
         )
         return Decimal("0.00")
+
+    def evaluate_if_function(self, node: FunctionCallExpression) -> Any:
+        if len(node.arguments) < 3:
+            self.add_error(
+                id="invalid-function-arguments",
+                line=node.line,
+                message="Функция IF ожидает три аргумента: условие, значение если истина, значение если ложь.",
+            )
+            return Decimal("0.00")
+        if len(node.arguments) > 3:
+            self.add_error(
+                id="invalid-function-arguments",
+                line=node.line,
+                message="Функция IF принимает только три аргумента.",
+            )
+        condition = self.evaluate(node.arguments[0])
+        branch = node.arguments[1] if bool(condition) else node.arguments[2]
+        return self.evaluate(branch)
+
+    def validate_positional_arguments(self, *, function_name: str, positional: Sequence[Any], line: int) -> None:
+        if positional:
+            self.add_error(
+                id="invalid-function-arguments",
+                line=line,
+                message=f"Функция {function_name} принимает только именованные аргументы.",
+            )
+
+    def validate_named_arguments(self, *, function_name: str, named: Mapping[str, Any], allowed: set[str], line: int) -> None:
+        for name in named:
+            if name not in allowed:
+                self.add_error(
+                    id="unknown-argument",
+                    line=line,
+                    message=f"Аргумент {name} не поддерживается функцией {function_name}.",
+                )
 
     def resolve_arguments(self, arguments: Sequence[AstNode]) -> tuple[list[Any], dict[str, Any]]:
         positional: list[Any] = []
@@ -280,9 +374,16 @@ class FormulaEvaluator:
         return positional, named
 
     def function_transactions(self, *, named: Mapping[str, Any], line: int) -> list[Decimal]:
-        transaction_type = normalize_transaction_type(named.get("type"))
+        raw_type = named.get("type")
+        transaction_type = normalize_transaction_type(raw_type)
+        if raw_type not in (None, "") and transaction_type is None:
+            self.add_error(
+                id="invalid-transaction-type",
+                line=line,
+                message="Тип операции должен быть INCOME или EXPENSE.",
+            )
         account_name = str(named.get("account") or "").strip()
-        period = self.resolve_period_from_value(named.get("date"))
+        period = self.resolve_period_from_value(named.get("date"), line=line)
 
         queryset = (
             Transaction.objects
@@ -318,7 +419,9 @@ class FormulaEvaluator:
             ).amount
         return total
 
-    def resolve_period_from_value(self, value: Any) -> FormulaPreviewPeriod:
+    def resolve_period_from_value(self, value: Any, *, line: int) -> FormulaPreviewPeriod:
+        if value is None:
+            return self.context.period
         if isinstance(value, FormulaPreviewPeriod):
             return value
         if isinstance(value, date):
@@ -326,14 +429,19 @@ class FormulaEvaluator:
                 start_date=date(value.year, value.month, 1),
                 end_date=date(value.year, value.month, calendar.monthrange(value.year, value.month)[1]),
             )
+        self.add_error(
+            id="invalid-period-argument",
+            line=line,
+            message="Аргумент date должен быть периодом или датой.",
+        )
         return self.context.period
 
-    def resolve_period_start(self, value: Any) -> date:
-        period = self.resolve_period_from_value(value)
+    def resolve_period_start(self, value: Any, *, line: int) -> date:
+        period = self.resolve_period_from_value(value, line=line)
         return period.start_date
 
-    def resolve_period_end(self, value: Any) -> date:
-        period = self.resolve_period_from_value(value)
+    def resolve_period_end(self, value: Any, *, line: int) -> date:
+        period = self.resolve_period_from_value(value, line=line)
         return period.end_date
 
     def to_decimal(self, value: Any, *, line: int) -> Decimal:
@@ -356,7 +464,11 @@ class FormulaEvaluator:
             return Decimal("0.00")
 
     def add_error(self, *, id: str, line: int, message: str, severity: str = "error") -> None:
-        self.diagnostics.append(FormulaDiagnostic(id=id, line=line, message=message, severity=severity))
+        if len(self.diagnostics) >= MAX_DIAGNOSTICS:
+            return
+        diagnostic = FormulaDiagnostic(id=id, line=line, message=message, severity=severity)
+        if diagnostic not in self.diagnostics:
+            self.diagnostics.append(diagnostic)
 
 
 @dataclass(frozen=True)

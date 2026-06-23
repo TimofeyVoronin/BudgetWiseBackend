@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
+MAX_DIAGNOSTICS = 50
+
 
 @dataclass(frozen=True)
 class FormulaDiagnostic:
@@ -44,4 +46,31 @@ class FormulaValidationResult:
 
 
 def build_validation_result(diagnostics: Iterable[FormulaDiagnostic]) -> FormulaValidationResult:
-    return FormulaValidationResult(tuple(diagnostics))
+    normalized: list[FormulaDiagnostic] = []
+    seen: set[tuple[str, int, str]] = set()
+
+    for diagnostic in diagnostics:
+        item = diagnostic if isinstance(diagnostic, FormulaDiagnostic) else FormulaDiagnostic(**diagnostic)
+        key = (item.id, max(1, int(item.line or 1)), item.message)
+        if key in seen:
+            continue
+        seen.add(key)
+        if len(normalized) >= MAX_DIAGNOSTICS:
+            break
+        normalized.append(item)
+
+    if len(normalized) >= MAX_DIAGNOSTICS:
+        limit_message = f"Показаны первые {MAX_DIAGNOSTICS} ошибок. Исправьте их и повторите проверку."
+        limit_key = ("too-many-errors", 1, limit_message)
+        if limit_key not in seen:
+            normalized = normalized[: max(0, MAX_DIAGNOSTICS - 1)]
+            normalized.append(
+                FormulaDiagnostic(
+                    id="too-many-errors",
+                    line=1,
+                    message=limit_message,
+                    severity="warning",
+                )
+            )
+
+    return FormulaValidationResult(tuple(normalized))

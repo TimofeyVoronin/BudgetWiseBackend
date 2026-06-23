@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
-from apps.finance.formulas.diagnostics import FormulaDiagnostic
+from apps.finance.formulas.diagnostics import FormulaDiagnostic, MAX_DIAGNOSTICS
 from apps.finance.formulas.dsl import BANNED_IDENTIFIERS, BANNED_KEYWORDS
 
 
@@ -38,6 +38,10 @@ ONE_CHAR_OPERATORS = {"+", "-", "*", "/", ">", "<"}
 def tokenize_formula(code: str) -> TokenizeResult:
     tokens: list[Token] = []
     diagnostics: list[FormulaDiagnostic] = []
+
+    def add_diagnostic(diagnostic: FormulaDiagnostic) -> None:
+        if len(diagnostics) < MAX_DIAGNOSTICS:
+            diagnostics.append(diagnostic)
 
     index = 0
     line = 1
@@ -77,7 +81,7 @@ def tokenize_formula(code: str) -> TokenizeResult:
             )
             tokens.append(token)
             if error:
-                diagnostics.append(error)
+                add_diagnostic(error)
             continue
 
         if char.isdigit():
@@ -89,7 +93,7 @@ def tokenize_formula(code: str) -> TokenizeResult:
             )
             tokens.append(token)
             if error:
-                diagnostics.append(error)
+                add_diagnostic(error)
             continue
 
         if char == "$":
@@ -110,7 +114,8 @@ def tokenize_formula(code: str) -> TokenizeResult:
                 column=column,
             )
             tokens.append(token)
-            diagnostics.extend(validate_identifier_token(token))
+            for diagnostic in validate_identifier_token(token):
+                add_diagnostic(diagnostic)
             continue
 
         two_chars = code[index : index + 2]
@@ -160,7 +165,7 @@ def tokenize_formula(code: str) -> TokenizeResult:
             continue
 
         if char == ".":
-            diagnostics.append(
+            add_diagnostic(
                 FormulaDiagnostic(
                     id="attribute-access-denied",
                     line=line,
@@ -187,7 +192,7 @@ def tokenize_formula(code: str) -> TokenizeResult:
             column += 1
             continue
 
-        diagnostics.append(
+        add_diagnostic(
             FormulaDiagnostic(
                 id="unexpected-character",
                 line=line,
@@ -362,6 +367,10 @@ def read_identifier(*, code: str, start_index: int, line: int, column: int):
 
 def validate_identifier_token(token: Token) -> list[FormulaDiagnostic]:
     diagnostics: list[FormulaDiagnostic] = []
+
+    def add_diagnostic(diagnostic: FormulaDiagnostic) -> None:
+        if len(diagnostics) < MAX_DIAGNOSTICS:
+            diagnostics.append(diagnostic)
     value = token.value
     lowered = value.lower()
     uppered = value.upper()
