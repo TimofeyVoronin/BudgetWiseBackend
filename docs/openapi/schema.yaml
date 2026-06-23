@@ -9914,6 +9914,40 @@ paths:
                     date_joined: 2026-05-15T12:00:00+0300
                   summary: Успешный ответ
           description: ''
+  /api/v1/users/onboarding/status/:
+    get:
+      operationId: users_onboarding_status_retrieve
+      description: Возвращает текущий статус прохождения onboarding-анкеты. Frontend
+        использует эти данные, чтобы решить, показывать анкету, экран продолжения
+        заполнения или обычный dashboard. Если анкета ещё не создавалась, backend
+        возвращает статус not_started без создания записи в базе.
+      summary: Получить статус onboarding текущего пользователя
+      tags:
+      - users-onboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingStatus'
+              examples:
+                АнкетаЕщёНеНачата:
+                  value:
+                    status: not_started
+                    isCompleted: false
+                    startedAt: null
+                    completedAt: null
+                  summary: Анкета ещё не начата
+                АнкетаЗавершена:
+                  value:
+                    status: completed
+                    isCompleted: true
+                    startedAt: 2026-06-23T10:00:00+0700
+                    completedAt: 2026-06-23T10:05:00+0700
+                  summary: Анкета завершена
+          description: ''
   /health/:
     get:
       operationId: health_check
@@ -16864,6 +16898,49 @@ components:
     NullEnum:
       enum:
       - null
+    OnboardingStatus:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OnboardingStatusStatusEnum'
+          description: |-
+            Текущий статус onboarding пользователя.
+
+            * `not_started` - Не начат
+            * `in_progress` - В процессе
+            * `completed` - Завершён
+            * `failed` - Ошибка
+        isCompleted:
+          type: boolean
+          description: Завершил ли пользователь onboarding-анкету.
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Дата начала onboarding или null, если анкета ещё не начата.
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Дата завершения onboarding или null, если анкета ещё не завершена.
+      required:
+      - completedAt
+      - isCompleted
+      - startedAt
+      - status
+    OnboardingStatusStatusEnum:
+      enum:
+      - not_started
+      - in_progress
+      - completed
+      - failed
+      type: string
+      description: |-
+        * `not_started` - Не начат
+        * `in_progress` - В процессе
+        * `completed` - Завершён
+        * `failed` - Ошибка
     OperationTypeEnum:
       enum:
       - expense
@@ -22158,6 +22235,9 @@ tags:
 - name: users-profile
   description: 'Страница профиля текущего пользователя: получение и обновление ФИО,
     телефона, города, краткого описания и статусов подтверждения контактных данных.'
+- name: users-onboarding
+  description: 'Онбординг и персонализация пользователя: статус прохождения стартовой
+    анкеты и дальнейшая настройка начального сценария после регистрации.'
 - name: finance-accounts
   description: 'Финансовые счета: список, создание, редактирование, архивирование,
     сводка балансов, история операций по счёту и справочники для формы.'
