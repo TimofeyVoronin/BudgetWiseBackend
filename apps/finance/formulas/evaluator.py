@@ -29,6 +29,7 @@ from apps.finance.formulas.ast_nodes import (
 )
 from apps.finance.formulas.diagnostics import FormulaDiagnostic, MAX_DIAGNOSTICS
 from apps.finance.formulas.parser import parse_formula_code
+from apps.finance.formulas.security import RUNTIME_ALLOWED_FUNCTIONS, validate_program_security
 from apps.finance.models import Account, Transaction, TransactionType
 from apps.users.app_settings.formatting import (
     format_app_money,
@@ -227,6 +228,13 @@ class FormulaEvaluator:
 
     def evaluate_function_call(self, node: FunctionCallExpression) -> Any:
         function_name = node.name.upper()
+        if function_name not in RUNTIME_ALLOWED_FUNCTIONS:
+            self.add_error(
+                id="unsupported-function",
+                line=node.line,
+                message=f"Функция {node.name} не разрешена для безопасного выполнения.",
+            )
+            return Decimal("0.00")
 
         # IF is evaluated lazily so that the unused branch does not trigger
         # execution errors such as division by zero.
@@ -487,6 +495,10 @@ def build_formula_preview(*, user, code: str, constructor_blocks: Sequence[Mappi
     program, validation_result = parse_formula_code(code)
     if not validation_result.is_valid:
         raise FormulaEvaluationError([FormulaDiagnostic(**error) for error in validation_result.errors])
+
+    security_diagnostics = validate_program_security(program)
+    if security_diagnostics:
+        raise FormulaEvaluationError(security_diagnostics)
 
     context = build_preview_context(user=user)
     evaluator = FormulaEvaluator(context=context)

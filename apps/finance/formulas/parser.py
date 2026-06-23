@@ -31,6 +31,7 @@ from apps.finance.formulas.dsl import (
     OPERATOR_PRECEDENCE,
     UNARY_OPERATORS,
 )
+from apps.finance.formulas.security import validate_code_security_preflight, validate_program_security
 from apps.finance.formulas.tokenizer import Token, tokenize_formula
 
 
@@ -391,7 +392,8 @@ def parse_formula_code(code: str) -> tuple[FormulaProgram, FormulaValidationResu
     tokenize_result = tokenize_formula(code)
     parser = FormulaParser(tokens=tokenize_result.tokens, diagnostics=tokenize_result.diagnostics)
     program = parser.parse()
-    return program, build_validation_result(parser.diagnostics)
+    security_diagnostics = validate_program_security(program)
+    return program, build_validation_result([*parser.diagnostics, *security_diagnostics])
 
 
 def validate_formula_code(code: str) -> FormulaValidationResult:
@@ -427,4 +429,4 @@ def validate_formula_code_preflight(code: str) -> list[FormulaDiagnostic]:
             )
         ]
 
-    return []
+    return validate_code_security_preflight(code)

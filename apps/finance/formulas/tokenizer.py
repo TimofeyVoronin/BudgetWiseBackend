@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from apps.finance.formulas.diagnostics import FormulaDiagnostic, MAX_DIAGNOSTICS
-from apps.finance.formulas.dsl import BANNED_IDENTIFIERS, BANNED_KEYWORDS
+from apps.finance.formulas.security import validate_identifier_token_security
 
 
 @dataclass(frozen=True)
@@ -344,9 +344,6 @@ def read_identifier(*, code: str, start_index: int, line: int, column: int):
     if upper_value in KEYWORDS:
         token_type = "KEYWORD"
         value = upper_value
-    elif upper_value in BANNED_KEYWORDS:
-        token_type = "IDENTIFIER"
-        value = raw_value
     else:
         token_type = "IDENTIFIER"
         value = raw_value
@@ -366,43 +363,7 @@ def read_identifier(*, code: str, start_index: int, line: int, column: int):
 
 
 def validate_identifier_token(token: Token) -> list[FormulaDiagnostic]:
-    diagnostics: list[FormulaDiagnostic] = []
-
-    def add_diagnostic(diagnostic: FormulaDiagnostic) -> None:
-        if len(diagnostics) < MAX_DIAGNOSTICS:
-            diagnostics.append(diagnostic)
-    value = token.value
-    lowered = value.lower()
-    uppered = value.upper()
-
-    if "__" in value:
-        diagnostics.append(
-            FormulaDiagnostic(
-                id="dunder-access-denied",
-                line=token.line,
-                message="Идентификаторы с двойным подчёркиванием запрещены в DSL формул.",
-            )
-        )
-
-    if "." in value:
-        diagnostics.append(
-            FormulaDiagnostic(
-                id="attribute-access-denied",
-                line=token.line,
-                message="Доступ к атрибутам через точку не поддерживается в DSL формул.",
-            )
-        )
-
-    if lowered in BANNED_IDENTIFIERS or uppered in BANNED_KEYWORDS:
-        diagnostics.append(
-            FormulaDiagnostic(
-                id="unsafe-construct",
-                line=token.line,
-                message=f"Конструкция {value} запрещена в DSL формул.",
-            )
-        )
-
-    return diagnostics
+    return validate_identifier_token_security(value=token.value, line=token.line)
 
 
 def is_identifier_start(char: str) -> bool:
