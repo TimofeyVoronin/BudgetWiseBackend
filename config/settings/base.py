@@ -580,6 +580,43 @@ SPECTACULAR_SETTINGS = {
             ("converted", "Конвертирована"),
             ("overdue", "Просрочена"),
         ],
+        "OnboardingSurveyStatusEnum": [
+            ("not_started", "Не начат"),
+            ("in_progress", "В процессе"),
+            ("completed", "Завершён"),
+            ("failed", "Ошибка"),
+        ],
+        "ReceiptStatusEnum": [
+            ("parsed", "Распознан"),
+            ("fetched", "Получен от провайдера"),
+            ("imported", "Импортирован"),
+            ("duplicate", "Дубликат"),
+            ("error", "Ошибка"),
+        ],
+        "ReceiptAuditStatusEnum": [
+            ("success", "Успешно"),
+            ("warning", "Предупреждение"),
+            ("error", "Ошибка"),
+        ],
+        "OfflineSyncOperationStatusEnum": [
+            ("applied", "Применена"),
+            ("duplicate", "Дубликат"),
+            ("failed", "Ошибка"),
+            ("conflict", "Конфликт"),
+            ("skipped", "Пропущена"),
+        ],
+        "BudgetNotificationTestDeliveryStatusEnum": [
+            "delivered",
+            "failed",
+            "skipped",
+        ],
+        "BudgetNotificationPreviewDeliveryStatusEnum": [
+            "delivered",
+            "pending",
+            "unavailable",
+            "failed",
+            "skipped",
+        ],
         "AccountTypeEnum": [
             ("card", "Банковская карта"),
             ("debit", "Дебетовая карта"),
@@ -681,6 +718,16 @@ SPECTACULAR_SETTINGS = {
             ("safe", "Безопасно"),
             ("caution", "Внимание"),
             ("risk", "Риск кассового разрыва"),
+        ],
+        "AnalyticsExportFormatEnum": [
+            "pdf",
+            "csv",
+            "xlsx",
+        ],
+        "FinancialCalendarExportFormatEnum": [
+            ("csv", "CSV"),
+            ("pdf", "PDF"),
+            ("xlsx", "XLSX"),
         ],
         "PwaPushProviderEnum": [
             ("web_push", "Web Push"),

@@ -10635,6 +10635,16 @@ components:
           maxLength: 3
       required:
       - code
+    AnalyticsExportFormatEnum:
+      enum:
+      - pdf
+      - csv
+      - xlsx
+      type: string
+      description: |-
+        * `pdf` - pdf
+        * `csv` - csv
+        * `xlsx` - xlsx
     ApiErrorDetail:
       type: object
       description: Детальная информация об ошибке API.
@@ -11359,7 +11369,7 @@ components:
         channel:
           $ref: '#/components/schemas/BudgetNotificationChannelEnum'
         status:
-          $ref: '#/components/schemas/BudgetNotificationDeliveryResultStatusEnum'
+          $ref: '#/components/schemas/BudgetNotificationPreviewDeliveryStatusEnum'
         notificationId:
           type: integer
           nullable: true
@@ -11368,20 +11378,6 @@ components:
       required:
       - channel
       - status
-    BudgetNotificationDeliveryResultStatusEnum:
-      enum:
-      - delivered
-      - pending
-      - unavailable
-      - failed
-      - skipped
-      type: string
-      description: |-
-        * `delivered` - delivered
-        * `pending` - pending
-        * `unavailable` - unavailable
-        * `failed` - failed
-        * `skipped` - skipped
     BudgetNotificationDeliveryStatusEnum:
       enum:
       - available
@@ -11589,6 +11585,20 @@ components:
       - body
       - channel
       - title
+    BudgetNotificationPreviewDeliveryStatusEnum:
+      enum:
+      - delivered
+      - pending
+      - unavailable
+      - failed
+      - skipped
+      type: string
+      description: |-
+        * `delivered` - delivered
+        * `pending` - pending
+        * `unavailable` - unavailable
+        * `failed` - failed
+        * `skipped` - skipped
     BudgetNotificationSelectOption:
       type: object
       properties:
@@ -11605,13 +11615,13 @@ components:
         id:
           $ref: '#/components/schemas/BudgetNotificationChannelEnum'
         status:
-          $ref: '#/components/schemas/BudgetNotificationTestChannelResultStatusEnum'
+          $ref: '#/components/schemas/BudgetNotificationTestDeliveryStatusEnum'
         error:
           type: string
       required:
       - id
       - status
-    BudgetNotificationTestChannelResultStatusEnum:
+    BudgetNotificationTestDeliveryStatusEnum:
       enum:
       - delivered
       - failed
@@ -12744,7 +12754,7 @@ components:
       type: object
       properties:
         format:
-          $ref: '#/components/schemas/FormatB6dEnum'
+          $ref: '#/components/schemas/AnalyticsExportFormatEnum'
         sections:
           type: array
           items:
@@ -13102,7 +13112,7 @@ components:
       type: object
       properties:
         format:
-          $ref: '#/components/schemas/FormatB6dEnum'
+          $ref: '#/components/schemas/AnalyticsExportFormatEnum'
         sections:
           type: array
           items:
@@ -14545,6 +14555,16 @@ components:
           type: boolean
           default: true
           description: Включить уровень риска по остатку на день.
+    FinancialCalendarExportFormatEnum:
+      enum:
+      - csv
+      - pdf
+      - xlsx
+      type: string
+      description: |-
+        * `csv` - CSV
+        * `pdf` - PDF
+        * `xlsx` - XLSX
     FinancialCalendarExportPreviewResponse:
       type: object
       properties:
@@ -14602,16 +14622,6 @@ components:
       - date
       - eventsSummary
       - forecastRub
-    FinancialCalendarExportRequestFormatEnum:
-      enum:
-      - csv
-      - pdf
-      - xlsx
-      type: string
-      description: |-
-        * `csv` - CSV
-        * `pdf` - PDF
-        * `xlsx` - XLSX
     FinancialCalendarExportRequestRequest:
       type: object
       properties:
@@ -14627,7 +14637,7 @@ components:
           description: Месяц календаря, 1-12.
         format:
           allOf:
-          - $ref: '#/components/schemas/FinancialCalendarExportRequestFormatEnum'
+          - $ref: '#/components/schemas/FinancialCalendarExportFormatEnum'
           default: csv
           description: |-
             Формат файла выгрузки.
@@ -14982,7 +14992,7 @@ components:
       type: object
       properties:
         format:
-          $ref: '#/components/schemas/FormatB6dEnum'
+          $ref: '#/components/schemas/AnalyticsExportFormatEnum'
         sections:
           type: array
           items:
@@ -15187,16 +15197,6 @@ components:
           minLength: 1
       required:
       - email
-    FormatB6dEnum:
-      enum:
-      - pdf
-      - csv
-      - xlsx
-      type: string
-      description: |-
-        * `pdf` - pdf
-        * `csv` - csv
-        * `xlsx` - xlsx
     FormulaIdeAutocompleteItem:
       type: object
       properties:
@@ -17024,7 +17024,7 @@ components:
       properties:
         status:
           allOf:
-          - $ref: '#/components/schemas/Status107Enum'
+          - $ref: '#/components/schemas/OnboardingSurveyStatusEnum'
           description: |-
             Текущий статус onboarding пользователя.
 
@@ -17182,7 +17182,7 @@ components:
       properties:
         status:
           allOf:
-          - $ref: '#/components/schemas/Status107Enum'
+          - $ref: '#/components/schemas/OnboardingSurveyStatusEnum'
           description: |-
             Текущий статус onboarding пользователя.
 
@@ -17253,6 +17253,18 @@ components:
       - configurationApplied
       - created
       - nextStep
+    OnboardingSurveyStatusEnum:
+      enum:
+      - not_started
+      - in_progress
+      - completed
+      - failed
+      type: string
+      description: |-
+        * `not_started` - Не начат
+        * `in_progress` - В процессе
+        * `completed` - Завершён
+        * `failed` - Ошибка
     OperationTypeEnum:
       enum:
       - expense
@@ -19189,7 +19201,7 @@ components:
           readOnly: true
         status:
           allOf:
-          - $ref: '#/components/schemas/ReceiptBriefStatusEnum'
+          - $ref: '#/components/schemas/ReceiptStatusEnum'
           title: Статус импорта чека
         store_name:
           type: string
@@ -19256,20 +19268,6 @@ components:
       - totalAmountRub
       - total_amount
       - transactionsCount
-    ReceiptBriefStatusEnum:
-      enum:
-      - parsed
-      - fetched
-      - imported
-      - duplicate
-      - error
-      type: string
-      description: |-
-        * `parsed` - Распознан
-        * `fetched` - Получен от провайдера
-        * `imported` - Импортирован
-        * `duplicate` - Дубликат
-        * `error` - Ошибка
     ReceiptItemBrief:
       type: object
       properties:
@@ -19426,6 +19424,20 @@ components:
       - providerError
       - providerStatus
       - receipt
+    ReceiptStatusEnum:
+      enum:
+      - parsed
+      - fetched
+      - imported
+      - duplicate
+      - error
+      type: string
+      description: |-
+        * `parsed` - Распознан
+        * `fetched` - Получен от провайдера
+        * `imported` - Импортирован
+        * `duplicate` - Дубликат
+        * `error` - Ошибка
     ReceiptTransactionItemInputRequest:
       type: object
       properties:
@@ -20116,18 +20128,6 @@ components:
       description: |-
         * `error` - error
         * `warning` - warning
-    Status107Enum:
-      enum:
-      - not_started
-      - in_progress
-      - completed
-      - failed
-      type: string
-      description: |-
-        * `not_started` - Не начат
-        * `in_progress` - В процессе
-        * `completed` - Завершён
-        * `failed` - Ошибка
     StrategyEnum:
       enum:
       - server_wins
