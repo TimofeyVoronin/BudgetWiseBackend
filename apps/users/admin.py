@@ -1,8 +1,13 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from apps.users.models import PhoneVerificationCode, User, UserAppSettings, UserProfileAuditLog
-
+from apps.users.models import (
+    OnboardingSurvey,
+    PhoneVerificationCode,
+    User,
+    UserAppSettings,
+    UserProfileAuditLog,
+)
 
 
 
@@ -19,6 +24,23 @@ class UserAppSettingsInline(admin.StackedInline):
         "updated_at",
     )
     readonly_fields = ("created_at", "updated_at")
+
+
+class OnboardingSurveyInline(admin.StackedInline):
+    model = OnboardingSurvey
+    extra = 0
+    can_delete = False
+    fields = (
+        "status",
+        "answers",
+        "result",
+        "started_at",
+        "completed_at",
+        "created_at",
+        "updated_at",
+    )
+    readonly_fields = ("created_at", "updated_at")
+
 
 class UserProfileAuditLogInline(admin.TabularInline):
     model = UserProfileAuditLog
@@ -60,7 +82,7 @@ class CustomUserAdmin(UserAdmin):
     list_filter = ("email_verified", "phone_verified", "is_staff", "is_active")
     search_fields = ("username", "email", "first_name", "last_name", "middle_name", "phone", "city")
     ordering = ("id",)
-    inlines = [UserAppSettingsInline, UserProfileAuditLogInline]
+    inlines = [UserAppSettingsInline, OnboardingSurveyInline, UserProfileAuditLogInline]
     fieldsets = UserAdmin.fieldsets + (
         (
             "Профиль",
@@ -113,6 +135,16 @@ class UserAppSettingsAdmin(admin.ModelAdmin):
     search_fields = ("user__email", "user__username", "default_currency")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("user_id",)
+
+
+@admin.register(OnboardingSurvey)
+class OnboardingSurveyAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "status", "started_at", "completed_at", "updated_at")
+    list_filter = ("status", "created_at", "completed_at")
+    search_fields = ("user__email", "user__username")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-created_at", "-id")
+
 
 @admin.register(PhoneVerificationCode)
 class PhoneVerificationCodeAdmin(admin.ModelAdmin):
