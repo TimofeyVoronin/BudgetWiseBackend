@@ -4217,6 +4217,98 @@ paths:
               schema:
                 $ref: '#/components/schemas/FinancialCalendarMetaResponse'
           description: ''
+  /api/v1/finance/formulas/ide/:
+    get:
+      operationId: finance_formulas_ide_retrieve
+      description: Возвращает сохранённый черновик текущего пользователя для редактора
+        формул. Если черновик ещё не создан, возвращает дефолтный пример с is_saved=false.
+      summary: Получить состояние редактора формул
+      tags:
+      - finance-formula-ide
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdeStateResponse'
+              examples:
+                СостояниеРедактора:
+                  value:
+                    formula_id: draft-default
+                    code: RETURN start_balance + income - expenses;
+                    constructor_blocks:
+                    - id: b1
+                      kind: function
+                      label: SUM
+                    updated_at: '2026-06-13T10:00:00Z'
+                    is_saved: true
+                  summary: Состояние редактора
+          description: ''
+        '401':
+          description: Пользователь не авторизован.
+    put:
+      operationId: finance_formulas_ide_update
+      description: Сохраняет код формулы и блоки конструктора для текущего пользователя.
+        Валидация DSL и предпросмотр результата реализуются отдельными endpoint'ами.
+      summary: Сохранить черновик редактора формул
+      tags:
+      - finance-formula-ide
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeStateUpdateRequest'
+            examples:
+              SaveDraftRequest:
+                value:
+                  code: RETURN start_balance + income - expenses;
+                  constructor_blocks:
+                  - id: b1
+                    kind: function
+                    label: SUM
+                summary: Save draft request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeStateUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FormulaIdeStateUpdateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdeStateSaveResponse'
+          description: ''
+        '400':
+          description: Некорректное тело запроса.
+        '401':
+          description: Пользователь не авторизован.
+  /api/v1/finance/formulas/ide/meta/:
+    get:
+      operationId: finance_formulas_ide_meta_retrieve
+      description: Возвращает справочник палитр, переменных, операторов и элементов
+        автодополнения для IDE финансовых формул. Данные можно кэшировать на стороне
+        клиента.
+      summary: Получить метаданные редактора формул
+      tags:
+      - finance-formula-ide
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdeMetaResponse'
+          description: ''
+        '401':
+          description: Пользователь не авторизован.
   /api/v1/finance/goals/:
     get:
       operationId: finance_goals_list
@@ -12274,6 +12366,18 @@ components:
           type: string
       required:
       - isDuplicate
+    ChipClassEnum:
+      enum:
+      - period
+      - function
+      - operator
+      - constant
+      type: string
+      description: |-
+        * `period` - period
+        * `function` - function
+        * `operator` - operator
+        * `constant` - constant
     CombinedAnalyticsAggregateRow:
       type: object
       properties:
@@ -14818,6 +14922,177 @@ components:
         * `pdf` - pdf
         * `csv` - csv
         * `xlsx` - xlsx
+    FormulaIdeAutocompleteItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+      required:
+      - description
+      - id
+      - name
+    FormulaIdeCanvasBlock:
+      type: object
+      properties:
+        id:
+          type: string
+          maxLength: 80
+        kind:
+          $ref: '#/components/schemas/FormulaIdeCanvasBlockKindEnum'
+        label:
+          type: string
+          maxLength: 200
+      required:
+      - id
+      - kind
+      - label
+    FormulaIdeCanvasBlockKindEnum:
+      enum:
+      - function
+      - variable
+      - operator
+      - condition
+      type: string
+      description: |-
+        * `function` - function
+        * `variable` - variable
+        * `operator` - operator
+        * `condition` - condition
+    FormulaIdeCanvasBlockRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 80
+        kind:
+          $ref: '#/components/schemas/FormulaIdeCanvasBlockKindEnum'
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+      - id
+      - kind
+      - label
+    FormulaIdeConstructorOperator:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+      required:
+      - id
+      - label
+    FormulaIdeConstructorVariable:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        icon:
+          type: string
+      required:
+      - icon
+      - id
+      - title
+    FormulaIdeMetaResponse:
+      type: object
+      properties:
+        variable_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdePaletteGroup'
+        constructor_variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeConstructorVariable'
+        constructor_operators:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeConstructorOperator'
+        autocomplete_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeAutocompleteItem'
+      required:
+      - autocomplete_items
+      - constructor_operators
+      - constructor_variables
+      - variable_groups
+    FormulaIdePaletteGroup:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        chip_class:
+          $ref: '#/components/schemas/ChipClassEnum'
+        items:
+          type: array
+          items:
+            type: string
+      required:
+      - chip_class
+      - id
+      - items
+      - title
+    FormulaIdeStateResponse:
+      type: object
+      properties:
+        formula_id:
+          type: string
+        code:
+          type: string
+        constructor_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeCanvasBlock'
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_saved:
+          type: boolean
+      required:
+      - code
+      - constructor_blocks
+      - formula_id
+      - is_saved
+    FormulaIdeStateSaveResponse:
+      type: object
+      properties:
+        formula_id:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        is_saved:
+          type: boolean
+      required:
+      - formula_id
+      - is_saved
+      - updated_at
+    FormulaIdeStateUpdateRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          maxLength: 10000
+        constructor_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeCanvasBlockRequest'
+          maxItems: 200
+      required:
+      - code
     Goal:
       type: object
       properties:

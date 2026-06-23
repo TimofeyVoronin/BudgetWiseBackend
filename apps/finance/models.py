@@ -3980,3 +3980,73 @@ class OfflineSyncTombstone(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.resource}:{self.object_id} deleted at {self.deleted_at}"
+
+
+class FormulaIdeDraft(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="formula_ide_drafts",
+        verbose_name="Пользователь",
+    )
+    formula_id = models.CharField(
+        max_length=64,
+        default="draft-default",
+        verbose_name="Идентификатор формулы",
+    )
+    code = models.TextField(
+        blank=True,
+        verbose_name="Код формулы",
+    )
+    constructor_blocks = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Блоки конструктора",
+    )
+    is_saved = models.BooleanField(
+        default=True,
+        verbose_name="Черновик сохранён",
+    )
+
+    class Meta:
+        verbose_name = "Черновик IDE формул"
+        verbose_name_plural = "Черновики IDE формул"
+        ordering = ["-updated_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "formula_id"],
+                name="uniq_formula_ide_user_key",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user"], name="idx_formula_ide_user"),
+            models.Index(fields=["user", "updated_at"], name="idx_formula_ide_user_upd"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.formula_id:
+            self.formula_id = self.formula_id.strip()
+
+        if not self.formula_id:
+            errors["formula_id"] = "Идентификатор формулы не может быть пустым."
+
+        if self.constructor_blocks is None:
+            self.constructor_blocks = []
+
+        if not isinstance(self.constructor_blocks, list):
+            errors["constructor_blocks"] = "Блоки конструктора должны быть массивом."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.formula_id:
+            self.formula_id = self.formula_id.strip()
+        if self.constructor_blocks is None:
+            self.constructor_blocks = []
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.formula_id}"

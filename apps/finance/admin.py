@@ -3,6 +3,7 @@ from django.contrib import admin
 from apps.finance.models import (
     BudgetNotificationEvent,
     BudgetNotificationSettings,
+    FormulaIdeDraft,
     Currency,
     OfflineSyncOperation,
     OfflineSyncTombstone,
@@ -15,6 +16,14 @@ from apps.finance.models import (
     TransactionTemplate,
     UserCurrency,
 )
+
+
+@admin.register(FormulaIdeDraft)
+class FormulaIdeDraftAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "formula_id", "is_saved", "updated_at")
+    list_filter = ("is_saved",)
+    search_fields = ("formula_id", "code", "user__email", "user__username")
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(TagGroup)
