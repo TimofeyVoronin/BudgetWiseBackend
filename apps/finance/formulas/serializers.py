@@ -93,7 +93,6 @@ class FormulaIdeValidationResponseSerializer(serializers.Serializer):
     errors = FormulaIdeDiagnosticSerializer(many=True)
 
 
-
 class FormulaIdePreviewRequestSerializer(serializers.Serializer):
     code = serializers.CharField(
         allow_blank=True,
@@ -108,18 +107,15 @@ class FormulaIdePreviewRequestSerializer(serializers.Serializer):
         help_text="Блоки визуального конструктора. На текущем этапе используются для хранения и совместимости с FE.",
     )
 
-
 class FormulaIdePreviewRowSerializer(serializers.Serializer):
     id = serializers.CharField()
     label = serializers.CharField()
     value = serializers.CharField()
     highlight = serializers.BooleanField(default=False)
 
-
 class FormulaIdePreviewChartPointSerializer(serializers.Serializer):
     month = serializers.CharField()
     value = serializers.FloatField()
-
 
 class FormulaIdePreviewResponseSerializer(serializers.Serializer):
     rows = FormulaIdePreviewRowSerializer(many=True)

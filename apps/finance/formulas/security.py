@@ -96,6 +96,29 @@ UNSAFE_IDENTIFIER_RULES = {
     "settings": SecurityRule("unsafe-construct", "Конструкция {value} запрещена в DSL формул."),
 }
 
+SECURITY_BLOCKING_DIAGNOSTIC_IDS = {
+    "unsafe-construct",
+    "dunder-access-denied",
+    "attribute-access-denied",
+    "identifier-too-long",
+}
+
+
+def is_unsafe_identifier_value(value: str) -> bool:
+    raw_value = str(value or "")
+    return (
+        raw_value.lower() in UNSAFE_IDENTIFIER_RULES
+        or raw_value.lower() in BANNED_IDENTIFIERS
+        or raw_value.upper() in BANNED_KEYWORDS
+    )
+
+
+def has_blocking_identifier_security_diagnostic(value: str) -> bool:
+    return any(
+        diagnostic.id in SECURITY_BLOCKING_DIAGNOSTIC_IDS
+        for diagnostic in validate_identifier_token_security(value=value, line=1)
+    )
+
 
 def validate_code_security_preflight(code: str) -> list[FormulaDiagnostic]:
     """Check raw code-level restrictions before tokenization.
@@ -181,12 +204,16 @@ def validate_identifier_token_security(*, value: str, line: int) -> list[Formula
             )
         )
 
-    if lowered in UNSAFE_IDENTIFIER_RULES or lowered in BANNED_IDENTIFIERS or uppered in BANNED_KEYWORDS:
+    rule = UNSAFE_IDENTIFIER_RULES.get(lowered)
+    if rule is None and (lowered in BANNED_IDENTIFIERS or uppered in BANNED_KEYWORDS):
+        rule = SecurityRule("unsafe-construct", "Конструкция {value} запрещена в DSL формул.")
+
+    if rule is not None:
         diagnostics.append(
             FormulaDiagnostic(
-                id="unsafe-construct",
+                id=rule.id,
                 line=line,
-                message=f"Конструкция {raw_value} запрещена в DSL формул.",
+                message=rule.message_template.format(value=raw_value),
             )
         )
 
@@ -245,15 +272,7 @@ def validate_ast_node_security(node: AstNode) -> list[FormulaDiagnostic]:
         )
 
     if isinstance(node, FunctionCallExpression):
-        function_name = node.name.upper()
-        if function_name not in ALLOWED_FUNCTIONS:
-            diagnostics.append(
-                FormulaDiagnostic(
-                    id="unknown-function",
-                    line=node.line,
-                    message=f"Неизвестная функция {node.name}.",
-                )
-            )
+        diagnostics.extend(validate_function_call_name_security(name=node.name, line=node.line))
 
     if isinstance(node, NamedArgument):
         diagnostics.extend(validate_named_argument_security(name=node.name, line=node.line))
@@ -282,6 +301,24 @@ def validate_ast_node_security(node: AstNode) -> list[FormulaDiagnostic]:
                 id="string-too-long",
                 line=node.line,
                 message=f"Строковый литерал не должен быть длиннее {MAX_STRING_LITERAL_LENGTH} символов.",
+            )
+        )
+
+    return diagnostics[:MAX_DIAGNOSTICS]
+
+
+def validate_function_call_name_security(*, name: str, line: int) -> list[FormulaDiagnostic]:
+    diagnostics = validate_identifier_token_security(value=name, line=line)
+    if any(diagnostic.id in SECURITY_BLOCKING_DIAGNOSTIC_IDS for diagnostic in diagnostics):
+        return diagnostics[:MAX_DIAGNOSTICS]
+
+    function_name = name.upper()
+    if function_name not in ALLOWED_FUNCTIONS:
+        diagnostics.append(
+            FormulaDiagnostic(
+                id="unknown-function",
+                line=line,
+                message=f"Неизвестная функция {name}.",
             )
         )
 

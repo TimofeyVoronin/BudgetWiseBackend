@@ -45,32 +45,54 @@ class FormulaValidationResult:
         }
 
 
-def build_validation_result(diagnostics: Iterable[FormulaDiagnostic]) -> FormulaValidationResult:
-    normalized: list[FormulaDiagnostic] = []
+def normalize_diagnostic(diagnostic: FormulaDiagnostic | dict[str, Any]) -> FormulaDiagnostic:
+    if isinstance(diagnostic, FormulaDiagnostic):
+        return diagnostic
+    return FormulaDiagnostic(**diagnostic)
+
+
+def diagnostic_key(diagnostic: FormulaDiagnostic) -> tuple[str, int, str]:
+    return (
+        diagnostic.id,
+        max(1, int(diagnostic.line or 1)),
+        diagnostic.message,
+    )
+
+
+def deduplicate_diagnostics(
+    diagnostics: Iterable[FormulaDiagnostic | dict[str, Any]],
+    *,
+    limit: int = MAX_DIAGNOSTICS,
+) -> list[FormulaDiagnostic]:
+    result: list[FormulaDiagnostic] = []
     seen: set[tuple[str, int, str]] = set()
+    truncated = False
 
     for diagnostic in diagnostics:
-        item = diagnostic if isinstance(diagnostic, FormulaDiagnostic) else FormulaDiagnostic(**diagnostic)
-        key = (item.id, max(1, int(item.line or 1)), item.message)
+        item = normalize_diagnostic(diagnostic)
+        key = diagnostic_key(item)
         if key in seen:
             continue
         seen.add(key)
-        if len(normalized) >= MAX_DIAGNOSTICS:
+        if len(result) >= limit:
+            truncated = True
             break
-        normalized.append(item)
+        result.append(item)
 
-    if len(normalized) >= MAX_DIAGNOSTICS:
-        limit_message = f"Показаны первые {MAX_DIAGNOSTICS} ошибок. Исправьте их и повторите проверку."
-        limit_key = ("too-many-errors", 1, limit_message)
-        if limit_key not in seen:
-            normalized = normalized[: max(0, MAX_DIAGNOSTICS - 1)]
-            normalized.append(
-                FormulaDiagnostic(
-                    id="too-many-errors",
-                    line=1,
-                    message=limit_message,
-                    severity="warning",
-                )
+    if truncated and limit > 0:
+        result = result[: max(0, limit - 1)]
+        result.append(
+            FormulaDiagnostic(
+                id="too-many-errors",
+                line=1,
+                message=f"Показаны первые {limit} ошибок. Исправьте их и повторите проверку.",
+                severity="warning",
             )
+        )
 
+    return result
+
+
+def build_validation_result(diagnostics: Iterable[FormulaDiagnostic | dict[str, Any]]) -> FormulaValidationResult:
+    normalized = deduplicate_diagnostics(diagnostics)
     return FormulaValidationResult(tuple(normalized))

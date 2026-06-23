@@ -172,7 +172,6 @@ class FormulaIdeValidateView(APIView):
         return Response(payload)
 
 
-
 class FormulaIdePreviewView(APIView):
     permission_classes = [IsAuthenticated]
 

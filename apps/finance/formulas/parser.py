@@ -21,17 +21,21 @@ from apps.finance.formulas.constants import MAX_FORMULA_CODE_LENGTH
 from apps.finance.formulas.diagnostics import (
     FormulaDiagnostic,
     FormulaValidationResult,
+    MAX_DIAGNOSTICS,
     build_validation_result,
 )
 from apps.finance.formulas.dsl import (
     ALLOWED_CONSTANTS,
     ALLOWED_FUNCTIONS,
     ALLOWED_SYSTEM_VARIABLES,
-    MAX_DIAGNOSTICS,
     OPERATOR_PRECEDENCE,
     UNARY_OPERATORS,
 )
-from apps.finance.formulas.security import validate_code_security_preflight, validate_program_security
+from apps.finance.formulas.security import (
+    has_blocking_identifier_security_diagnostic,
+    validate_code_security_preflight,
+    validate_program_security,
+)
 from apps.finance.formulas.tokenizer import Token, tokenize_formula
 
 
@@ -220,11 +224,12 @@ class FormulaParser:
         if value == upper_value and upper_value in ALLOWED_CONSTANTS:
             return ConstantExpression(line=token.line, name=upper_value)
 
-        self.add_diagnostic(
-            id="unknown-variable",
-            line=token.line,
-            message=f"Неизвестная переменная {value}.",
-        )
+        if not has_blocking_identifier_security_diagnostic(value):
+            self.add_diagnostic(
+                id="unknown-variable",
+                line=token.line,
+                message=f"Неизвестная переменная {value}.",
+            )
 
         return VariableExpression(line=token.line, name=value)
 
@@ -232,7 +237,10 @@ class FormulaParser:
         function_name = name_token.value.upper()
         arguments: list[AstNode] = []
 
-        if function_name not in ALLOWED_FUNCTIONS:
+        if (
+            function_name not in ALLOWED_FUNCTIONS
+            and not has_blocking_identifier_security_diagnostic(name_token.value)
+        ):
             self.add_diagnostic(
                 id="unknown-function",
                 line=name_token.line,
@@ -270,7 +278,7 @@ class FormulaParser:
 
         return FunctionCallExpression(
             line=name_token.line,
-            name=function_name,
+            name=name_token.value,
             arguments=arguments,
         )
 

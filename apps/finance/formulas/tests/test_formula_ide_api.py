@@ -65,6 +65,22 @@ class FormulaDslParserTests(FinanceAPITestCase):
             with self.subTest(code=code):
                 self.assert_diagnostic_id(code, diagnostic_id)
 
+    def test_security_restrictions_do_not_add_unknown_semantic_errors(self):
+        cases = [
+            "RETURN eval(\"1 + 1\");",
+            "RETURN EVAL(\"1 + 1\");",
+            "RETURN __import__(\"os\");",
+            "RETURN user.password;",
+        ]
+
+        for code in cases:
+            with self.subTest(code=code):
+                result = validate_formula_code(code)
+                diagnostic_ids = {error["id"] for error in result.errors}
+                self.assertFalse(result.is_valid)
+                self.assertNotIn("unknown-function", diagnostic_ids)
+                self.assertNotIn("unknown-variable", diagnostic_ids)
+
 
 @override_settings(CURRENCY_RATES_ENABLED=False)
 class FormulaIdeAPITests(FinanceAPITestCase):

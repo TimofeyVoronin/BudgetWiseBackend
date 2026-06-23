@@ -27,7 +27,7 @@ from apps.finance.formulas.ast_nodes import (
 )
 from apps.finance.formulas.diagnostics import FormulaDiagnostic, MAX_DIAGNOSTICS
 from apps.finance.formulas.parser import parse_formula_code
-from apps.finance.formulas.security import RUNTIME_ALLOWED_FUNCTIONS, validate_program_security
+from apps.finance.formulas.security import RUNTIME_ALLOWED_FUNCTIONS
 from apps.finance.models import Account, Transaction, TransactionType
 from apps.users.app_settings.formatting import (
     format_app_money,
@@ -251,7 +251,7 @@ class FormulaEvaluator:
                 allowed={"account", "type", "date"},
                 line=node.line,
             )
-            return self.function_transactions(named=node_named_to_mapping(named), line=node.line)
+            return self.function_transactions(named=named, line=node.line)
         if function_name == "BALANCE":
             self.validate_positional_arguments(function_name=function_name, positional=positional, line=node.line)
             self.validate_named_arguments(
@@ -260,7 +260,7 @@ class FormulaEvaluator:
                 allowed={"account", "date"},
                 line=node.line,
             )
-            return self.function_balance(named=node_named_to_mapping(named), line=node.line)
+            return self.function_balance(named=named, line=node.line)
         if function_name == "SUM":
             return sum_decimal_values(positional)
         if function_name == "AVG":
@@ -511,10 +511,6 @@ def build_formula_preview(*, user, code: str, constructor_blocks: Sequence[Mappi
     if not validation_result.is_valid:
         raise FormulaEvaluationError([FormulaDiagnostic(**error) for error in validation_result.errors])
 
-    security_diagnostics = validate_program_security(program)
-    if security_diagnostics:
-        raise FormulaEvaluationError(security_diagnostics)
-
     context = build_preview_context(user=user)
     evaluator = FormulaEvaluator(context=context)
     formula_result = evaluator.evaluate_program(program)
@@ -663,13 +659,14 @@ def format_preview_money(*, user, context: FormulaPreviewContext, value: Decimal
 
 
 def build_formula_validation_failed_payload(errors: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    normalized_errors = list(errors)
     return {
         "detail": FORMULA_PREVIEW_ERROR_DETAIL,
-        "errors": list(errors),
+        "errors": normalized_errors,
         "error": {
             "code": "FORMULA_VALIDATION_FAILED",
             "message": FORMULA_PREVIEW_ERROR_DETAIL,
-            "errors": list(errors),
+            "errors": normalized_errors,
         },
     }
 
@@ -704,10 +701,6 @@ def normalize_transaction_type(value: Any) -> str | None:
     if normalized in TransactionType.values:
         return normalized
     return None
-
-
-def node_named_to_mapping(named: Mapping[str, Any]) -> Mapping[str, Any]:
-    return named
 
 
 def flatten_values(values: Sequence[Any]) -> list[Any]:
