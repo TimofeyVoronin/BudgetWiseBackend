@@ -76,3 +76,9 @@ def normalize_constructor_blocks(constructor_blocks: Sequence[Mapping[str, Any]]
             }
         )
     return normalized
+
+
+def validate_formula_ide_code(*, code: str) -> dict[str, Any]:
+    from apps.finance.formulas.parser import validate_formula_code
+
+    return validate_formula_code(code).to_dict()
