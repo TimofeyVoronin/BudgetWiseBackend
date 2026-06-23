@@ -4309,6 +4309,71 @@ paths:
           description: ''
         '401':
           description: Пользователь не авторизован.
+  /api/v1/finance/formulas/ide/preview/:
+    post:
+      operationId: finance_formulas_ide_preview_create
+      description: Проверяет DSL-код, безопасно выполняет поддерживаемую часть формулы
+        на финансовых данных текущего пользователя и возвращает строки результата
+        и точки графика для интерфейса редактора.
+      summary: Выполнить предпросмотр формулы
+      tags:
+      - finance-formula-ide
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormulaIdePreviewRequestRequest'
+            examples:
+              PreviewRequest:
+                value:
+                  code: 'LET income = SUM(TRANSACTIONS(type: INCOME, date: $period));
+                    RETURN income;'
+                  constructor_blocks: []
+                summary: Preview request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FormulaIdePreviewRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FormulaIdePreviewRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaIdePreviewResponse'
+              examples:
+                PreviewResponse:
+                  value:
+                    rows:
+                    - id: income
+                      label: Итого доход
+                      value: 125 400 ₽
+                      highlight: false
+                    - id: expense
+                      label: Итого расход
+                      value: 89 200 ₽
+                      highlight: false
+                    - id: net
+                      label: Чистый поток
+                      value: 36 200 ₽
+                      highlight: true
+                    chart_points:
+                    - month: Янв
+                      value: 12000
+                    - month: Фев
+                      value: 18000
+                  summary: Preview response
+          description: ''
+        '400':
+          description: Некорректное тело запроса.
+        '401':
+          description: Пользователь не авторизован.
+        '422':
+          description: Ошибки DSL или неподдерживаемая конструкция формулы.
   /api/v1/finance/formulas/ide/validate/:
     post:
       operationId: finance_formulas_ide_validate_create
@@ -15117,6 +15182,62 @@ components:
       - id
       - items
       - title
+    FormulaIdePreviewChartPoint:
+      type: object
+      properties:
+        month:
+          type: string
+        value:
+          type: number
+          format: double
+      required:
+      - month
+      - value
+    FormulaIdePreviewRequestRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          description: DSL-код формулы для предпросмотра.
+        constructor_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdeCanvasBlockRequest'
+          description: Блоки визуального конструктора. На текущем этапе используются
+            для хранения и совместимости с FE.
+          maxItems: 200
+      required:
+      - code
+    FormulaIdePreviewResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdePreviewRow'
+        chart_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormulaIdePreviewChartPoint'
+      required:
+      - chart_points
+      - rows
+    FormulaIdePreviewRow:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        highlight:
+          type: boolean
+          default: false
+      required:
+      - id
+      - label
+      - value
     FormulaIdeStateResponse:
       type: object
       properties:

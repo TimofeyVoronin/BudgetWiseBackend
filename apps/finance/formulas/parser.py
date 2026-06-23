@@ -207,15 +207,23 @@ class FormulaParser:
         value = token.value
         upper_value = value.upper()
 
-        if upper_value in ALLOWED_CONSTANTS:
+        # Local variables must have priority over constants. Otherwise a user
+        # variable named "income" would be parsed as the INCOME constant, which
+        # breaks formulas like "LET income = ...; RETURN income;".
+        if value in self.local_variables:
+            return VariableExpression(line=token.line, name=value)
+
+        # Constants are intentionally uppercase-only in the DSL. Lowercase names
+        # such as "income" are treated as user variables and should produce an
+        # unknown-variable diagnostic if they were not declared.
+        if value == upper_value and upper_value in ALLOWED_CONSTANTS:
             return ConstantExpression(line=token.line, name=upper_value)
 
-        if value not in self.local_variables:
-            self.add_diagnostic(
-                id="unknown-variable",
-                line=token.line,
-                message=f"Неизвестная переменная {value}.",
-            )
+        self.add_diagnostic(
+            id="unknown-variable",
+            line=token.line,
+            message=f"Неизвестная переменная {value}.",
+        )
 
         return VariableExpression(line=token.line, name=value)
 

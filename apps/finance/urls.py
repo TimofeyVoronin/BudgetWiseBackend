@@ -43,6 +43,7 @@ from apps.finance.dashboard.views import (
 )
 from apps.finance.formulas.views import (
     FormulaIdeMetaView,
+    FormulaIdePreviewView,
     FormulaIdeStateView,
     FormulaIdeValidateView,
 )
@@ -154,6 +155,11 @@ urlpatterns = [
         "formulas/ide/validate/",
         FormulaIdeValidateView.as_view(),
         name="formula-ide-validate",
+    ),
+    path(
+        "formulas/ide/preview/",
+        FormulaIdePreviewView.as_view(),
+        name="formula-ide-preview",
     ),
     path(
         "analytics/combined/meta/",

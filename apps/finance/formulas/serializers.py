@@ -92,3 +92,35 @@ class FormulaIdeValidationResponseSerializer(serializers.Serializer):
     is_valid = serializers.BooleanField()
     errors = FormulaIdeDiagnosticSerializer(many=True)
 
+
+
+class FormulaIdePreviewRequestSerializer(serializers.Serializer):
+    code = serializers.CharField(
+        allow_blank=True,
+        trim_whitespace=False,
+        help_text="DSL-код формулы для предпросмотра.",
+    )
+    constructor_blocks = serializers.ListField(
+        child=FormulaIdeCanvasBlockSerializer(),
+        required=False,
+        allow_empty=True,
+        max_length=MAX_CONSTRUCTOR_BLOCKS,
+        help_text="Блоки визуального конструктора. На текущем этапе используются для хранения и совместимости с FE.",
+    )
+
+
+class FormulaIdePreviewRowSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    label = serializers.CharField()
+    value = serializers.CharField()
+    highlight = serializers.BooleanField(default=False)
+
+
+class FormulaIdePreviewChartPointSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    value = serializers.FloatField()
+
+
+class FormulaIdePreviewResponseSerializer(serializers.Serializer):
+    rows = FormulaIdePreviewRowSerializer(many=True)
+    chart_points = FormulaIdePreviewChartPointSerializer(many=True)
