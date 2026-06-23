@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import calendar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Mapping, Sequence
 
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
-from rest_framework.exceptions import ValidationError
-
 from apps.finance.currencies.conversion import get_currency_conversion_service
 from apps.finance.currencies.money import quantize_money
 from apps.finance.formulas.ast_nodes import (
@@ -51,13 +49,17 @@ class FormulaPreviewPeriod:
         return f"{self.start_date.year:04d}-{self.start_date.month:02d}"
 
 
-@dataclass(frozen=True)
+@dataclass
 class FormulaPreviewContext:
     user: object
     period: FormulaPreviewPeriod
     display_currency: str
     formatting_context: object
     converter: object
+    account_names: tuple[str, ...] = ()
+    transaction_values_cache: dict[tuple[str, str, str, str, str], list[Decimal]] = field(default_factory=dict)
+    balance_cache: dict[tuple[str, str], Decimal] = field(default_factory=dict)
+    monthly_totals_cache: dict[tuple[str, str, str], dict[str, dict[str, Decimal]]] = field(default_factory=dict)
 
 
 class FormulaEvaluationError(Exception):
@@ -141,9 +143,7 @@ class FormulaEvaluator:
             "$year": self.context.period.start_date.year,
             "$currency": self.context.display_currency,
             "$account": None,
-            "$accounts": list(
-                Account.objects.filter(user=self.context.user, is_archived=False).values_list("name", flat=True)
-            ),
+            "$accounts": list(self.context.account_names),
         }
         if node.name in system_variables:
             return system_variables[node.name]
@@ -392,39 +392,54 @@ class FormulaEvaluator:
             )
         account_name = str(named.get("account") or "").strip()
         period = self.resolve_period_from_value(named.get("date"), line=line)
+        cache_key = (
+            transaction_type or "",
+            account_name,
+            period.start_date.isoformat(),
+            period.end_date.isoformat(),
+            self.context.display_currency,
+        )
+        cached = self.context.transaction_values_cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
 
-        queryset = (
-            Transaction.objects
-            .filter(user=self.context.user, operation_date__gte=period.start_date, operation_date__lte=period.end_date)
-            .select_related("account")
+        queryset = Transaction.objects.filter(
+            user=self.context.user,
+            operation_date__gte=period.start_date,
+            operation_date__lte=period.end_date,
         )
         if transaction_type:
             queryset = queryset.filter(type=transaction_type)
         if account_name:
             queryset = queryset.filter(account__name=account_name)
 
-        amounts: list[Decimal] = []
-        for transaction in queryset:
-            amounts.append(
-                self.context.converter.convert_to_display(
-                    transaction.amount,
-                    source_currency=getattr(transaction.account, "currency", None),
-                ).amount
-            )
+        amounts = [
+            self.context.converter.convert_to_display(
+                row["amount"] or Decimal("0.00"),
+                source_currency=row["account__currency"],
+            ).amount
+            for row in queryset.values("amount", "account__currency")
+        ]
+        self.context.transaction_values_cache[cache_key] = list(amounts)
         return amounts
 
     def function_balance(self, *, named: Mapping[str, Any], line: int) -> Decimal:
         account_name = str(named.get("account") or "").strip()
+        cache_key = (account_name, self.context.display_currency)
+        if cache_key in self.context.balance_cache:
+            return self.context.balance_cache[cache_key]
+
         queryset = Account.objects.filter(user=self.context.user, is_archived=False)
         if account_name:
             queryset = queryset.filter(name=account_name)
 
         total = Decimal("0.00")
-        for account in queryset:
+        for row in queryset.values("balance", "currency"):
             total += self.context.converter.convert_to_display(
-                account.balance,
-                source_currency=account.currency,
+                row["balance"] or Decimal("0.00"),
+                source_currency=row["currency"],
             ).amount
+        self.context.balance_cache[cache_key] = total
         return total
 
     def resolve_period_from_value(self, value: Any, *, line: int) -> FormulaPreviewPeriod:
@@ -529,12 +544,19 @@ def build_preview_context(*, user) -> FormulaPreviewContext:
         require_visible_display_currency=False,
         refresh_rates=False,
     )
+    account_names = tuple(
+        Account.objects
+        .filter(user=user, is_archived=False)
+        .order_by("name")
+        .values_list("name", flat=True)
+    )
     return FormulaPreviewContext(
         user=user,
         period=FormulaPreviewPeriod(start_date=start_date, end_date=end_date),
         display_currency=converter.display_currency,
         formatting_context=formatting_context,
         converter=converter,
+        account_names=account_names,
     )
 
 
@@ -566,6 +588,11 @@ def build_preview_chart_points(*, context: FormulaPreviewContext) -> list[dict[s
 
 
 def calculate_monthly_totals(*, context: FormulaPreviewContext, start_date: date, end_date: date) -> dict[str, dict[str, Decimal]]:
+    cache_key = (start_date.isoformat(), end_date.isoformat(), context.display_currency)
+    cached = context.monthly_totals_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     month_keys = build_month_keys(start_date, end_date)
     totals = {month_key: build_empty_type_totals() for month_key in month_keys}
 
@@ -589,6 +616,7 @@ def calculate_monthly_totals(*, context: FormulaPreviewContext, start_date: date
             source_currency=row["account__currency"],
         ).amount
         totals[month_key][transaction_type] += converted
+    context.monthly_totals_cache[cache_key] = totals
     return totals
 
 

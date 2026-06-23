@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from functools import lru_cache
 from typing import Any, Mapping, Sequence
 
 from apps.finance.formulas.constants import (
@@ -49,6 +50,13 @@ def save_formula_ide_state(*, user, code: str, constructor_blocks: Sequence[Mapp
 
 
 def get_formula_ide_meta() -> dict[str, Any]:
+    # FORMULA_IDE_META is static. Keep one cached base payload and return a
+    # defensive copy so serializers/tests cannot mutate the shared object.
+    return deepcopy(get_cached_formula_ide_meta())
+
+
+@lru_cache(maxsize=1)
+def get_cached_formula_ide_meta() -> dict[str, Any]:
     return deepcopy(FORMULA_IDE_META)
 
 
