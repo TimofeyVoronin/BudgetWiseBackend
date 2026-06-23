@@ -12,5 +12,6 @@ router.register("", UserViewSet, basename="user")
 
 urlpatterns = [
     path("me/", CurrentUserView.as_view(), name="current-user"),
+    path("onboarding/", include("apps.users.onboarding.urls")),
     path("", include(router.urls)),
 ]

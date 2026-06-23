@@ -9914,6 +9914,228 @@ paths:
                     date_joined: 2026-05-15T12:00:00+0300
                   summary: Успешный ответ
           description: ''
+  /api/v1/users/onboarding/analytics/:
+    get:
+      operationId: users_onboarding_analytics_retrieve
+      description: 'Возвращает агрегированную аналитику по onboarding-анкетам: количество
+        начатых и завершённых анкет, процент завершения, часто пропускаемые вопросы
+        и шаги, на которых пользователи чаще всего останавливаются. Endpoint доступен
+        только admin/staff пользователям.'
+      summary: Получить базовую аналитику onboarding
+      tags:
+      - users-onboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingAnalytics'
+              examples:
+                ПримерОтвета:
+                  value:
+                    totalSurveys: 10
+                    startedCount: 8
+                    completedCount: 6
+                    inProgressCount: 1
+                    failedCount: 1
+                    notStartedCount: 2
+                    completionRate: 75.0
+                    statusCounts:
+                      not_started: 2
+                      in_progress: 1
+                      completed: 6
+                      failed: 1
+                    mostSkippedQuestions:
+                    - questionId: defaultCurrency
+                      stepId: preferences
+                      title: Какая валюта будет основной?
+                      skippedCount: 2
+                      skippedRate: 20.0
+                    dropOffSteps:
+                    - stepId: goals
+                      title: Цели
+                      dropOffCount: 1
+                      dropOffRate: 50.0
+                  summary: Пример ответа
+          description: ''
+  /api/v1/users/onboarding/answers/:
+    post:
+      operationId: users_onboarding_answers_create
+      description: Принимает ответы пользователя, проверяет обязательные вопросы и
+        допустимые значения, сохраняет ответы в OnboardingSurvey, применяет начальную
+        конфигурацию пользователя и переводит анкету в статус completed. Стартовая
+        конфигурация создаёт только недостающие категории, цели и бюджеты, поэтому
+        повторная отправка не создаёт дубли.
+      summary: Отправить ответы onboarding-анкеты
+      tags:
+      - users-onboarding
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingAnswersSubmitRequest'
+            examples:
+              ПримерЗапроса:
+                value:
+                  answers:
+                    mainGoal: expense_control
+                    incomeType: regular
+                    expenseAreas:
+                    - food
+                    - transport
+                    - subscriptions
+                    budgetStyle: balanced
+                    hasSavingsGoal: true
+                    defaultCurrency: RUB
+                summary: Пример запроса
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OnboardingAnswersSubmitRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OnboardingAnswersSubmitRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingAnswersResponse'
+              examples:
+                УспешныйОтвет:
+                  value:
+                    status: completed
+                    isCompleted: true
+                    startedAt: 2026-06-23T10:00:00+0700
+                    completedAt: 2026-06-23T10:05:00+0700
+                    answers:
+                      mainGoal: expense_control
+                      incomeType: regular
+                      expenseAreas:
+                      - food
+                      - transport
+                      - subscriptions
+                      budgetStyle: balanced
+                      hasSavingsGoal: true
+                      defaultCurrency: RUB
+                    result:
+                      configurationApplied: true
+                      nextStep: dashboard
+                      created:
+                        categories: 4
+                        goals: 1
+                        budgets: 3
+                        recommendations: 2
+                      createdIds:
+                        categories:
+                        - 1
+                        - 2
+                        - 3
+                        - 4
+                        goals:
+                        - 1
+                        budgets:
+                        - 1
+                        - 2
+                        - 3
+                      appliedSettings:
+                        defaultCurrency: RUB
+                        defaultCurrencyChanged: false
+                      recommendations:
+                      - id: review-top-expenses
+                        title: Проверьте крупные расходы за месяц
+                        description: Начните с регулярного просмотра категорий, где
+                          расходы растут быстрее всего.
+                  summary: Успешный ответ
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingAnswersSubmit'
+          description: ''
+  /api/v1/users/onboarding/questions/:
+    get:
+      operationId: users_onboarding_questions_retrieve
+      description: 'Возвращает стабильную конфигурацию onboarding-анкеты: шаги, вопросы,
+        варианты ответов, типы полей, обязательность и порядок отображения. Конфигурация
+        нужна frontend после регистрации или при продолжении первичной настройки.'
+      summary: Получить конфигурацию onboarding-анкеты
+      tags:
+      - users-onboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingQuestionsResponse'
+              examples:
+                ФрагментОтвета:
+                  value:
+                    version: '2026.06'
+                    title: Стартовая настройка личных финансов
+                    description: Короткая анкета помогает подготовить приложение под
+                      задачи пользователя.
+                    estimatedMinutes: 2
+                    totalQuestions: 6
+                    steps:
+                    - id: goals
+                      order: 1
+                      title: Цели
+                      description: Определяем, зачем пользователь начинает вести личные
+                        финансы.
+                      questions:
+                      - id: mainGoal
+                        stepId: goals
+                        order: 1
+                        type: single_choice
+                        title: Какая основная цель использования приложения?
+                        required: true
+                        options:
+                        - value: expense_control
+                          label: Контролировать расходы
+                  summary: Фрагмент ответа
+          description: ''
+  /api/v1/users/onboarding/status/:
+    get:
+      operationId: users_onboarding_status_retrieve
+      description: Возвращает текущий статус прохождения onboarding-анкеты. Frontend
+        использует эти данные, чтобы решить, показывать анкету, экран продолжения
+        заполнения или обычный dashboard. Если анкета ещё не создавалась, backend
+        возвращает статус not_started без создания записи в базе.
+      summary: Получить статус onboarding текущего пользователя
+      tags:
+      - users-onboarding
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingStatus'
+              examples:
+                АнкетаЕщёНеНачата:
+                  value:
+                    status: not_started
+                    isCompleted: false
+                    startedAt: null
+                    completedAt: null
+                  summary: Анкета ещё не начата
+                АнкетаЗавершена:
+                  value:
+                    status: completed
+                    isCompleted: true
+                    startedAt: 2026-06-23T10:00:00+0700
+                    completedAt: 2026-06-23T10:05:00+0700
+                  summary: Анкета завершена
+          description: ''
   /health/:
     get:
       operationId: health_check
@@ -10480,6 +10702,16 @@ components:
           maxLength: 3
       required:
       - code
+    AnalyticsExportFormatEnum:
+      enum:
+      - pdf
+      - csv
+      - xlsx
+      type: string
+      description: |-
+        * `pdf` - pdf
+        * `csv` - csv
+        * `xlsx` - xlsx
     ApiErrorDetail:
       type: object
       description: Детальная информация об ошибке API.
@@ -11204,7 +11436,7 @@ components:
         channel:
           $ref: '#/components/schemas/BudgetNotificationChannelEnum'
         status:
-          $ref: '#/components/schemas/BudgetNotificationDeliveryResultStatusEnum'
+          $ref: '#/components/schemas/BudgetNotificationPreviewDeliveryStatusEnum'
         notificationId:
           type: integer
           nullable: true
@@ -11213,20 +11445,6 @@ components:
       required:
       - channel
       - status
-    BudgetNotificationDeliveryResultStatusEnum:
-      enum:
-      - delivered
-      - pending
-      - unavailable
-      - failed
-      - skipped
-      type: string
-      description: |-
-        * `delivered` - delivered
-        * `pending` - pending
-        * `unavailable` - unavailable
-        * `failed` - failed
-        * `skipped` - skipped
     BudgetNotificationDeliveryStatusEnum:
       enum:
       - available
@@ -11434,6 +11652,20 @@ components:
       - body
       - channel
       - title
+    BudgetNotificationPreviewDeliveryStatusEnum:
+      enum:
+      - delivered
+      - pending
+      - unavailable
+      - failed
+      - skipped
+      type: string
+      description: |-
+        * `delivered` - delivered
+        * `pending` - pending
+        * `unavailable` - unavailable
+        * `failed` - failed
+        * `skipped` - skipped
     BudgetNotificationSelectOption:
       type: object
       properties:
@@ -11450,13 +11682,13 @@ components:
         id:
           $ref: '#/components/schemas/BudgetNotificationChannelEnum'
         status:
-          $ref: '#/components/schemas/BudgetNotificationTestChannelResultStatusEnum'
+          $ref: '#/components/schemas/BudgetNotificationTestDeliveryStatusEnum'
         error:
           type: string
       required:
       - id
       - status
-    BudgetNotificationTestChannelResultStatusEnum:
+    BudgetNotificationTestDeliveryStatusEnum:
       enum:
       - delivered
       - failed
@@ -12589,7 +12821,7 @@ components:
       type: object
       properties:
         format:
-          $ref: '#/components/schemas/FormatB6dEnum'
+          $ref: '#/components/schemas/AnalyticsExportFormatEnum'
         sections:
           type: array
           items:
@@ -12947,7 +13179,7 @@ components:
       type: object
       properties:
         format:
-          $ref: '#/components/schemas/FormatB6dEnum'
+          $ref: '#/components/schemas/AnalyticsExportFormatEnum'
         sections:
           type: array
           items:
@@ -14390,6 +14622,16 @@ components:
           type: boolean
           default: true
           description: Включить уровень риска по остатку на день.
+    FinancialCalendarExportFormatEnum:
+      enum:
+      - csv
+      - pdf
+      - xlsx
+      type: string
+      description: |-
+        * `csv` - CSV
+        * `pdf` - PDF
+        * `xlsx` - XLSX
     FinancialCalendarExportPreviewResponse:
       type: object
       properties:
@@ -14447,16 +14689,6 @@ components:
       - date
       - eventsSummary
       - forecastRub
-    FinancialCalendarExportRequestFormatEnum:
-      enum:
-      - csv
-      - pdf
-      - xlsx
-      type: string
-      description: |-
-        * `csv` - CSV
-        * `pdf` - PDF
-        * `xlsx` - XLSX
     FinancialCalendarExportRequestRequest:
       type: object
       properties:
@@ -14472,7 +14704,7 @@ components:
           description: Месяц календаря, 1-12.
         format:
           allOf:
-          - $ref: '#/components/schemas/FinancialCalendarExportRequestFormatEnum'
+          - $ref: '#/components/schemas/FinancialCalendarExportFormatEnum'
           default: csv
           description: |-
             Формат файла выгрузки.
@@ -14827,7 +15059,7 @@ components:
       type: object
       properties:
         format:
-          $ref: '#/components/schemas/FormatB6dEnum'
+          $ref: '#/components/schemas/AnalyticsExportFormatEnum'
         sections:
           type: array
           items:
@@ -15032,16 +15264,6 @@ components:
           minLength: 1
       required:
       - email
-    FormatB6dEnum:
-      enum:
-      - pdf
-      - csv
-      - xlsx
-      type: string
-      description: |-
-        * `pdf` - pdf
-        * `csv` - csv
-        * `xlsx` - xlsx
     FormulaIdeAutocompleteItem:
       type: object
       properties:
@@ -16864,6 +17086,380 @@ components:
     NullEnum:
       enum:
       - null
+    OnboardingAnalytics:
+      type: object
+      properties:
+        totalSurveys:
+          type: integer
+          description: Общее количество созданных onboarding-анкет.
+        startedCount:
+          type: integer
+          description: Количество пользователей, начавших onboarding.
+        completedCount:
+          type: integer
+          description: Количество завершённых onboarding-анкет.
+        inProgressCount:
+          type: integer
+          description: Количество onboarding-анкет в процессе заполнения.
+        failedCount:
+          type: integer
+          description: Количество onboarding-анкет со статусом failed.
+        notStartedCount:
+          type: integer
+          description: Количество созданных, но ещё не начатых onboarding-анкет.
+        completionRate:
+          type: number
+          format: double
+          description: Процент завершения onboarding среди начавших пользователей.
+        statusCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Количество onboarding-анкет по статусам.
+        mostSkippedQuestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardingSkippedQuestion'
+          description: Вопросы, которые чаще всего остаются без ответа.
+        dropOffSteps:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardingDropOffStep'
+          description: Шаги, на которых пользователи чаще всего останавливаются.
+      required:
+      - completedCount
+      - completionRate
+      - dropOffSteps
+      - failedCount
+      - inProgressCount
+      - mostSkippedQuestions
+      - notStartedCount
+      - startedCount
+      - statusCounts
+      - totalSurveys
+    OnboardingAnswersResponse:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OnboardingSurveyStatusEnum'
+          description: |-
+            Текущий статус onboarding пользователя.
+
+            * `not_started` - Не начат
+            * `in_progress` - В процессе
+            * `completed` - Завершён
+            * `failed` - Ошибка
+        isCompleted:
+          type: boolean
+          description: Завершил ли пользователь onboarding-анкету.
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Дата начала onboarding или null, если анкета ещё не начата.
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Дата завершения onboarding или null, если анкета ещё не завершена.
+        answers:
+          description: Сохранённые ответы пользователя.
+        result:
+          allOf:
+          - $ref: '#/components/schemas/OnboardingSubmitResult'
+          description: Результат обработки onboarding-ответов.
+      required:
+      - answers
+      - completedAt
+      - isCompleted
+      - result
+      - startedAt
+      - status
+    OnboardingAnswersSubmit:
+      type: object
+      properties:
+        answers:
+          description: Ответы пользователя на onboarding-анкету. Ключи должны совпадать
+            с id вопросов.
+      required:
+      - answers
+    OnboardingAnswersSubmitRequest:
+      type: object
+      properties:
+        answers:
+          description: Ответы пользователя на onboarding-анкету. Ключи должны совпадать
+            с id вопросов.
+      required:
+      - answers
+    OnboardingDropOffStep:
+      type: object
+      properties:
+        stepId:
+          type: string
+          description: ID шага onboarding-анкеты.
+        title:
+          type: string
+          description: Название шага.
+        dropOffCount:
+          type: integer
+          description: Сколько пользователей остановилось на этом шаге.
+        dropOffRate:
+          type: number
+          format: double
+          description: Доля остановок на шаге в процентах.
+      required:
+      - dropOffCount
+      - dropOffRate
+      - stepId
+      - title
+    OnboardingQuestion:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Уникальный ключ вопроса.
+        stepId:
+          type: string
+          description: Идентификатор шага анкеты.
+        order:
+          type: integer
+          description: Порядок отображения вопроса внутри анкеты.
+        type:
+          allOf:
+          - $ref: '#/components/schemas/OnboardingQuestionTypeEnum'
+          description: |-
+            Тип поля: single_choice, multi_choice или boolean.
+
+            * `single_choice` - single_choice
+            * `multi_choice` - multi_choice
+            * `boolean` - boolean
+        title:
+          type: string
+          description: Текст вопроса.
+        description:
+          type: string
+          description: Дополнительное пояснение к вопросу.
+        required:
+          type: boolean
+          description: Обязателен ли вопрос для отправки анкеты.
+        minSelected:
+          type: integer
+          description: Минимальное количество выбранных вариантов для multi_choice.
+        maxSelected:
+          type: integer
+          description: Максимальное количество выбранных вариантов для multi_choice.
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardingQuestionOption'
+          description: Варианты ответа для choice-вопросов.
+      required:
+      - id
+      - order
+      - required
+      - stepId
+      - title
+      - type
+    OnboardingQuestionOption:
+      type: object
+      properties:
+        value:
+          type: string
+          description: Машинное значение варианта ответа.
+        label:
+          type: string
+          description: Подпись варианта ответа для интерфейса.
+        description:
+          type: string
+          description: Дополнительное пояснение к варианту ответа.
+      required:
+      - label
+      - value
+    OnboardingQuestionTypeEnum:
+      enum:
+      - single_choice
+      - multi_choice
+      - boolean
+      type: string
+      description: |-
+        * `single_choice` - single_choice
+        * `multi_choice` - multi_choice
+        * `boolean` - boolean
+    OnboardingQuestionsResponse:
+      type: object
+      properties:
+        version:
+          type: string
+          description: Версия конфигурации onboarding-анкеты.
+        title:
+          type: string
+          description: Название анкеты для интерфейса.
+        description:
+          type: string
+          description: Описание назначения onboarding-анкеты.
+        estimatedMinutes:
+          type: integer
+          description: Примерное время заполнения анкеты в минутах.
+        totalQuestions:
+          type: integer
+          description: Общее количество вопросов в анкете.
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardingStep'
+          description: Шаги анкеты с вложенными вопросами.
+      required:
+      - description
+      - estimatedMinutes
+      - steps
+      - title
+      - totalQuestions
+      - version
+    OnboardingRecommendation:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Машинный идентификатор рекомендации.
+        title:
+          type: string
+          description: Заголовок рекомендации для интерфейса.
+        description:
+          type: string
+          description: Короткое описание рекомендации.
+      required:
+      - description
+      - id
+      - title
+    OnboardingSkippedQuestion:
+      type: object
+      properties:
+        questionId:
+          type: string
+          description: ID вопроса onboarding-анкеты.
+        stepId:
+          type: string
+          description: ID шага, к которому относится вопрос.
+        title:
+          type: string
+          description: Текст вопроса.
+        skippedCount:
+          type: integer
+          description: Сколько раз вопрос был пропущен.
+        skippedRate:
+          type: number
+          format: double
+          description: Доля пропусков вопроса в процентах.
+      required:
+      - questionId
+      - skippedCount
+      - skippedRate
+      - stepId
+      - title
+    OnboardingStatus:
+      type: object
+      properties:
+        status:
+          allOf:
+          - $ref: '#/components/schemas/OnboardingSurveyStatusEnum'
+          description: |-
+            Текущий статус onboarding пользователя.
+
+            * `not_started` - Не начат
+            * `in_progress` - В процессе
+            * `completed` - Завершён
+            * `failed` - Ошибка
+        isCompleted:
+          type: boolean
+          description: Завершил ли пользователь onboarding-анкету.
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Дата начала onboarding или null, если анкета ещё не начата.
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Дата завершения onboarding или null, если анкета ещё не завершена.
+      required:
+      - completedAt
+      - isCompleted
+      - startedAt
+      - status
+    OnboardingStep:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Уникальный идентификатор шага анкеты.
+        order:
+          type: integer
+          description: Порядок отображения шага.
+        title:
+          type: string
+          description: Название шага.
+        description:
+          type: string
+          description: Описание шага.
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardingQuestion'
+          description: Вопросы, которые относятся к шагу анкеты.
+      required:
+      - description
+      - id
+      - order
+      - questions
+      - title
+    OnboardingSubmitResult:
+      type: object
+      properties:
+        configurationApplied:
+          type: boolean
+          description: Применена ли начальная конфигурация по ответам анкеты.
+        nextStep:
+          type: string
+          description: Следующий frontend/backend-шаг после сохранения ответов.
+        created:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Количество созданных стартовых сущностей и подготовленных рекомендаций.
+        createdIds:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: integer
+          description: ID созданных категорий, целей и бюджетов.
+        appliedSettings:
+          type: object
+          additionalProperties: {}
+          description: Настройки пользователя, применённые на основе ответов анкеты.
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardingRecommendation'
+          description: Базовые рекомендации, подготовленные после onboarding.
+      required:
+      - configurationApplied
+      - created
+      - nextStep
+    OnboardingSurveyStatusEnum:
+      enum:
+      - not_started
+      - in_progress
+      - completed
+      - failed
+      type: string
+      description: |-
+        * `not_started` - Не начат
+        * `in_progress` - В процессе
+        * `completed` - Завершён
+        * `failed` - Ошибка
     OperationTypeEnum:
       enum:
       - expense
@@ -18800,7 +19396,7 @@ components:
           readOnly: true
         status:
           allOf:
-          - $ref: '#/components/schemas/ReceiptBriefStatusEnum'
+          - $ref: '#/components/schemas/ReceiptStatusEnum'
           title: Статус импорта чека
         store_name:
           type: string
@@ -18867,20 +19463,6 @@ components:
       - totalAmountRub
       - total_amount
       - transactionsCount
-    ReceiptBriefStatusEnum:
-      enum:
-      - parsed
-      - fetched
-      - imported
-      - duplicate
-      - error
-      type: string
-      description: |-
-        * `parsed` - Распознан
-        * `fetched` - Получен от провайдера
-        * `imported` - Импортирован
-        * `duplicate` - Дубликат
-        * `error` - Ошибка
     ReceiptItemBrief:
       type: object
       properties:
@@ -19037,6 +19619,20 @@ components:
       - providerError
       - providerStatus
       - receipt
+    ReceiptStatusEnum:
+      enum:
+      - parsed
+      - fetched
+      - imported
+      - duplicate
+      - error
+      type: string
+      description: |-
+        * `parsed` - Распознан
+        * `fetched` - Получен от провайдера
+        * `imported` - Импортирован
+        * `duplicate` - Дубликат
+        * `error` - Ошибка
     ReceiptTransactionItemInputRequest:
       type: object
       properties:
@@ -22158,6 +22754,10 @@ tags:
 - name: users-profile
   description: 'Страница профиля текущего пользователя: получение и обновление ФИО,
     телефона, города, краткого описания и статусов подтверждения контактных данных.'
+- name: users-onboarding
+  description: 'Онбординг и персонализация пользователя: получение конфигурации стартовой
+    анкеты, отправка ответов, статус прохождения и дальнейшая настройка начального
+    сценария после регистрации.'
 - name: finance-accounts
   description: 'Финансовые счета: список, создание, редактирование, архивирование,
     сводка балансов, история операций по счёту и справочники для формы.'

@@ -11,7 +11,6 @@ def user_avatar_upload_to(instance, filename: str) -> str:
     return f"avatars/user_{instance.pk or 'new'}/{uuid.uuid4().hex}.{suffix}"
 
 
-
 class User(AbstractUser):
     email = models.EmailField(unique=True)
     middle_name = models.CharField(
@@ -95,6 +94,129 @@ class User(AbstractUser):
                 name="uniq_user_non_empty_phone",
             ),
         ]
+
+
+class OnboardingSurveyStatus(models.TextChoices):
+    NOT_STARTED = "not_started", "Не начат"
+    IN_PROGRESS = "in_progress", "В процессе"
+    COMPLETED = "completed", "Завершён"
+    FAILED = "failed", "Ошибка"
+
+
+class OnboardingSurvey(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="onboarding_survey",
+        verbose_name="Пользователь",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=OnboardingSurveyStatus.choices,
+        default=OnboardingSurveyStatus.NOT_STARTED,
+        verbose_name="Статус onboarding",
+    )
+    answers = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Ответы пользователя",
+    )
+    result = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Результат применения onboarding",
+    )
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата начала",
+    )
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата завершения",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Дата создания",
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Дата обновления",
+    )
+
+    class Meta:
+        verbose_name = "Onboarding-анкета пользователя"
+        verbose_name_plural = "Onboarding-анкеты пользователей"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["status"], name="idx_onboard_status"),
+            models.Index(fields=["completed_at"], name="idx_onboard_completed"),
+            models.Index(fields=["created_at"], name="idx_onboard_created"),
+        ]
+
+    def clean(self) -> None:
+        if self.status not in OnboardingSurveyStatus.values:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"status": "Недопустимый статус onboarding."})
+
+        if self.answers is None:
+            self.answers = {}
+        if self.result is None:
+            self.result = {}
+
+        if not isinstance(self.answers, dict):
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"answers": "Ответы onboarding должны быть объектом."})
+
+        if not isinstance(self.result, dict):
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"result": "Результат onboarding должен быть объектом."})
+
+        if self.status == OnboardingSurveyStatus.COMPLETED and self.completed_at is None:
+            self.completed_at = timezone.now()
+
+        if self.completed_at and self.started_at and self.completed_at < self.started_at:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({"completed_at": "Дата завершения не может быть раньше даты начала."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def is_completed(self) -> bool:
+        return self.status == OnboardingSurveyStatus.COMPLETED
+
+    def mark_started(self) -> None:
+        now = timezone.now()
+        self.status = OnboardingSurveyStatus.IN_PROGRESS
+        if self.started_at is None:
+            self.started_at = now
+        self.save(update_fields=["status", "started_at", "updated_at"])
+
+    def mark_completed(self, result: dict | None = None) -> None:
+        now = timezone.now()
+        self.status = OnboardingSurveyStatus.COMPLETED
+        if self.started_at is None:
+            self.started_at = now
+        self.completed_at = now
+        if result is not None:
+            self.result = result
+        self.save(update_fields=["status", "started_at", "completed_at", "result", "updated_at"])
+
+    def mark_failed(self, result: dict | None = None) -> None:
+        self.status = OnboardingSurveyStatus.FAILED
+        if result is not None:
+            self.result = result
+        self.save(update_fields=["status", "result", "updated_at"])
+
+    def __str__(self) -> str:
+        return f"Onboarding survey for user_id={self.user_id} status={self.status}"
 
 
 class UserProfileAuditAction(models.TextChoices):
