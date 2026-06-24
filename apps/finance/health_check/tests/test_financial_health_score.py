@@ -156,7 +156,11 @@ class FinancialHealthSummaryTests(FinanceAPITestCase):
         self.assertIn(payload["level"], {"good", "excellent"})
         self.assertEqual(payload["currency"], "RUB")
         self.assertEqual(len(payload["metrics"]), 7)
-        self.assertEqual(payload["recommendations"], [])
+        recommendation_codes = {
+            item["code"]
+            for item in payload["recommendations"]
+        }
+        self.assertIn("weak_emergency_fund", recommendation_codes)
         self.assertEqual(payload["dataQuality"]["transactionCount"], 3)
         self.assertEqual(payload["totals"]["income"]["amount"], 50000.0)
 

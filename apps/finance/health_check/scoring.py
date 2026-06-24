@@ -18,6 +18,7 @@ from apps.finance.health_check.contracts import (
     METRIC_DEFINITIONS,
     get_financial_health_level,
 )
+from apps.finance.health_check.recommendations import build_financial_health_recommendations
 from apps.finance.health_check.services import build_financial_health_aggregates
 
 DECIMAL_ZERO = Decimal("0")
@@ -49,6 +50,12 @@ def build_financial_health_summary(
     )
     score_payload = build_financial_health_score(aggregates)
 
+    recommendations = build_financial_health_recommendations(
+        metrics=score_payload["metrics"],
+        totals=aggregates["totals"],
+        data_quality=aggregates["dataQuality"],
+    )
+
     return {
         "score": score_payload["score"],
         "level": score_payload["level"],
@@ -56,7 +63,7 @@ def build_financial_health_summary(
         "currency": aggregates["currency"],
         "totals": aggregates["totals"],
         "metrics": score_payload["metrics"],
-        "recommendations": [],
+        "recommendations": recommendations,
         "dataQuality": aggregates["dataQuality"],
     }
 

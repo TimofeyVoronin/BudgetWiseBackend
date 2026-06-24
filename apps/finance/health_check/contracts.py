@@ -269,6 +269,8 @@ def build_financial_health_summary_contract() -> dict[str, Any]:
                 "metricId": "string",
                 "title": "string",
                 "text": "string",
+                "action": "string",
+                "reason": "string",
             }
         ],
         "dataQuality": {

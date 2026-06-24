@@ -88,11 +88,13 @@ currency=RUB
   ],
   "recommendations": [
     {
-      "code": "increase_savings_rate",
+      "code": "low_savings_rate",
       "priority": "medium",
       "metricId": "savingsRate",
-      "title": "Увеличьте долю сбережений",
-      "text": "Попробуйте заранее выделять часть дохода на накопления."
+      "title": "Низкая доля сбережений",
+      "text": "После расходов остаётся слишком малая часть дохода.",
+      "action": "Попробуйте откладывать хотя бы 10% дохода сразу после поступления.",
+      "reason": "savingsRate.score<75"
     }
   ],
   "dataQuality": {
@@ -213,8 +215,59 @@ build_financial_health_summary(
       }
     }
   ],
-  "recommendations": []
+  "recommendations": [
+    {
+      "code": "weak_emergency_fund",
+      "priority": "medium",
+      "metricId": "emergencyFundProgress",
+      "title": "Ускорьте накопление финансовой подушки",
+      "text": "Резерв на непредвиденные расходы пока недостаточно сформирован.",
+      "action": "Настройте цель накоплений и регулярно пополняйте её небольшими суммами.",
+      "reason": "emergencyFundProgress.score<75"
+    }
+  ]
 }
 ```
 
-Рекомендации пока возвращаются пустым списком. Их наполнение относится к следующей подзадаче Financial Health Check, чтобы не смешивать расчёт score и rule-based рекомендации.
+## Rule-based рекомендации BUD-1154
+
+На этапе BUD-1154 добавлен отдельный слой rule-based рекомендаций. Он использует уже рассчитанные метрики, общий cashflow и `dataQuality`, не создаёт записи в базе и не изменяет данные пользователя.
+
+Основная функция:
+
+```python
+build_financial_health_recommendations(
+    metrics=score_payload["metrics"],
+    totals=aggregates["totals"],
+    data_quality=aggregates["dataQuality"],
+)
+```
+
+Рекомендации формируются по понятным правилам:
+
+| Code | Metric ID | Условие |
+| --- | --- | --- |
+| `insufficient_cashflow_data` | `incomeExpenseRatio` | мало операций для точной оценки |
+| `negative_net_balance` | `incomeExpenseRatio` | расходы превышают доходы |
+| `low_savings_rate` | `savingsRate` | score доли сбережений ниже 75 |
+| `budget_over_limit` | `budgetUsage` | бюджет превышен или score бюджета ниже 70 |
+| `weak_emergency_fund` | `emergencyFundProgress` | score финансовой подушки ниже 75 |
+| `cash_gap_risk` | `cashGapRisk` | прогнозный доступный остаток уходит ниже нуля |
+| `high_planned_payments_load` | `plannedPaymentsLoad` | score нагрузки будущих платежей ниже 65 |
+| `unstable_expenses` | `expenseStability` | score стабильности расходов ниже 65 |
+
+Каждая рекомендация содержит:
+
+```json
+{
+  "code": "low_savings_rate",
+  "priority": "high|medium|low",
+  "metricId": "savingsRate",
+  "title": "string",
+  "text": "string",
+  "action": "string",
+  "reason": "string"
+}
+```
+
+Рекомендации сортируются по приоритету и серьёзности метрики. В первой версии возвращается не больше 6 рекомендаций, чтобы ответ не был перегружен.
