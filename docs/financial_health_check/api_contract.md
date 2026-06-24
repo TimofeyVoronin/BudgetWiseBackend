@@ -271,3 +271,32 @@ build_financial_health_recommendations(
 ```
 
 Рекомендации сортируются по приоритету и серьёзности метрики. В первой версии возвращается не больше 6 рекомендаций, чтобы ответ не был перегружен.
+
+## Реализованные endpoints
+
+```text
+GET /api/v1/finance/health-check/meta/
+GET /api/v1/finance/health-check/summary/
+```
+
+### GET /api/v1/finance/health-check/meta/
+
+Возвращает справочник для frontend-страницы Financial Health Check: диапазон score, периоды, уровни финансового здоровья, описание метрик, приоритеты рекомендаций и контракт summary-ответа.
+
+Endpoint доступен только авторизованному пользователю. Данные пользователя не изменяются.
+
+### GET /api/v1/finance/health-check/summary/
+
+Возвращает итоговую оценку финансового здоровья текущего пользователя. Ответ включает общий score, уровень, период, валюту, агрегированные суммы, детализацию по метрикам, рекомендации и качество данных.
+
+Поддерживаемые query parameters:
+
+```text
+period=month|quarter|year|custom
+currency=RUB
+date_from=YYYY-MM-DD
+date_to=YYYY-MM-DD
+```
+
+Для `period=custom` параметры `date_from` и `date_to` обязательны. Endpoint только читает данные пользователя и не создаёт операции, счета, бюджеты, цели или планируемые платежи.
+

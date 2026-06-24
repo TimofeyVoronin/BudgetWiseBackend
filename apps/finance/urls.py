@@ -47,6 +47,10 @@ from apps.finance.formulas.views import (
     FormulaIdeStateView,
     FormulaIdeValidateView,
 )
+from apps.finance.health_check.views import (
+    FinancialHealthMetaView,
+    FinancialHealthSummaryView,
+)
 from apps.finance.financial_calendar.views import (
     FinancialCalendarDayView,
     FinancialCalendarExportPreviewView,
@@ -160,6 +164,17 @@ urlpatterns = [
         "formulas/ide/preview/",
         FormulaIdePreviewView.as_view(),
         name="formula-ide-preview",
+    ),
+
+    path(
+        "health-check/meta/",
+        FinancialHealthMetaView.as_view(),
+        name="financial-health-meta",
+    ),
+    path(
+        "health-check/summary/",
+        FinancialHealthSummaryView.as_view(),
+        name="financial-health-summary",
     ),
     path(
         "analytics/combined/meta/",
