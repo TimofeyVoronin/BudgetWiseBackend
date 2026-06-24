@@ -169,3 +169,52 @@ build_financial_health_aggregates(
 ```
 
 Эти агрегаты являются входными данными для следующих подзадач: расчёта общего score, уровней риска и рекомендаций.
+
+## Расчёт score и уровней BUD-1153
+
+На этапе BUD-1153 поверх агрегатов добавляется слой оценки финансового здоровья. Он не создаёт записи в базе и не изменяет пользовательские данные. Сервис использует агрегаты из `build_financial_health_aggregates()` и добавляет:
+
+- индивидуальный `score` каждой метрики от 0 до 100;
+- уровень каждой метрики: `critical`, `risk`, `warning`, `good`, `excellent`;
+- общий взвешенный `score` от 0 до 100;
+- общий уровень финансового здоровья;
+- детализацию метрик с весом, описанием, значением и исходными деталями.
+
+Основная функция:
+
+```python
+build_financial_health_summary(
+    user=request.user,
+    period="month",
+    date_from=None,
+    date_to=None,
+    currency="RUB",
+)
+```
+
+Пример фрагмента ответа:
+
+```json
+{
+  "score": 88,
+  "level": "good",
+  "metrics": [
+    {
+      "id": "savingsRate",
+      "label": "Доля сбережений",
+      "value": 25.0,
+      "score": 90,
+      "level": "excellent",
+      "weight": 18,
+      "unit": "percent",
+      "higherIsBetter": true,
+      "details": {
+        "hasPositiveCashflow": true
+      }
+    }
+  ],
+  "recommendations": []
+}
+```
+
+Рекомендации пока возвращаются пустым списком. Их наполнение относится к следующей подзадаче Financial Health Check, чтобы не смешивать расчёт score и rule-based рекомендации.
