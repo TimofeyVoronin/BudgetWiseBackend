@@ -110,3 +110,62 @@ currency=RUB
 - Endpoint не изменяет операции, счета, бюджеты или цели.
 - Отдельная модель БД для результата не создаётся.
 - Рекомендации являются rule-based и не используют ML.
+
+## Агрегаты BUD-1152
+
+На этапе BUD-1152 добавлен service-layer для расчёта базовых агрегированных показателей. Сервис не создаёт записи в базе и не изменяет пользовательские данные. Он только читает счета, операции, бюджеты, цели и планируемые операции текущего пользователя.
+
+Основная функция:
+
+```python
+build_financial_health_aggregates(
+    user=request.user,
+    period="month",
+    date_from=None,
+    date_to=None,
+    currency="RUB",
+)
+```
+
+Возвращаемая структура агрегатов:
+
+```json
+{
+  "period": {
+    "type": "month",
+    "dateFrom": "2026-06-01",
+    "dateTo": "2026-06-23",
+    "label": "Текущий месяц",
+    "days": 23
+  },
+  "currency": "RUB",
+  "totals": {
+    "income": {"amount": 50000.0, "currency": "RUB"},
+    "expenses": {"amount": 15000.0, "currency": "RUB"},
+    "netBalance": {"amount": 35000.0, "currency": "RUB"},
+    "accountsBalance": {"amount": 13000.0, "currency": "RUB"},
+    "availableBalance": {"amount": 13000.0, "currency": "RUB"}
+  },
+  "metrics": {
+    "incomeExpenseRatio": {"value": 3.3333},
+    "savingsRate": {"value": 70.0},
+    "budgetUsage": {"value": 60.0},
+    "emergencyFundProgress": {"value": 25.0},
+    "plannedPaymentsLoad": {"value": 10.0},
+    "cashGapRisk": {"hasCashGapRisk": false},
+    "expenseStability": {"daysWithExpenses": 2}
+  },
+  "dataQuality": {
+    "hasEnoughData": true,
+    "transactionCount": 3,
+    "accountCount": 2,
+    "budgetCount": 1,
+    "goalCount": 1,
+    "plannedTransactionCount": 1,
+    "periodDays": 23,
+    "warnings": []
+  }
+}
+```
+
+Эти агрегаты являются входными данными для следующих подзадач: расчёта общего score, уровней риска и рекомендаций.
