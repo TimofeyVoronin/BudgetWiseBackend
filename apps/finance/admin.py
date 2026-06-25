@@ -4,6 +4,8 @@ from apps.finance.models import (
     BudgetNotificationEvent,
     BudgetNotificationSettings,
     FormulaIdeDraft,
+    FinancialRecommendation,
+    FinancialRecommendationEvent,
     Currency,
     OfflineSyncOperation,
     OfflineSyncTombstone,
@@ -325,3 +327,54 @@ class OfflineSyncTombstoneAdmin(admin.ModelAdmin):
     list_filter = ("resource", "deleted_at")
     search_fields = ("user__email", "user__username", "resource", "object_id")
     readonly_fields = ("created_at", "updated_at")
+
+@admin.register(FinancialRecommendation)
+class FinancialRecommendationAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "code",
+        "type",
+        "priority",
+        "status",
+        "source",
+        "source_key",
+        "expires_at",
+        "created_at",
+    )
+    list_filter = ("type", "priority", "status", "source", "created_at", "expires_at")
+    search_fields = (
+        "user__email",
+        "user__username",
+        "code",
+        "title",
+        "text",
+        "reason",
+        "source_key",
+    )
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "accepted_at",
+        "hidden_at",
+    )
+
+
+@admin.register(FinancialRecommendationEvent)
+class FinancialRecommendationEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "recommendation",
+        "user",
+        "event_type",
+        "created_at",
+    )
+    list_filter = ("event_type", "created_at")
+    search_fields = (
+        "recommendation__code",
+        "recommendation__title",
+        "user__email",
+        "user__username",
+    )
+    readonly_fields = ("created_at", "updated_at")
+

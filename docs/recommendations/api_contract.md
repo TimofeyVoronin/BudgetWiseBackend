@@ -11,12 +11,61 @@
 ```text
 Модуль: apps/finance/recommendations/
 Тип генерации: rule-based
-Хранение в БД: со следующей подзадачи
+Хранение в БД: FinancialRecommendation и FinancialRecommendationEvent
 Источники данных: Financial Health Check, budgets, goals, transactions, planned transactions, onboarding
 ML: не используется
 ```
 
 Рекомендации Financial Health Check остаются расчётными подсказками внутри health-check summary. В этом модуле рекомендации становятся полноценными карточками: их можно хранить, показывать списком, принимать, скрывать, откладывать и анализировать по событиям.
+
+
+## Модели хранения
+
+### `FinancialRecommendation`
+
+Модель хранит карточку рекомендации, которую можно показать пользователю, принять, скрыть или отложить.
+
+Ключевые поля:
+
+```text
+user
+code
+type
+priority
+status
+title
+text
+action
+reason
+source
+source_key
+context
+expires_at
+snoozed_until
+accepted_at
+hidden_at
+created_at
+updated_at
+```
+
+`source_key` используется для защиты от дублей при повторной генерации. Например, одна и та же активная рекомендация `create_budget` от источника `financial_health` не должна создаваться несколько раз подряд.
+
+### `FinancialRecommendationEvent`
+
+Модель хранит историю действий пользователя с рекомендацией.
+
+Ключевые поля:
+
+```text
+recommendation
+user
+event_type
+metadata
+created_at
+updated_at
+```
+
+События нужны для будущей статистики, оценки эффективности рекомендаций и корректной обработки действий пользователя.
 
 ## Будущие endpoints
 

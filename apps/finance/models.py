@@ -10,6 +10,23 @@ from django.db import models
 
 from apps.common.models import TimeStampedModel
 
+from apps.finance.recommendations.constants import (
+    RECOMMENDATION_CODES,
+    RECOMMENDATION_DEFAULT_PRIORITY,
+    RECOMMENDATION_DEFAULT_STATUS,
+    RECOMMENDATION_EVENTS,
+    RECOMMENDATION_PRIORITIES,
+    RECOMMENDATION_SOURCES,
+    RECOMMENDATION_STATUSES,
+    RECOMMENDATION_STATUS_ACCEPTED,
+    RECOMMENDATION_STATUS_ACTIVE,
+    RECOMMENDATION_STATUS_EXPIRED,
+    RECOMMENDATION_STATUS_HIDDEN,
+    RECOMMENDATION_STATUS_NEW,
+    RECOMMENDATION_STATUS_SNOOZED,
+    RECOMMENDATION_TYPES,
+)
+
 
 class TransactionType(models.TextChoices):
     INCOME = "income", "Доход"
@@ -4050,3 +4067,293 @@ class FormulaIdeDraft(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.user_id}:{self.formula_id}"
+
+class FinancialRecommendationType(models.TextChoices):
+    BUDGET = "budget", "Бюджет"
+    SAVING = "saving", "Сбережения"
+    GOAL = "goal", "Цель"
+    CASHFLOW = "cashflow", "Денежный поток"
+    PLANNED_PAYMENT = "planned_payment", "Планируемый платёж"
+    EXPENSE_STABILITY = "expense_stability", "Стабильность расходов"
+    ONBOARDING = "onboarding", "Онбординг"
+    FINANCIAL_HEALTH = "financial_health", "Финансовое здоровье"
+
+
+class FinancialRecommendationStatus(models.TextChoices):
+    NEW = "new", "Новая"
+    ACTIVE = "active", "Активная"
+    ACCEPTED = "accepted", "Принята"
+    HIDDEN = "hidden", "Скрыта"
+    SNOOZED = "snoozed", "Отложена"
+    EXPIRED = "expired", "Истекла"
+
+
+class FinancialRecommendationPriority(models.TextChoices):
+    HIGH = "high", "Высокий"
+    MEDIUM = "medium", "Средний"
+    LOW = "low", "Низкий"
+
+
+class FinancialRecommendationSource(models.TextChoices):
+    FINANCIAL_HEALTH = "financial_health", "Финансовое здоровье"
+    BUDGETS = "budgets", "Бюджеты"
+    GOALS = "goals", "Цели"
+    TRANSACTIONS = "transactions", "Операции"
+    PLANNED_TRANSACTIONS = "planned_transactions", "Планируемые операции"
+    ONBOARDING = "onboarding", "Онбординг"
+
+
+class FinancialRecommendationEventType(models.TextChoices):
+    CREATED = "created", "Создана"
+    VIEWED = "viewed", "Просмотрена"
+    ACCEPTED = "accepted", "Принята"
+    HIDDEN = "hidden", "Скрыта"
+    SNOOZED = "snoozed", "Отложена"
+    EXPIRED = "expired", "Истекла"
+    REFRESHED = "refreshed", "Обновлена"
+
+
+class FinancialRecommendation(TimeStampedModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="financial_recommendations",
+        verbose_name="Пользователь",
+    )
+    code = models.CharField(
+        max_length=80,
+        verbose_name="Код рекомендации",
+    )
+    type = models.CharField(
+        max_length=40,
+        choices=FinancialRecommendationType.choices,
+        verbose_name="Тип рекомендации",
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=FinancialRecommendationPriority.choices,
+        default=RECOMMENDATION_DEFAULT_PRIORITY,
+        verbose_name="Приоритет",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=FinancialRecommendationStatus.choices,
+        default=RECOMMENDATION_DEFAULT_STATUS,
+        verbose_name="Статус",
+    )
+    title = models.CharField(
+        max_length=255,
+        verbose_name="Заголовок",
+    )
+    text = models.TextField(
+        verbose_name="Текст рекомендации",
+    )
+    action = models.TextField(
+        blank=True,
+        verbose_name="Предлагаемое действие",
+    )
+    reason = models.TextField(
+        blank=True,
+        verbose_name="Причина появления",
+    )
+    source = models.CharField(
+        max_length=60,
+        choices=FinancialRecommendationSource.choices,
+        verbose_name="Источник данных",
+    )
+    source_key = models.CharField(
+        max_length=120,
+        blank=True,
+        verbose_name="Ключ источника",
+        help_text="Используется для защиты от дублей при повторной генерации.",
+    )
+    context = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Контекст рекомендации",
+    )
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Актуальна до",
+    )
+    snoozed_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Отложена до",
+    )
+    accepted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата принятия",
+    )
+    hidden_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Дата скрытия",
+    )
+
+    class Meta:
+        verbose_name = "Финансовая рекомендация"
+        verbose_name_plural = "Финансовые рекомендации"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(type__in=RECOMMENDATION_TYPES),
+                name="fin_rec_type_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(priority__in=RECOMMENDATION_PRIORITIES),
+                name="fin_rec_priority_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=RECOMMENDATION_STATUSES),
+                name="fin_rec_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(source__in=RECOMMENDATION_SOURCES),
+                name="fin_rec_source_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["user", "code", "source", "source_key"],
+                condition=models.Q(
+                    status__in=[
+                        RECOMMENDATION_STATUS_NEW,
+                        RECOMMENDATION_STATUS_ACTIVE,
+                        RECOMMENDATION_STATUS_SNOOZED,
+                    ]
+                ),
+                name="uniq_fin_rec_active_rule",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "status"], name="idx_fin_rec_user_status"),
+            models.Index(fields=["user", "priority"], name="idx_fin_rec_user_prio"),
+            models.Index(fields=["user", "type"], name="idx_fin_rec_user_type"),
+            models.Index(fields=["user", "expires_at"], name="idx_fin_rec_user_expires"),
+            models.Index(fields=["code"], name="idx_fin_rec_code"),
+        ]
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.status in {
+            RECOMMENDATION_STATUS_ACCEPTED,
+            RECOMMENDATION_STATUS_HIDDEN,
+            RECOMMENDATION_STATUS_EXPIRED,
+        }
+
+    @property
+    def is_visible(self) -> bool:
+        if self.status in {RECOMMENDATION_STATUS_NEW, RECOMMENDATION_STATUS_ACTIVE}:
+            return True
+        if self.status == RECOMMENDATION_STATUS_SNOOZED:
+            return bool(self.snoozed_until and self.snoozed_until <= timezone.now())
+        return False
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.code:
+            self.code = self.code.strip()
+        if self.source_key:
+            self.source_key = self.source_key.strip()
+
+        if self.code not in RECOMMENDATION_CODES:
+            errors["code"] = "Недопустимый код рекомендации."
+        if self.type not in RECOMMENDATION_TYPES:
+            errors["type"] = "Недопустимый тип рекомендации."
+        if self.priority not in RECOMMENDATION_PRIORITIES:
+            errors["priority"] = "Недопустимый приоритет рекомендации."
+        if self.status not in RECOMMENDATION_STATUSES:
+            errors["status"] = "Недопустимый статус рекомендации."
+        if self.source not in RECOMMENDATION_SOURCES:
+            errors["source"] = "Недопустимый источник рекомендации."
+        if self.context is None:
+            self.context = {}
+        if not isinstance(self.context, dict):
+            errors["context"] = "Контекст рекомендации должен быть объектом."
+
+        if self.status == RECOMMENDATION_STATUS_ACCEPTED and not self.accepted_at:
+            self.accepted_at = timezone.now()
+        if self.status == RECOMMENDATION_STATUS_HIDDEN and not self.hidden_at:
+            self.hidden_at = timezone.now()
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.code:
+            self.code = self.code.strip()
+        if self.source_key:
+            self.source_key = self.source_key.strip()
+        if self.context is None:
+            self.context = {}
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.code}:{self.status}"
+
+
+class FinancialRecommendationEvent(TimeStampedModel):
+    recommendation = models.ForeignKey(
+        FinancialRecommendation,
+        on_delete=models.CASCADE,
+        related_name="events",
+        verbose_name="Рекомендация",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="financial_recommendation_events",
+        verbose_name="Пользователь",
+    )
+    event_type = models.CharField(
+        max_length=30,
+        choices=FinancialRecommendationEventType.choices,
+        verbose_name="Тип события",
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Метаданные события",
+    )
+
+    class Meta:
+        verbose_name = "Событие финансовой рекомендации"
+        verbose_name_plural = "События финансовых рекомендаций"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(event_type__in=RECOMMENDATION_EVENTS),
+                name="fin_rec_event_type_valid",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["recommendation", "created_at"], name="idx_fin_rec_event_rec"),
+            models.Index(fields=["user", "event_type"], name="idx_fin_rec_event_user_type"),
+            models.Index(fields=["user", "created_at"], name="idx_fin_rec_event_user_date"),
+        ]
+
+    def clean(self) -> None:
+        errors = {}
+
+        if self.event_type not in RECOMMENDATION_EVENTS:
+            errors["event_type"] = "Недопустимый тип события рекомендации."
+        if self.metadata is None:
+            self.metadata = {}
+        if not isinstance(self.metadata, dict):
+            errors["metadata"] = "Метаданные события должны быть объектом."
+        if self.recommendation_id and self.user_id and self.recommendation.user_id != self.user_id:
+            errors["user"] = "Пользователь события должен совпадать с пользователем рекомендации."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.metadata is None:
+            self.metadata = {}
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.recommendation_id}:{self.event_type}"
+
