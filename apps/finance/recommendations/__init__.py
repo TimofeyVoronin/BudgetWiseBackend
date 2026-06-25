@@ -1,5 +1,9 @@
-from __future__ import annotations
+"""Financial recommendation module.
 
-from apps.finance.recommendations.contracts import build_recommendations_meta
+Keep this package initializer lightweight.
 
-__all__ = ["build_recommendations_meta"]
+The finance models import recommendation constants during Django app loading.
+Importing the generator here would pull in health-check services and finance
+models again, which causes a circular import while Django initializes models.
+Import generator functions directly from apps.finance.recommendations.generator.
+"""

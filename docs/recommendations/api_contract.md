@@ -202,3 +202,43 @@ ordering=priority|-priority|created_at|-created_at|expires_at|-expires_at
 - Повторная генерация не должна создавать дубли активных рекомендаций.
 - Пользователь видит только свои рекомендации.
 - A/B-тесты не реализуются полноценно на этом этапе. Для будущего расширения достаточно хранить `source`, `context` и события пользователя.
+
+## Rule-based generator
+
+В BUD-1159 добавлен сервис генерации рекомендаций:
+
+```python
+from apps.finance.recommendations.generator import generate_financial_recommendations
+
+result = generate_financial_recommendations(user=request.user)
+```
+
+Генератор использует результат Financial Health Check, базовое качество данных и статус onboarding. Он создаёт или обновляет только записи `FinancialRecommendation` и события `FinancialRecommendationEvent`. Финансовые сущности пользователя не изменяются.
+
+### Источники правил первой версии
+
+```text
+Financial Health Check recommendations
+Financial Health Check dataQuality
+OnboardingSurvey status
+```
+
+### Поведение при повторной генерации
+
+- если активная рекомендация с тем же `user + code + source + source_key` уже есть, она обновляется;
+- если рекомендация была скрыта или принята пользователем, генератор не создаёт её повторно;
+- при создании записывается событие `created`;
+- при обновлении записывается событие `refreshed`;
+- рекомендации с одинаковым `code` внутри одного запуска дедуплицируются, чтобы не показывать пользователю несколько карточек с одним действием.
+
+### Результат генерации
+
+```json
+{
+  "created": 3,
+  "updated": 1,
+  "skipped": 0,
+  "total": 4,
+  "recommendationIds": [1, 2, 3, 4]
+}
+```
